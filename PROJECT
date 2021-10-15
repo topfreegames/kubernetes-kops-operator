@@ -13,4 +13,13 @@ resources:
   kind: KopsAWSCluster
   path: github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1
   version: v1alpha1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: cluster.x-k8s.io
+  group: controlplane
+  kind: KopsControlPlane
+  path: github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1
+  version: v1alpha1
 version: "3"
