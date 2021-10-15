@@ -1,6 +1,7 @@
 domain: cluster.x-k8s.io
 layout:
 - go.kubebuilder.io/v3
+multigroup: true
 projectName: kubernetes-kops-operator
 repo: github.com/topfreegames/kubernetes-kops-operator
 resources:
@@ -10,6 +11,6 @@ resources:
   domain: cluster.x-k8s.io
   group: infrastructure
   kind: KopsAWSCluster
-  path: github.com/topfreegames/kubernetes-kops-operator/api/v1alpha1
+  path: github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1
   version: v1alpha1
 version: "3"
