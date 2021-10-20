@@ -18,6 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kops "k8s.io/kops/pkg/apis/kops/v1alpha2"
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
@@ -28,8 +29,8 @@ type KopsControlPlaneSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	// Foo is an example field of KopsControlPlane. Edit kopscontrolplane_types.go to remove/update
-	Foo string `json:"foo,omitempty"`
+	// KopsClusterSpec declare the desired Cluster Kops resource: https://kops.sigs.k8s.io/cluster_spec/
+	KopsClusterSpec kops.ClusterSpec `json:"kopsClusterSpec"`
 }
 
 // KopsControlPlaneStatus defines the observed state of KopsControlPlane
