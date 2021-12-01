@@ -48,6 +48,33 @@ func (r *KopsControlPlaneReconciler) isKopsStateCreated(ctx context.Context, clu
 }
 
 
+// createTerraformBackendFile creates the backend file for the remote state
+func (r *KopsControlPlaneReconciler) createTerraformBackendFile(bucket, clusterName, path string) error {
+	backendContent := fmt.Sprintf(`
+	terraform {
+		backend "s3" {
+			bucket = "%s"
+			key = "%s/terraform/%s.tfstate"
+			region = "us-east-1"
+		}
+	}`, bucket, clusterName, clusterName)
+
+	file, err := os.Create(path)
+	if err != nil {
+		r.log.Error(err, fmt.Sprintf("failed to create backend file: %v", err))
+		return err
+	}
+	defer file.Close()
+
+	_, err = file.WriteString(backendContent)
+	if err != nil {
+		r.log.Error(err, fmt.Sprintf("failed to write backend to file: %v", err))
+		return err
+	}
+
+	return nil
+}
+
 // createKopsState creates the kops state in the remote storage
 // It's equivalent with the kops create command
 func (r *KopsControlPlaneReconciler) createKopsState(ctx context.Context, cluster *kopsapi.Cluster) error {
@@ -72,6 +99,34 @@ func (r *KopsControlPlaneReconciler) createKopsState(ctx context.Context, cluste
 		return err
 	}
 	r.log.Info(fmt.Sprintf("Created kops state for cluster %s", cluster.ObjectMeta.Name))
+
+	return nil
+}
+
+// generateTerraformFiles generates the terraform files for the cloud resources
+func (r *KopsControlPlaneReconciler) generateTerraformFiles(ctx context.Context, cluster *kopsapi.Cluster, s3Bucket, outputDir string) error {
+	cloud, err := cloudup.BuildCloud(cluster)
+	if err != nil {
+		return err
+	}
+
+	applyCmd := &cloudup.ApplyClusterCmd{
+		Cloud:              cloud,
+		Clientset:          r.kopsClientset,
+		Cluster:            cluster,
+		DryRun:             true,
+		AllowKopsDowngrade: false,
+		OutDir:             outputDir,
+		TargetName:         "terraform",
+	}
+
+	if err := applyCmd.Run(ctx); err != nil {
+		return err
+	}
+
+	if err = r.createTerraformBackendFile(s3Bucket, cluster.Name, outputDir); err != nil {
+		return err
+	}
 
 	return nil
 }
@@ -119,6 +174,13 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	err = r.createKopsState(ctx, kopsCluster)
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed to create cluster: %v", err))
+		return ctrl.Result{}, err
+	}
+
+	terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
+	err = r.generateTerraformFiles(ctx, kopsCluster, s3Bucket, terraformOutputDir)
+	if err != nil {
+		r.log.Error(err, fmt.Sprintf("failed to update cluster: %v", err))
 		return ctrl.Result{}, err
 	}
 
