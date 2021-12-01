@@ -19,6 +19,7 @@ package controlplane
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/go-logr/logr"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
@@ -27,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
+	"k8s.io/kops/upup/pkg/fi/cloudup"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -37,6 +39,41 @@ type KopsControlPlaneReconciler struct {
 	Scheme        *runtime.Scheme
 	kopsClientset simple.Clientset
 	log           logr.Logger
+}
+
+// isKopsStateCreated checks if the kops state for the cluster is already created by its name
+func (r *KopsControlPlaneReconciler) isKopsStateCreated(ctx context.Context, clusterName string) bool {
+	cluster, _ := r.kopsClientset.GetCluster(ctx, clusterName)
+	return cluster != nil
+}
+
+
+// createKopsState creates the kops state in the remote storage
+// It's equivalent with the kops create command
+func (r *KopsControlPlaneReconciler) createKopsState(ctx context.Context, cluster *kopsapi.Cluster) error {
+
+	if r.isKopsStateCreated(ctx, cluster.Name) {
+		r.log.Info(fmt.Sprintf("cluster %q already exists, skipping creation", cluster.Name))
+		return nil
+	}
+
+	cloud, err := cloudup.BuildCloud(cluster)
+	if err != nil {
+		return err
+	}
+
+	err = cloudup.PerformAssignments(cluster, cloud)
+	if err != nil {
+		return err
+	}
+
+	_, err = r.kopsClientset.CreateCluster(ctx, cluster)
+	if err != nil {
+		return err
+	}
+	r.log.Info(fmt.Sprintf("Created kops state for cluster %s", cluster.ObjectMeta.Name))
+
+	return nil
 }
 }
 
@@ -79,7 +116,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsClusterSpec,
 	}
 
-	// your logic here
+	err = r.createKopsState(ctx, kopsCluster)
+	if err != nil {
+		r.log.Error(err, fmt.Sprintf("failed to create cluster: %v", err))
+		return ctrl.Result{}, err
+	}
+
 
 	return ctrl.Result{}, nil
 }
