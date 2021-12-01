@@ -20,8 +20,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/go-logr/logr"
+	"github.com/hashicorp/go-version"
+	"github.com/hashicorp/hc-install/product"
+	"github.com/hashicorp/hc-install/releases"
+	"github.com/hashicorp/terraform-exec/tfexec"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -161,6 +166,41 @@ func (r *KopsControlPlaneReconciler) generateTerraformFiles(ctx context.Context,
 
 	return nil
 }
+
+func applyTerraform(ctx context.Context, workingDir string) error {
+
+	log := ctrl.LoggerFrom(ctx)
+
+	installer := &releases.ExactVersion{
+		Product: product.Terraform,
+		Version: version.Must(version.NewVersion("0.15.0")),
+	}
+
+	execPath, err := installer.Install(ctx)
+	if err != nil {
+		log.Error(err, fmt.Sprintf("error installing Terraform: %v", err))
+		return err
+	}
+
+	tf, err := tfexec.NewTerraform(workingDir, execPath)
+	if err != nil {
+		log.Error(err, fmt.Sprintf("error running NewTerraform: %v", err))
+		return err
+	}
+
+	err = tf.Init(ctx, tfexec.Upgrade(true))
+	if err != nil {
+		log.Error(err, fmt.Sprintf("error running Init: %v", err))
+		return err
+	}
+
+	err = tf.Apply(ctx)
+	if err != nil {
+		log.Error(err, fmt.Sprintf("error running Apply: %v", err))
+		return err
+	}
+
+	return nil
 }
 
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes,verbs=get;list;watch;create;update;patch;delete
@@ -215,6 +255,11 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
+	err = applyTerraform(ctx, terraformOutputDir)
+	if err != nil {
+		r.log.Error(err, fmt.Sprintf("failed to apply terraform: %v", err))
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
