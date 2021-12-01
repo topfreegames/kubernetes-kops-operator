@@ -47,6 +47,31 @@ func (r *KopsControlPlaneReconciler) isKopsStateCreated(ctx context.Context, clu
 	return cluster != nil
 }
 
+// addSSHCredential adds a predefined public ssh key that is added in the nodes
+// TODO: Add the public and private key in the vault, all newly created
+// clusters will use the same for now
+func (r *KopsControlPlaneReconciler) addSSHCredential(cluster *kopsapi.Cluster) error {
+	sshCredential := kopsapi.SSHCredential{
+		Spec: kopsapi.SSHCredentialSpec{
+			PublicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCu7OR4k/qpc6VFqQsMGk7wQcnGzDA/hKABnj3qN85tgIDVsbnOIVgXl4FV1gO+gBjblCLkAmbZYlwhhkosL4xpEc8uk8QWJIzRqalvnLEofdIjClngGqzC40Yu6oVPiqImDazlVNvJ7UdzX02mmYJMe4eRzS1w1dA2hm9uTsaq6CNZuJF2/joV+SKLW88IEXWnb7PdOPZWFy0iN/9JcQKqON7zmR0j1zb4Ydj6Pt9MMIOTRiJpyeTqw0Gy4RWgkKJpwuRhOTnhZ1I8zigXgu4+keMYBgtLLP90Wx6/SI6vt+sG/Zrx5+s0av6vHFH/fDzqX4BSsxY83cOMH6ILLQ1C0hE9ykXx/EAKoou+DT8Doe0wabVxZNMRDOAb0ZnLF1HwUItW+MvgIjtCVpap/jBGmSSqZ5B9cvib7UV+JfLHty7n3AP2SKf52+E3Fp1fP4UiXQ/YUXZksopHLXLtwMdam/qijq5tjk0lVh7j8GGNuejt17+tSOCaP2kNKFyc1u8=",
+		},
+	}
+
+	sshCredentialStore, err := r.kopsClientset.SSHCredentialStore(cluster)
+	if err != nil {
+		return err
+	}
+
+	sshKeyArr := []byte(sshCredential.Spec.PublicKey)
+	err = sshCredentialStore.AddSSHPublicKey("ubuntu", sshKeyArr)
+	if err != nil {
+		return err
+	}
+
+	r.log.Info("Added ssh credential")
+
+	return nil
+	}
 
 // createTerraformBackendFile creates the backend file for the remote state
 func (r *KopsControlPlaneReconciler) createTerraformBackendFile(bucket, clusterName, path string) error {
@@ -98,6 +123,12 @@ func (r *KopsControlPlaneReconciler) createKopsState(ctx context.Context, cluste
 	if err != nil {
 		return err
 	}
+
+	err = r.addSSHCredential(cluster)
+	if err != nil {
+		return err
+	}
+
 	r.log.Info(fmt.Sprintf("Created kops state for cluster %s", cluster.ObjectMeta.Name))
 
 	return nil
