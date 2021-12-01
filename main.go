@@ -34,6 +34,7 @@ import (
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	controlplanecontrollers "github.com/topfreegames/kubernetes-kops-operator/controllers/controlplane"
+	infrastructureclusterxk8siocontrollers "github.com/topfreegames/kubernetes-kops-operator/controllers/infrastructure.cluster.x-k8s.io"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -85,6 +86,13 @@ func main() {
 		Scheme: mgr.GetScheme(),
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsControlPlane")
+		os.Exit(1)
+	}
+	if err = (&infrastructureclusterxk8siocontrollers.KopsMachinePoolReconciler{
+		Client: mgr.GetClient(),
+		Scheme: mgr.GetScheme(),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "KopsMachinePool")
 		os.Exit(1)
 	}
 	//+kubebuilder:scaffold:builder
