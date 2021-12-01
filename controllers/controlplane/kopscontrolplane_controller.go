@@ -18,36 +18,66 @@ package controlplane
 
 import (
 	"context"
+	"encoding/json"
 
+	"github.com/go-logr/logr"
+	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	"github.com/topfreegames/kubernetes-kops-operator/utils"
+	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	kopsapi "k8s.io/kops/pkg/apis/kops"
+	"k8s.io/kops/pkg/client/simple"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 )
 
 // KopsControlPlaneReconciler reconciles a KopsControlPlane object
 type KopsControlPlaneReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme        *runtime.Scheme
+	kopsClientset simple.Clientset
+	log           logr.Logger
+}
 }
 
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/finalizers,verbs=update
-
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the KopsControlPlane object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	r.log = ctrl.LoggerFrom(ctx)
+
+	var kopsControlPlane controlplanev1alpha1.KopsControlPlane
+	if err := r.Get(ctx, req.NamespacedName, &kopsControlPlane); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	kopsClusterSpecBytes, err := json.Marshal(kopsControlPlane.Spec.KopsClusterSpec)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	var kopsClusterSpec kopsapi.ClusterSpec
+
+	err = json.Unmarshal(kopsClusterSpecBytes, &kopsClusterSpec)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	s3Bucket := utils.GetBucketName(kopsClusterSpec.ConfigBase)
+
+	kopsClientset, err := utils.GetKopsClientset(s3Bucket)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	r.kopsClientset = kopsClientset
+
+	kopsCluster := &kopsapi.Cluster{
+		ObjectMeta: metaV1.ObjectMeta{
+			Name: kopsControlPlane.ObjectMeta.Labels[kopsapi.LabelClusterName],
+		},
+		Spec: kopsClusterSpec,
+	}
 
 	// your logic here
 
