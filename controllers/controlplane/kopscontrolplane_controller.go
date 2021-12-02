@@ -32,7 +32,9 @@ import (
 	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
+	"k8s.io/kops/pkg/assets"
 	"k8s.io/kops/pkg/client/simple"
+	"k8s.io/kops/pkg/commands"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -46,10 +48,25 @@ type KopsControlPlaneReconciler struct {
 	log           logr.Logger
 }
 
-// isKopsStateCreated checks if the kops state for the cluster is already created by its name
-func (r *KopsControlPlaneReconciler) isKopsStateCreated(ctx context.Context, clusterName string) bool {
-	cluster, _ := r.kopsClientset.GetCluster(ctx, clusterName)
-	return cluster != nil
+// populateClusterSpec populates the full cluster spec
+func (r *KopsControlPlaneReconciler) populateClusterSpec(cluster *kopsapi.Cluster) (*kopsapi.Cluster, error) {
+	cloud, err := cloudup.BuildCloud(cluster)
+	if err != nil {
+		return nil, err
+	}
+
+	err = cloudup.PerformAssignments(cluster, cloud)
+	if err != nil {
+		return nil, err
+	}
+
+	assetBuilder := assets.NewAssetBuilder(cluster, "")
+	fullCluster, err := cloudup.PopulateClusterSpec(r.kopsClientset, cluster, cloud, assetBuilder)
+	if err != nil {
+		return nil, err
+	}
+
+	return fullCluster, nil
 }
 
 // addSSHCredential adds a predefined public ssh key that is added in the nodes
@@ -76,10 +93,10 @@ func (r *KopsControlPlaneReconciler) addSSHCredential(cluster *kopsapi.Cluster) 
 	r.log.Info("Added ssh credential")
 
 	return nil
-	}
+}
 
 // createTerraformBackendFile creates the backend file for the remote state
-func (r *KopsControlPlaneReconciler) createTerraformBackendFile(bucket, clusterName, path string) error {
+func (r *KopsControlPlaneReconciler) createTerraformBackendFile(bucket, clusterName, backendPath string) error {
 	backendContent := fmt.Sprintf(`
 	terraform {
 		backend "s3" {
@@ -89,7 +106,7 @@ func (r *KopsControlPlaneReconciler) createTerraformBackendFile(bucket, clusterN
 		}
 	}`, bucket, clusterName, clusterName)
 
-	file, err := os.Create(path)
+	file, err := os.Create(fmt.Sprintf("%s/backend.tf", backendPath))
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed to create backend file: %v", err))
 		return err
@@ -105,36 +122,37 @@ func (r *KopsControlPlaneReconciler) createTerraformBackendFile(bucket, clusterN
 	return nil
 }
 
-// createKopsState creates the kops state in the remote storage
-// It's equivalent with the kops create command
-func (r *KopsControlPlaneReconciler) createKopsState(ctx context.Context, cluster *kopsapi.Cluster) error {
+// updateKopsState creates or updates the kops state in the remote storage
+func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, cluster *kopsapi.Cluster) error {
 
-	if r.isKopsStateCreated(ctx, cluster.Name) {
-		r.log.Info(fmt.Sprintf("cluster %q already exists, skipping creation", cluster.Name))
+	fullCluster, err := r.populateClusterSpec(cluster)
+	if err != nil {
+		return err
+	}
+
+	oldCluster, _ := r.kopsClientset.GetCluster(ctx, fullCluster.Name)
+	if oldCluster != nil {
+		statusDiscovery := &commands.CloudDiscoveryStatusStore{}
+		status, err := statusDiscovery.FindClusterStatus(oldCluster)
+		if err != nil {
+			return err
+		}
+		r.kopsClientset.UpdateCluster(ctx, fullCluster, status)
+		r.log.Info(fmt.Sprintf("updated kops state for cluster %s", cluster.ObjectMeta.Name))
 		return nil
 	}
 
-	cloud, err := cloudup.BuildCloud(cluster)
+	_, err = r.kopsClientset.CreateCluster(ctx, fullCluster)
 	if err != nil {
 		return err
 	}
 
-	err = cloudup.PerformAssignments(cluster, cloud)
+	err = r.addSSHCredential(fullCluster)
 	if err != nil {
 		return err
 	}
 
-	_, err = r.kopsClientset.CreateCluster(ctx, cluster)
-	if err != nil {
-		return err
-	}
-
-	err = r.addSSHCredential(cluster)
-	if err != nil {
-		return err
-	}
-
-	r.log.Info(fmt.Sprintf("Created kops state for cluster %s", cluster.ObjectMeta.Name))
+	r.log.Info(fmt.Sprintf("created kops state for cluster %s", cluster.ObjectMeta.Name))
 
 	return nil
 }
@@ -167,9 +185,8 @@ func (r *KopsControlPlaneReconciler) generateTerraformFiles(ctx context.Context,
 	return nil
 }
 
-func applyTerraform(ctx context.Context, workingDir string) error {
-
-	log := ctrl.LoggerFrom(ctx)
+// applyTerraform just applies the already created terraform files
+func (r *KopsControlPlaneReconciler) applyTerraform(ctx context.Context, workingDir string) error {
 
 	installer := &releases.ExactVersion{
 		Product: product.Terraform,
@@ -178,25 +195,25 @@ func applyTerraform(ctx context.Context, workingDir string) error {
 
 	execPath, err := installer.Install(ctx)
 	if err != nil {
-		log.Error(err, fmt.Sprintf("error installing Terraform: %v", err))
+		r.log.Error(err, fmt.Sprintf("error installing Terraform: %v", err))
 		return err
 	}
 
 	tf, err := tfexec.NewTerraform(workingDir, execPath)
 	if err != nil {
-		log.Error(err, fmt.Sprintf("error running NewTerraform: %v", err))
+		r.log.Error(err, fmt.Sprintf("error running NewTerraform: %v", err))
 		return err
 	}
 
 	err = tf.Init(ctx, tfexec.Upgrade(true))
 	if err != nil {
-		log.Error(err, fmt.Sprintf("error running Init: %v", err))
+		r.log.Error(err, fmt.Sprintf("error running Init: %v", err))
 		return err
 	}
 
 	err = tf.Apply(ctx)
 	if err != nil {
-		log.Error(err, fmt.Sprintf("error running Apply: %v", err))
+		r.log.Error(err, fmt.Sprintf("error running Apply: %v", err))
 		return err
 	}
 
@@ -242,7 +259,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsClusterSpec,
 	}
 
-	err = r.createKopsState(ctx, kopsCluster)
+	err = r.updateKopsState(ctx, kopsCluster)
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed to create cluster: %v", err))
 		return ctrl.Result{}, err
@@ -255,7 +272,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	err = applyTerraform(ctx, terraformOutputDir)
+	err = r.applyTerraform(ctx, terraformOutputDir)
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed to apply terraform: %v", err))
 		return ctrl.Result{}, err
