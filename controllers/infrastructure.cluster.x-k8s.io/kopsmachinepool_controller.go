@@ -18,7 +18,6 @@ package infrastructureclusterxk8sio
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -116,21 +115,9 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return ctrl.Result{}, err
 	}
 
-	kopsInstaGroupSpecBytes, err := json.Marshal(kopsMachinePool.Spec.KopsInstanceGroupSpec)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	var kopsInstanceGroupSpec kopsapi.InstanceGroupSpec
-
-	err = json.Unmarshal(kopsInstaGroupSpecBytes, &kopsInstanceGroupSpec)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
 	kopsInstanceGroup := &kopsapi.InstanceGroup{
 		ObjectMeta: kopsMachinePool.ObjectMeta,
-		Spec:       kopsInstanceGroupSpec,
+		Spec:       kopsMachinePool.Spec.KopsInstanceGroupSpec,
 	}
 
 	clusterName := kopsInstanceGroup.Spec.NodeLabels[kopsapi.LabelClusterName]
@@ -148,19 +135,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	kopsClusterSpecBytes, err := json.Marshal(kopsControlPlane.Spec.KopsClusterSpec)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	var kopsClusterSpec kopsapi.ClusterSpec
-
-	err = json.Unmarshal(kopsClusterSpecBytes, &kopsClusterSpec)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	s3Bucket := utils.GetBucketName(kopsClusterSpec.ConfigBase)
+	s3Bucket := utils.GetBucketName(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
 
 	kopsClientset, err := utils.GetKopsClientset(s3Bucket)
 	if err != nil {
@@ -173,7 +148,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		ObjectMeta: metav1.ObjectMeta{
 			Name: clusterName,
 		},
-		Spec: kopsClusterSpec,
+		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 	err = r.updateInstanceGroup(ctx, kopsCluster, kopsInstanceGroup)
 	if err != nil {

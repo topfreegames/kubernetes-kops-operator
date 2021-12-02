@@ -18,7 +18,6 @@ package controlplane
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -231,19 +230,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	kopsClusterSpecBytes, err := json.Marshal(kopsControlPlane.Spec.KopsClusterSpec)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	var kopsClusterSpec kopsapi.ClusterSpec
-
-	err = json.Unmarshal(kopsClusterSpecBytes, &kopsClusterSpec)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	s3Bucket := utils.GetBucketName(kopsClusterSpec.ConfigBase)
+	s3Bucket := utils.GetBucketName(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
 
 	kopsClientset, err := utils.GetKopsClientset(s3Bucket)
 	if err != nil {
@@ -256,7 +243,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		ObjectMeta: metaV1.ObjectMeta{
 			Name: kopsControlPlane.ObjectMeta.Labels[kopsapi.LabelClusterName],
 		},
-		Spec: kopsClusterSpec,
+		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
 	err = r.updateKopsState(ctx, kopsCluster)
