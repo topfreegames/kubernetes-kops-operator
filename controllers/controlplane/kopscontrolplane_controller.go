@@ -31,9 +31,12 @@ import (
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/commands"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 // KopsControlPlaneReconciler reconciles a KopsControlPlane object
@@ -219,29 +222,24 @@ func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr c
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1alpha1.KopsControlPlane{}).
 		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
+		Watches(
+			&source.Kind{Type: &clusterv1.Cluster{}},
+			handler.EnqueueRequestsFromMapFunc(clusterToInfrastructureMapFunc),
+		).
 		Complete(r)
 }
 
-// func clusterToInfrastructureMapFunc(gvk schema.GroupVersionKind) handler.MapFunc {
-// 	return func(o client.Object) []reconcile.Request {
-// 		cluster, ok := o.(*clusterv1.Cluster)
-// 		if !ok {
-// 			panic(fmt.Sprintf("Expected a Cluster but got a %T", o))
-// 		}
+func clusterToInfrastructureMapFunc(o client.Object) []ctrl.Request {
+	c, ok := o.(*clusterv1.Cluster)
+	if !ok {
+		panic(fmt.Sprintf("Expected a Cluster but got a %T", o))
+	}
 
-// 		gk := gvk.GroupKind()
-// 		infraGK := cluster.Spec.InfrastructureRef.GroupVersionKind().GroupKind()
-// 		if gk != infraGK {
-// 			return nil
-// 		}
+	result := []ctrl.Request{}
+	if c.Spec.InfrastructureRef != nil && c.Spec.InfrastructureRef.GroupVersionKind() == controlplanev1alpha1.GroupVersion.WithKind("KopsControlPlane") {
+		name := client.ObjectKey{Namespace: c.Spec.InfrastructureRef.Namespace, Name: c.Spec.InfrastructureRef.Name}
+		result = append(result, ctrl.Request{NamespacedName: name})
+	}
 
-// 		return []reconcile.Request{
-// 			{
-// 				NamespacedName: client.ObjectKey{
-// 					Namespace: cluster.Namespace,
-// 					Name:      cluster.Spec.InfrastructureRef.Name,
-// 				},
-// 			},
-// 		}
-// 	}
-// }
+	return result
+}
