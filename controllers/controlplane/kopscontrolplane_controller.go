@@ -19,19 +19,15 @@ package controlplane
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/go-logr/logr"
-	"github.com/hashicorp/go-version"
-	"github.com/hashicorp/hc-install/product"
-	"github.com/hashicorp/hc-install/releases"
-	"github.com/hashicorp/terraform-exec/tfexec"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
-	metaV1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/assets"
+
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/commands"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
@@ -42,13 +38,16 @@ import (
 // KopsControlPlaneReconciler reconciles a KopsControlPlane object
 type KopsControlPlaneReconciler struct {
 	client.Client
-	Scheme        *runtime.Scheme
-	kopsClientset simple.Clientset
-	log           logr.Logger
+	Scheme               *runtime.Scheme
+	kopsClientset        simple.Clientset
+	log                  logr.Logger
+	PopulateClusterSpec  func(cluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error)
+	CreateCloudResources func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) error
+	GetClusterStatus     func(cluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error)
 }
 
-// populateClusterSpec populates the full cluster spec
-func (r *KopsControlPlaneReconciler) populateClusterSpec(cluster *kopsapi.Cluster) (*kopsapi.Cluster, error) {
+// PopulateClusterSpec populates the full cluster spec with some values it fetchs from provider
+func PopulateClusterSpec(cluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error) {
 	cloud, err := cloudup.BuildCloud(cluster)
 	if err != nil {
 		return nil, err
@@ -60,12 +59,63 @@ func (r *KopsControlPlaneReconciler) populateClusterSpec(cluster *kopsapi.Cluste
 	}
 
 	assetBuilder := assets.NewAssetBuilder(cluster, "")
-	fullCluster, err := cloudup.PopulateClusterSpec(r.kopsClientset, cluster, cloud, assetBuilder)
+	fullCluster, err := cloudup.PopulateClusterSpec(kopsClientset, cluster, cloud, assetBuilder)
 	if err != nil {
 		return nil, err
 	}
 
 	return fullCluster, nil
+}
+
+// CreateCloudResources renders the terraform files and effectively apply them in the cloud provider
+func CreateCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) error {
+	s3Bucket, err := utils.GetBucketName(configBase)
+	if err != nil {
+		return err
+	}
+
+	terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
+
+	cloud, err := cloudup.BuildCloud(kopsCluster)
+	if err != nil {
+		return err
+	}
+
+	applyCmd := &cloudup.ApplyClusterCmd{
+		Cloud:              cloud,
+		Clientset:          kopsClientset,
+		Cluster:            kopsCluster,
+		DryRun:             true,
+		AllowKopsDowngrade: false,
+		OutDir:             terraformOutputDir,
+		TargetName:         "terraform",
+	}
+
+	if err := applyCmd.Run(ctx); err != nil {
+		return err
+	}
+
+	err = utils.CreateTerraformBackendFile(s3Bucket, kopsCluster.Name, terraformOutputDir)
+	if err != nil {
+		return err
+	}
+
+	err = utils.ApplyTerraform(ctx, terraformOutputDir)
+	if err != nil {
+		return err
+	}
+	return nil
+
+}
+
+// GetClusterStatus retrieve the kops cluster status from the cloud provider
+func GetClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
+	statusDiscovery := &commands.CloudDiscoveryStatusStore{}
+	status, err := statusDiscovery.FindClusterStatus(kopsCluster)
+	if err != nil {
+		return nil, err
+	}
+	return status, nil
 }
 
 // addSSHCredential adds a predefined public ssh key that is added in the nodes
@@ -82,9 +132,8 @@ func (r *KopsControlPlaneReconciler) addSSHCredential(cluster *kopsapi.Cluster) 
 	if err != nil {
 		return err
 	}
-
 	sshKeyArr := []byte(sshCredential.Spec.PublicKey)
-	err = sshCredentialStore.AddSSHPublicKey("ubuntu", sshKeyArr)
+	err = sshCredentialStore.AddSSHPublicKey("admin", sshKeyArr)
 	if err != nil {
 		return err
 	}
@@ -94,127 +143,31 @@ func (r *KopsControlPlaneReconciler) addSSHCredential(cluster *kopsapi.Cluster) 
 	return nil
 }
 
-// createTerraformBackendFile creates the backend file for the remote state
-func (r *KopsControlPlaneReconciler) createTerraformBackendFile(bucket, clusterName, backendPath string) error {
-	backendContent := fmt.Sprintf(`
-	terraform {
-		backend "s3" {
-			bucket = "%s"
-			key = "%s/terraform/%s.tfstate"
-			region = "us-east-1"
-		}
-	}`, bucket, clusterName, clusterName)
-
-	file, err := os.Create(fmt.Sprintf("%s/backend.tf", backendPath))
-	if err != nil {
-		r.log.Error(err, fmt.Sprintf("failed to create backend file: %v", err))
-		return err
-	}
-	defer file.Close()
-
-	_, err = file.WriteString(backendContent)
-	if err != nil {
-		r.log.Error(err, fmt.Sprintf("failed to write backend to file: %v", err))
-		return err
-	}
-
-	return nil
-}
-
 // updateKopsState creates or updates the kops state in the remote storage
-func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, cluster *kopsapi.Cluster) error {
+func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsCluster *kopsapi.Cluster) error {
 
-	fullCluster, err := r.populateClusterSpec(cluster)
-	if err != nil {
-		return err
-	}
-
-	oldCluster, _ := r.kopsClientset.GetCluster(ctx, fullCluster.Name)
+	oldCluster, _ := r.kopsClientset.GetCluster(ctx, kopsCluster.Name)
 	if oldCluster != nil {
-		statusDiscovery := &commands.CloudDiscoveryStatusStore{}
-		status, err := statusDiscovery.FindClusterStatus(oldCluster)
+		status, err := r.GetClusterStatus(oldCluster)
 		if err != nil {
 			return err
 		}
-		r.kopsClientset.UpdateCluster(ctx, fullCluster, status)
-		r.log.Info(fmt.Sprintf("updated kops state for cluster %s", cluster.ObjectMeta.Name))
+		r.kopsClientset.UpdateCluster(ctx, kopsCluster, status)
+		r.log.Info(fmt.Sprintf("updated kops state for cluster %s", kopsCluster.ObjectMeta.Name))
 		return nil
 	}
 
-	_, err = r.kopsClientset.CreateCluster(ctx, fullCluster)
+	_, err := r.kopsClientset.CreateCluster(ctx, kopsCluster)
 	if err != nil {
 		return err
 	}
 
-	err = r.addSSHCredential(fullCluster)
+	err = r.addSSHCredential(kopsCluster)
 	if err != nil {
 		return err
 	}
 
-	r.log.Info(fmt.Sprintf("created kops state for cluster %s", cluster.ObjectMeta.Name))
-
-	return nil
-}
-
-// generateTerraformFiles generates the terraform files for the cloud resources
-func (r *KopsControlPlaneReconciler) generateTerraformFiles(ctx context.Context, cluster *kopsapi.Cluster, s3Bucket, outputDir string) error {
-	cloud, err := cloudup.BuildCloud(cluster)
-	if err != nil {
-		return err
-	}
-
-	applyCmd := &cloudup.ApplyClusterCmd{
-		Cloud:              cloud,
-		Clientset:          r.kopsClientset,
-		Cluster:            cluster,
-		DryRun:             true,
-		AllowKopsDowngrade: false,
-		OutDir:             outputDir,
-		TargetName:         "terraform",
-	}
-
-	if err := applyCmd.Run(ctx); err != nil {
-		return err
-	}
-
-	if err = r.createTerraformBackendFile(s3Bucket, cluster.Name, outputDir); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// applyTerraform just applies the already created terraform files
-func (r *KopsControlPlaneReconciler) applyTerraform(ctx context.Context, workingDir string) error {
-
-	installer := &releases.ExactVersion{
-		Product: product.Terraform,
-		Version: version.Must(version.NewVersion("0.15.0")),
-	}
-
-	execPath, err := installer.Install(ctx)
-	if err != nil {
-		r.log.Error(err, fmt.Sprintf("error installing Terraform: %v", err))
-		return err
-	}
-
-	tf, err := tfexec.NewTerraform(workingDir, execPath)
-	if err != nil {
-		r.log.Error(err, fmt.Sprintf("error running NewTerraform: %v", err))
-		return err
-	}
-
-	err = tf.Init(ctx, tfexec.Upgrade(true))
-	if err != nil {
-		r.log.Error(err, fmt.Sprintf("error running Init: %v", err))
-		return err
-	}
-
-	err = tf.Apply(ctx)
-	if err != nil {
-		r.log.Error(err, fmt.Sprintf("error running Apply: %v", err))
-		return err
-	}
+	r.log.Info(fmt.Sprintf("created kops state for cluster %s", kopsCluster.ObjectMeta.Name))
 
 	return nil
 }
@@ -230,9 +183,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
-	s3Bucket := utils.GetBucketName(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
-
-	kopsClientset, err := utils.GetKopsClientset(s3Bucket)
+	kopsClientset, err := utils.GetKopsClientset(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -240,28 +191,25 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	r.kopsClientset = kopsClientset
 
 	kopsCluster := &kopsapi.Cluster{
-		ObjectMeta: metaV1.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: kopsControlPlane.ObjectMeta.Labels[kopsapi.LabelClusterName],
 		},
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
-	err = r.updateKopsState(ctx, kopsCluster)
+	fullCluster, err := r.PopulateClusterSpec(kopsCluster, r.kopsClientset)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	err = r.updateKopsState(ctx, fullCluster)
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed to create cluster: %v", err))
 		return ctrl.Result{}, err
 	}
 
-	terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
-	err = r.generateTerraformFiles(ctx, kopsCluster, s3Bucket, terraformOutputDir)
+	err = r.CreateCloudResources(r.kopsClientset, ctx, kopsCluster, fullCluster.Spec.ConfigBase)
 	if err != nil {
-		r.log.Error(err, fmt.Sprintf("failed to update cluster: %v", err))
-		return ctrl.Result{}, err
-	}
-
-	err = r.applyTerraform(ctx, terraformOutputDir)
-	if err != nil {
-		r.log.Error(err, fmt.Sprintf("failed to apply terraform: %v", err))
 		return ctrl.Result{}, err
 	}
 
@@ -272,5 +220,33 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 func (r *KopsControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1alpha1.KopsControlPlane{}).
+		// Watches(
+		// 	&source.Kind{Type: &clusterv1.Cluster{}},
+		// 	handler.EnqueueRequestsFromMapFunc(clusterToInfrastructureMapFunc(controlplanev1alpha1.GroupVersion.WithKind("KopsControlPlane"))),
+		// ).
 		Complete(r)
 }
+
+// func clusterToInfrastructureMapFunc(gvk schema.GroupVersionKind) handler.MapFunc {
+// 	return func(o client.Object) []reconcile.Request {
+// 		cluster, ok := o.(*clusterv1.Cluster)
+// 		if !ok {
+// 			panic(fmt.Sprintf("Expected a Cluster but got a %T", o))
+// 		}
+
+// 		gk := gvk.GroupKind()
+// 		infraGK := cluster.Spec.InfrastructureRef.GroupVersionKind().GroupKind()
+// 		if gk != infraGK {
+// 			return nil
+// 		}
+
+// 		return []reconcile.Request{
+// 			{
+// 				NamespacedName: client.ObjectKey{
+// 					Namespace: cluster.Namespace,
+// 					Name:      cluster.Spec.InfrastructureRef.Name,
+// 				},
+// 			},
+// 		}
+// 	}
+// }

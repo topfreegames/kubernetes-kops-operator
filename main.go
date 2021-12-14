@@ -84,8 +84,11 @@ func main() {
 	}
 
 	if err = (&controlplanecontrollers.KopsControlPlaneReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:               mgr.GetClient(),
+		Scheme:               mgr.GetScheme(),
+		PopulateClusterSpec:  controlplanecontrollers.PopulateClusterSpec,
+		CreateCloudResources: controlplanecontrollers.CreateCloudResources,
+		GetClusterStatus:     controlplanecontrollers.GetClusterStatus,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsControlPlane")
 		os.Exit(1)
