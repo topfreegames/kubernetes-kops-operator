@@ -37,9 +37,15 @@ require (
 	github.com/hashicorp/go-version v1.3.0
 	github.com/hashicorp/hc-install v0.2.0
 	github.com/hashicorp/terraform-exec v0.15.0
+	github.com/mattn/go-colorable v0.1.12 // indirect
 	github.com/onsi/ginkgo v1.16.4
 	github.com/onsi/gomega v1.16.0
 	github.com/pkg/errors v0.9.1
+	github.com/sirupsen/logrus v1.8.1 // indirect
+	github.com/stretchr/testify v1.7.0
+	golang.org/x/sys v0.0.0-20211205182925-97ca703d548d // indirect
+	golang.org/x/tools v0.1.8-0.20211028023602-8de2a7fd1736 // indirect
+	k8s.io/api v0.22.2
 	k8s.io/apimachinery v0.22.2
 	k8s.io/client-go v0.22.2
 	k8s.io/kops v1.21.1

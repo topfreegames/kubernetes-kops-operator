@@ -35,6 +35,7 @@ import (
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	controlplanecontrollers "github.com/topfreegames/kubernetes-kops-operator/controllers/controlplane"
 	infrastructureclusterxk8siocontrollers "github.com/topfreegames/kubernetes-kops-operator/controllers/infrastructure.cluster.x-k8s.io"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -48,6 +49,7 @@ func init() {
 
 	utilruntime.Must(infrastructurev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(controlplanev1alpha1.AddToScheme(scheme))
+	utilruntime.Must(clusterv1.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 

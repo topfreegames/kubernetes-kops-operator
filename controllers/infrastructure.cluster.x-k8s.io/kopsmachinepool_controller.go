@@ -30,6 +30,7 @@ import (
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	expclusterv1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -39,6 +40,7 @@ type KopsMachinePoolReconciler struct {
 	client.Client
 	Scheme           *runtime.Scheme
 	log              logr.Logger
+	WatchFilterValue string
 	kopsClientset    simple.Clientset
 }
 
@@ -80,17 +82,14 @@ func (r *KopsMachinePoolReconciler) isInstanceGroupCreated(ctx context.Context, 
 
 // updateInstanceGroup create or update the instance group in kops state
 func (r *KopsMachinePoolReconciler) updateInstanceGroup(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsInstanceGroup *kopsapi.InstanceGroup) error {
-	clusterName := kopsInstanceGroup.ObjectMeta.Labels[kopsapi.LabelClusterName]
-	if clusterName == "" {
-		return fmt.Errorf("must specify %q label with cluster name to create instanceGroup", kopsapi.LabelClusterName)
-	}
 
+	instanceGroupName := kopsInstanceGroup.ObjectMeta.Name
 	if r.isInstanceGroupCreated(ctx, kopsCluster, kopsInstanceGroup.Name) {
 		_, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).Update(ctx, kopsInstanceGroup, metav1.UpdateOptions{})
 		if err != nil {
 			return fmt.Errorf("error updating instanceGroup: %v", err)
 		}
-		r.log.Info(fmt.Sprintf("updated instancegroup/%s", kopsInstanceGroup.ObjectMeta.Name))
+		r.log.Info(fmt.Sprintf("updated instancegroup/%s", instanceGroupName))
 		return nil
 	}
 
@@ -98,7 +97,7 @@ func (r *KopsMachinePoolReconciler) updateInstanceGroup(ctx context.Context, kop
 	if err != nil {
 		return fmt.Errorf("error creating instanceGroup: %v", err)
 	}
-	r.log.Info(fmt.Sprintf("created instancegroup/%s", kopsInstanceGroup.ObjectMeta.Name))
+	r.log.Info(fmt.Sprintf("created instancegroup/%s", instanceGroupName))
 
 	return nil
 }
@@ -120,9 +119,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		Spec:       kopsMachinePool.Spec.KopsInstanceGroupSpec,
 	}
 
-	clusterName := kopsInstanceGroup.Spec.NodeLabels[kopsapi.LabelClusterName]
-
-	cluster, err := r.getClusterByName(ctx, kopsInstanceGroup.ObjectMeta.Namespace, clusterName)
+	cluster, err := r.getClusterByName(ctx, kopsInstanceGroup.ObjectMeta.Namespace, kopsMachinePool.Spec.ClusterName)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -135,9 +132,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	s3Bucket := utils.GetBucketName(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
-
-	kopsClientset, err := utils.GetKopsClientset(s3Bucket)
+	kopsClientset, err := utils.GetKopsClientset(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -146,7 +141,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	kopsCluster := &kopsapi.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: clusterName,
+			Name: kopsMachinePool.Spec.ClusterName,
 		},
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
@@ -157,9 +152,36 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	return ctrl.Result{}, nil
 }
+
+// SetupWithManager sets up the controller with the Manager.
+// func (r *KopsMachinePoolReconciler) SetupWithManager(mgr ctrl.Manager) error {
+// 	return ctrl.NewControllerManagedBy(mgr).
+// 		For(&infrastructurev1alpha1.KopsMachinePool{}).
+// 		Watches(
+// 			&source.Kind{Type: &expclusterv1.MachinePool{}},
+// 			handler.EnqueueRequestsFromMapFunc(r.MachinePoolToInfrastructureMapFunc),
+// 		).
+// 		Complete(r)
+// }
+
 func (r *KopsMachinePoolReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrastructurev1alpha1.KopsMachinePool{}).
 		Complete(r)
 }
 
+func (r *KopsMachinePoolReconciler) MachinePoolToInfrastructureMapFunc(o client.Object) []ctrl.Request {
+	result := []ctrl.Request{}
+	mp, ok := o.(*expclusterv1.MachinePool)
+	if !ok {
+		panic(fmt.Sprintf("Expected a MachinePool but got a %T", o))
+	}
+
+	if mp.Spec.Template.Spec.InfrastructureRef.GroupVersionKind().GroupKind() == infrastructurev1alpha1.GroupVersion.WithKind("KopsMachinePool").GroupKind() {
+		name := client.ObjectKey{Namespace: mp.Namespace, Name: mp.Spec.Template.Spec.Bootstrap.ConfigRef.Name}
+		result = append(result, ctrl.Request{NamespacedName: name})
+
+	}
+
+	return result
+}
