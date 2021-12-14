@@ -36,6 +36,11 @@ spec:
           spec:
             description: KopsMachinePoolSpec defines the desired state of KopsMachinePool
             properties:
+              clusterName:
+                description: ClusterName is the name of the Cluster this object belongs
+                  to.
+                minLength: 1
+                type: string
               kopsInstanceGroupSpec:
                 description: 'KopsInstanceGroupSpec declare a desired InstanceGroup
                   Kops resource: https://kops.sigs.k8s.io/instance_groups/'
@@ -937,6 +942,7 @@ spec:
                     type: array
                 type: object
             required:
+            - clusterName
             - kopsInstanceGroupSpec
             type: object
           status:
