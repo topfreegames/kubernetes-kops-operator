@@ -17,8 +17,9 @@ func GetBucketName(configBase string) (string, error) {
 }
 
 func GetKopsClientset(configBase string) (simple.Clientset, error) {
+	lastIndex := strings.LastIndex(configBase, "/")
 	factoryOptions := &util.FactoryOptions{
-		RegistryPath: configBase,
+		RegistryPath: configBase[:lastIndex],
 	}
 
 	factory := util.NewFactory(factoryOptions)
