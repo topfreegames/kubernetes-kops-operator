@@ -31,6 +31,7 @@ import (
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/commands"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
+	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -214,13 +215,10 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *KopsControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1alpha1.KopsControlPlane{}).
-		// Watches(
-		// 	&source.Kind{Type: &clusterv1.Cluster{}},
-		// 	handler.EnqueueRequestsFromMapFunc(clusterToInfrastructureMapFunc(controlplanev1alpha1.GroupVersion.WithKind("KopsControlPlane"))),
-		// ).
+		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
 		Complete(r)
 }
 
