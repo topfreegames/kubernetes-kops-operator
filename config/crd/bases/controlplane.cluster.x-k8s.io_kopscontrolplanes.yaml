@@ -36,6 +36,10 @@ spec:
           spec:
             description: KopsControlPlaneSpec defines the desired state of KopsControlPlane
             properties:
+              SSHPublicKey:
+                description: SSHPublicKey is the SSH public key added in the nodes;
+                  required on AWS
+                type: string
               kopsClusterSpec:
                 description: 'KopsClusterSpec declare the desired Cluster Kops resource:
                   https://kops.sigs.k8s.io/cluster_spec/'
@@ -4363,6 +4367,7 @@ spec:
                     type: object
                 type: object
             required:
+            - SSHPublicKey
             - kopsClusterSpec
             type: object
           status:

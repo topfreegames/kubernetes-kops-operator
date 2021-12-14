@@ -118,13 +118,11 @@ func GetClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, err
 	return status, nil
 }
 
-// addSSHCredential adds a predefined public ssh key that is added in the nodes
-// TODO: Add the public and private key in the vault, all newly created
-// clusters will use the same for now
-func (r *KopsControlPlaneReconciler) addSSHCredential(cluster *kopsapi.Cluster) error {
+// addSSHCredential creates a SSHCredential using the PublicKey retrieved from the KopsControlPlane
+func (r *KopsControlPlaneReconciler) addSSHCredential(cluster *kopsapi.Cluster, SSHPublicKey string) error {
 	sshCredential := kopsapi.SSHCredential{
 		Spec: kopsapi.SSHCredentialSpec{
-			PublicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCu7OR4k/qpc6VFqQsMGk7wQcnGzDA/hKABnj3qN85tgIDVsbnOIVgXl4FV1gO+gBjblCLkAmbZYlwhhkosL4xpEc8uk8QWJIzRqalvnLEofdIjClngGqzC40Yu6oVPiqImDazlVNvJ7UdzX02mmYJMe4eRzS1w1dA2hm9uTsaq6CNZuJF2/joV+SKLW88IEXWnb7PdOPZWFy0iN/9JcQKqON7zmR0j1zb4Ydj6Pt9MMIOTRiJpyeTqw0Gy4RWgkKJpwuRhOTnhZ1I8zigXgu4+keMYBgtLLP90Wx6/SI6vt+sG/Zrx5+s0av6vHFH/fDzqX4BSsxY83cOMH6ILLQ1C0hE9ykXx/EAKoou+DT8Doe0wabVxZNMRDOAb0ZnLF1HwUItW+MvgIjtCVpap/jBGmSSqZ5B9cvib7UV+JfLHty7n3AP2SKf52+E3Fp1fP4UiXQ/YUXZksopHLXLtwMdam/qijq5tjk0lVh7j8GGNuejt17+tSOCaP2kNKFyc1u8=",
+			PublicKey: SSHPublicKey,
 		},
 	}
 
@@ -144,8 +142,7 @@ func (r *KopsControlPlaneReconciler) addSSHCredential(cluster *kopsapi.Cluster) 
 }
 
 // updateKopsState creates or updates the kops state in the remote storage
-func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsCluster *kopsapi.Cluster) error {
-
+func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsCluster *kopsapi.Cluster, SSHPublicKey string) error {
 	oldCluster, _ := r.kopsClientset.GetCluster(ctx, kopsCluster.Name)
 	if oldCluster != nil {
 		status, err := r.GetClusterStatus(oldCluster)
@@ -162,7 +159,7 @@ func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsCl
 		return err
 	}
 
-	err = r.addSSHCredential(kopsCluster)
+	err = r.addSSHCredential(kopsCluster, SSHPublicKey)
 	if err != nil {
 		return err
 	}
@@ -202,7 +199,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	err = r.updateKopsState(ctx, fullCluster)
+	err = r.updateKopsState(ctx, fullCluster, kopsControlPlane.Spec.SSHPublicKey)
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed to create cluster: %v", err))
 		return ctrl.Result{}, err
