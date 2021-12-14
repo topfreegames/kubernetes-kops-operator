@@ -30,7 +30,7 @@ import (
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	expclusterv1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -153,35 +153,9 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return ctrl.Result{}, nil
 }
 
-// SetupWithManager sets up the controller with the Manager.
-// func (r *KopsMachinePoolReconciler) SetupWithManager(mgr ctrl.Manager) error {
-// 	return ctrl.NewControllerManagedBy(mgr).
-// 		For(&infrastructurev1alpha1.KopsMachinePool{}).
-// 		Watches(
-// 			&source.Kind{Type: &expclusterv1.MachinePool{}},
-// 			handler.EnqueueRequestsFromMapFunc(r.MachinePoolToInfrastructureMapFunc),
-// 		).
-// 		Complete(r)
-// }
-
-func (r *KopsMachinePoolReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *KopsMachinePoolReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&infrastructurev1alpha1.KopsMachinePool{}).
+		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
 		Complete(r)
-}
-
-func (r *KopsMachinePoolReconciler) MachinePoolToInfrastructureMapFunc(o client.Object) []ctrl.Request {
-	result := []ctrl.Request{}
-	mp, ok := o.(*expclusterv1.MachinePool)
-	if !ok {
-		panic(fmt.Sprintf("Expected a MachinePool but got a %T", o))
-	}
-
-	if mp.Spec.Template.Spec.InfrastructureRef.GroupVersionKind().GroupKind() == infrastructurev1alpha1.GroupVersion.WithKind("KopsMachinePool").GroupKind() {
-		name := client.ObjectKey{Namespace: mp.Namespace, Name: mp.Spec.Template.Spec.Bootstrap.ConfigRef.Name}
-		result = append(result, ctrl.Request{NamespacedName: name})
-
-	}
-
-	return result
 }

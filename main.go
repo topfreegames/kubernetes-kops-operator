@@ -99,7 +99,7 @@ func main() {
 	if err = (&infrastructureclusterxk8siocontrollers.KopsMachinePoolReconciler{
 		Client: mgr.GetClient(),
 		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
+	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsMachinePool")
 		os.Exit(1)
 	}
