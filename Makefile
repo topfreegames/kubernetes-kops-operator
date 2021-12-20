@@ -39,7 +39,7 @@ help: ## Display this help.
 
 manifests: controller-gen kustomize ## Generate WebhookConfiguration, ClusterRole and CustomResourceDefinition objects.
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=kubernetes-kops-operator-manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
-	@ ./hack/kustomize_crd.sh
+	$(KUSTOMIZE) build config/crd -o config/crd/output
 
 generate: controller-gen ## Generate code containing DeepCopy, DeepCopyInto, and DeepCopyObject method implementations.
 	$(CONTROLLER_GEN) object:headerFile="hack/boilerplate.go.txt" paths="./..."
