@@ -19,7 +19,7 @@ func TestCreateTerraformBackendFile(t *testing.T) {
 	testCases := []map[string]interface{}{
 		{
 			"description":   "Should successfully create the file",
-			"outputDir":     fmt.Sprintf("/%s/%s", os.TempDir(), clusterName),
+			"outputDir":     fmt.Sprintf("%s/%s", os.TempDir(), clusterName),
 			"expectedError": false,
 		},
 		{
