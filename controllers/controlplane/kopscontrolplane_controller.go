@@ -18,6 +18,7 @@ package controlplane
 
 import (
 	"context"
+	"crypto/x509/pkix"
 	"fmt"
 
 	"github.com/go-logr/logr"
@@ -25,11 +26,17 @@ import (
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/assets"
+	"k8s.io/kops/pkg/pki"
+	"k8s.io/kops/pkg/rbac"
 
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/commands"
+	"k8s.io/kops/pkg/kubeconfig"
+	"k8s.io/kops/pkg/validation"
+	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
@@ -176,6 +183,92 @@ func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsCl
 	return nil
 }
 
+func (r *KopsControlPlaneReconciler) getKubernetesClientFromKopsState(kopsCluster *kopsapi.Cluster) (*kubernetes.Clientset, error) {
+	builder := kubeconfig.NewKubeconfigBuilder()
+
+	keyStore, err := r.kopsClientset.KeyStore(kopsCluster)
+	if err != nil {
+		return nil, err
+	}
+
+	builder.Context = kopsCluster.ObjectMeta.Name
+	builder.Server = fmt.Sprintf("https://api.%s", kopsCluster.ObjectMeta.Name)
+	caCert, _, _, err := keyStore.FindKeypair(fi.CertificateIDCA)
+	if err != nil || caCert == nil {
+		return nil, err
+	}
+
+	builder.CACert, err = caCert.AsBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	req := pki.IssueCertRequest{
+		Signer: fi.CertificateIDCA,
+		Type:   "client",
+		Subject: pkix.Name{
+			CommonName:   "kops-operator",
+			Organization: []string{rbac.SystemPrivilegedGroup},
+		},
+		Validity: 64800000000000,
+	}
+	cert, privateKey, _, err := pki.IssueCert(&req, keyStore)
+	if err != nil {
+		return nil, err
+	}
+	builder.ClientCert, err = cert.AsBytes()
+	if err != nil {
+		return nil, err
+	}
+	builder.ClientKey, err = privateKey.AsBytes()
+	if err != nil {
+		return nil, err
+	}
+
+	config, err := builder.BuildRestConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	k8sClient, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, err
+	}
+
+	return k8sClient, nil
+}
+
+func (r *KopsControlPlaneReconciler) validateCluster(ctx context.Context, cloud fi.Cloud, kopsCluster *kopsapi.Cluster) (*validation.ValidationCluster, error) {
+	list, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).List(ctx, metav1.ListOptions{})
+	if err != nil || len(list.Items) == 0 {
+		return nil, fmt.Errorf("cannot get InstanceGroups for %q: %v", kopsCluster.ObjectMeta.Name, err)
+	}
+
+	filteredIGs := &kopsapi.InstanceGroupList{}
+	for _, ig := range list.Items {
+		if ig.Spec.Role == "Master" {
+			filteredIGs.Items = append(filteredIGs.Items, ig)
+		}
+	}
+
+	k8sClient, err := r.getKubernetesClientFromKopsState(kopsCluster)
+	if err != nil {
+		return nil, err
+	}
+
+	validator, err := validation.NewClusterValidator(kopsCluster, cloud, filteredIGs, fmt.Sprintf("https://api.%s:443", kopsCluster.ObjectMeta.Name), k8sClient)
+	if err != nil {
+		return nil, fmt.Errorf("unexpected error creating validator: %v", err)
+	}
+
+	result, err := validator.Validate()
+	if err != nil {
+		return nil, fmt.Errorf("%v", err)
+	}
+
+	return result, nil
+}
+
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/finalizers,verbs=update
@@ -243,7 +336,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
-	fullCluster, err := r.PopulateClusterSpec(kopsCluster, r.kopsClientset)
+	fullCluster, err := PopulateClusterSpec(kopsCluster, r.kopsClientset)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -257,6 +350,20 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	err = r.CreateCloudResources(r.kopsClientset, ctx, kopsCluster, fullCluster.Spec.ConfigBase)
 	if err != nil {
 		return ctrl.Result{}, err
+	}
+
+	cloud, err := cloudup.BuildCloud(kopsCluster)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	result, err := r.validateCluster(ctx, cloud, fullCluster)
+	if err != nil {
+		return ctrl.Result{}, nil
+	}
+
+	if len(result.Failures) == 0 {
+		kopsControlPlane.Status.Ready = true
 	}
 
 	return ctrl.Result{}, nil
