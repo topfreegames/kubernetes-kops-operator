@@ -19,10 +19,16 @@ package v1alpha1
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kops/pkg/apis/kops"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+const (
+	// KopsControlPlaneReadyCondition condition reports on the successful reconciliation of control plane.
+	KopsControlPlaneReadyCondition clusterv1.ConditionType = "KopsControlPlaneReady"
+
+	// KopsControlPlaneFinalizer allows the controller to clean up resources on delete.
+	KopsControlPlaneFinalizer = "kopscontrolplane.controlplane.cluster.x-k8s.io"
+)
 
 // KopsControlPlaneSpec defines the desired state of KopsControlPlane
 type KopsControlPlaneSpec struct {
@@ -39,6 +45,9 @@ type KopsControlPlaneStatus struct {
 	// +kubebuilder:default=false
 	Ready bool `json:"ready,omitempty"`
 
+	// Conditions defines current service state of the KubeadmConfig.
+	// +optional
+	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -64,4 +73,14 @@ type KopsControlPlaneList struct {
 
 func init() {
 	SchemeBuilder.Register(&KopsControlPlane{}, &KopsControlPlaneList{})
+}
+
+// GetConditions returns the set of conditions for this object.
+func (cp *KopsControlPlane) GetConditions() clusterv1.Conditions {
+	return cp.Status.Conditions
+}
+
+// SetConditions sets the conditions on this object.
+func (cp *KopsControlPlane) SetConditions(conditions clusterv1.Conditions) {
+	cp.Status.Conditions = conditions
 }

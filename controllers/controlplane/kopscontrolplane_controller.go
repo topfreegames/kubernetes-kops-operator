@@ -32,9 +32,12 @@ import (
 	"k8s.io/kops/pkg/commands"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
@@ -176,12 +179,54 @@ func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsCl
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/finalizers,verbs=update
-func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	r.log = ctrl.LoggerFrom(ctx)
+
+	applicableConditions := []clusterv1.ConditionType{
+		controlplanev1alpha1.KopsControlPlaneReadyCondition,
+	}
 
 	var kopsControlPlane controlplanev1alpha1.KopsControlPlane
 	if err := r.Get(ctx, req.NamespacedName, &kopsControlPlane); err != nil {
 		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	// Initialize the patch helper.
+	patchHelper, err := patch.NewHelper(&kopsControlPlane, r.Client)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	// Attempt to Patch the KopsControlPlane object and status after each reconciliation if no error occurs.
+	defer func() {
+		conditions.SetSummary(&kopsControlPlane,
+			conditions.WithConditions(
+				applicableConditions...,
+			),
+			conditions.WithStepCounter(),
+		)
+
+		err = patchHelper.Patch(ctx, &kopsControlPlane,
+			patch.WithOwnedConditions{
+				Conditions: applicableConditions,
+			},
+		)
+		if err != nil {
+			r.log.Error(rerr, "Failed to patch kopsControlPlane")
+			if rerr == nil {
+				rerr = err
+			}
+		}
+	}()
+
+	controllerutil.AddFinalizer(&kopsControlPlane, controlplanev1alpha1.KopsControlPlaneFinalizer)
+	err = patchHelper.Patch(ctx, &kopsControlPlane,
+		patch.WithOwnedConditions{
+			Conditions: applicableConditions,
+		},
+	)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
 
 	kopsClientset, err := utils.GetKopsClientset(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
