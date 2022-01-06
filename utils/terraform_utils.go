@@ -10,49 +10,9 @@ import (
 	"github.com/hashicorp/hc-install/product"
 	"github.com/hashicorp/hc-install/releases"
 	"github.com/hashicorp/terraform-exec/tfexec"
-	kopsapi "k8s.io/kops/pkg/apis/kops"
-	"k8s.io/kops/pkg/client/simple"
 )
 
-// generateTerraformFiles generates the terraform files for the cloud resources
-func GenerateTerraformFiles(kopsClientset simple.Clientset, ctx context.Context, cluster *kopsapi.Cluster, s3Bucket, outputDir string) error {
-
-	// updateClusterOptions := &kopscmd.UpdateClusterOptions{
-	// 	Target:             "terraform",
-	// 	Yes:                false,
-	// 	OutDir:             outputDir,
-	// 	AllowKopsDowngrade: false,
-	// }
-
-	// kopscmd.RunUpdateCluster(ctx, nil, cluster.ClusterName, nil, updateClusterOptions)
-
-	// cloud, err := cloudup.BuildCloud(cluster)
-	// if err != nil {
-	// 	return err
-	// }
-
-	// applyCmd := &cloudup.ApplyClusterCmd{
-	// 	Cloud:              cloud,
-	// 	Clientset:          kopsClientset,
-	// 	Cluster:            cluster,
-	// 	DryRun:             true,
-	// 	AllowKopsDowngrade: false,
-	// 	OutDir:             outputDir,
-	// 	TargetName:         "terraform",
-	// }
-
-	// if err := applyCmd.Run(ctx); err != nil {
-	// 	return err
-	// }
-
-	if err := CreateTerraformBackendFile(s3Bucket, cluster.Name, outputDir); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// applyTerraform just applies the already created terraform files
+// ApplyTerraform just applies the already created terraform files
 func ApplyTerraform(ctx context.Context, workingDir string) error {
 
 	installer := &releases.ExactVersion{
@@ -83,7 +43,7 @@ func ApplyTerraform(ctx context.Context, workingDir string) error {
 	return nil
 }
 
-// createTerraformBackendFile creates the backend file for the remote state
+// CreateTerraformBackendFile creates the backend file for the remote state
 func CreateTerraformBackendFile(bucket, clusterName, backendPath string) error {
 	backendContent := fmt.Sprintf(`
 	terraform {
@@ -94,7 +54,7 @@ func CreateTerraformBackendFile(bucket, clusterName, backendPath string) error {
 		}
 	}`, bucket, clusterName, clusterName)
 
-	err := os.MkdirAll(backendPath, os.ModeDir)
+	err := os.MkdirAll(backendPath, 0755)
 	if err != nil {
 		return err
 	}
