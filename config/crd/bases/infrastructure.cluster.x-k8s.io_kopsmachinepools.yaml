@@ -36,6 +36,11 @@ spec:
           spec:
             description: KopsMachinePoolSpec defines the desired state of KopsMachinePool
             properties:
+              clusterName:
+                description: ClusterName is the name of the Cluster this object belongs
+                  to.
+                minLength: 1
+                type: string
               kopsInstanceGroupSpec:
                 description: 'KopsInstanceGroupSpec declare a desired InstanceGroup
                   Kops resource: https://kops.sigs.k8s.io/instance_groups/'
@@ -128,14 +133,14 @@ spec:
                           description: Roles is a list of roles the file asset should
                             be applied, defaults to all
                           items:
-                            description: InstanceGroupRole string describes the roles
-                              of the nodes in this InstanceGroup (master or nodes)
+                            description: InstanceGroupRole describes the roles of
+                              the nodes in this InstanceGroup (master or nodes)
                             type: string
                           type: array
                       type: object
                     type: array
                   hooks:
-                    description: 'Hooks is a list of hooks for this instanceGroup,
+                    description: 'Hooks is a list of hooks for this instance group,
                       note: these can override the cluster wide ones if required'
                     items:
                       description: HookSpec is a definition hook
@@ -186,8 +191,8 @@ spec:
                           description: Roles is an optional list of roles the hook
                             should be rolled out to, defaults to all
                           items:
-                            description: InstanceGroupRole string describes the roles
-                              of the nodes in this InstanceGroup (master or nodes)
+                            description: InstanceGroupRole describes the roles of
+                              the nodes in this InstanceGroup (master or nodes)
                             type: string
                           type: array
                         useRawManifest:
@@ -204,8 +209,9 @@ spec:
                       group IAM profile (AWS only).
                     properties:
                       profile:
-                        description: Profile of the cloud group IAM profile. In aws
-                          this is the arn for the iam instance profile
+                        description: Profile is the AWS IAM Profile to attach to instances
+                          in this instance group. Specify the ARN for the IAM instance
+                          profile. (AWS only)
                         type: string
                     type: object
                   image:
@@ -456,10 +462,6 @@ spec:
                         description: KubeletCgroups is the absolute name of cgroups
                           to isolate the kubelet in.
                         type: string
-                      logFormat:
-                        description: 'LogFormat is the logging format of the kubelet.
-                          Supported values: text, json. Default: text'
-                        type: string
                       logLevel:
                         description: LogLevel is the logging level of the kubelet
                         format: int32
@@ -512,11 +514,6 @@ spec:
                         description: config is the path to the config file or directory
                           of files
                         type: string
-                      podPidsLimit:
-                        description: PodPidsLimit is the maximum number of pids in
-                          any pod.
-                        format: int64
-                        type: integer
                       protectKernelDefaults:
                         description: 'Default kubelet behaviour for kernel tuning.
                           If set, kubelet errors if any of kernel tunables is different
@@ -795,8 +792,8 @@ spec:
                       group created by Kops for this IG (AWS only).
                     type: string
                   spotDurationInMinutes:
-                    description: SpotDurationInMinutes indicates this is a spot-block
-                      group, with the specified value as the spot reservation time
+                    description: SpotDurationInMinutes reserves a spot block for the
+                      period specified
                     format: int64
                     type: integer
                   subnets:
@@ -858,6 +855,7 @@ spec:
                           type: array
                         mountOptions:
                           description: MountOptions is a collection of mount options
+                            - @TODO need to be added
                           items:
                             type: string
                           type: array
@@ -868,16 +866,17 @@ spec:
                     type: array
                   volumes:
                     description: Volumes is a collection of additional volumes to
-                      create for instances within this InstanceGroup
+                      create for instances within this instance group
                     items:
                       description: VolumeSpec defined the spec for an additional volume
                         attached to the instance group
                       properties:
                         deleteOnTermination:
-                          description: DeleteOnTermination configures volume retention
+                          description: 'DeleteOnTermination configures volume retention
                             policy upon instance termination. The volume is deleted
                             by default. Cluster deletion does not remove retained
-                            volumes.
+                            volumes. NOTE: This setting applies only to the Launch
+                            Configuration and does not affect Launch Templates.'
                           type: boolean
                         device:
                           description: Device is an optional device name of the block
@@ -912,11 +911,11 @@ spec:
                       type: object
                     type: array
                   warmPool:
-                    description: WarmPool configures an ASG warm pool for the instance
-                      group
+                    description: WarmPool specifies a pool of pre-warmed instances
+                      for later use (AWS only).
                     properties:
                       enableLifecycleHook:
-                        description: EnableLifecycleHook determines if an ASG lifecycle
+                        description: EnableLifecyleHook determines if an ASG lifecycle
                           hook will be added ensuring that nodeup runs to completion.
                           Note that the metadata API must be protected from arbitrary
                           Pods when this is enabled.
@@ -930,7 +929,7 @@ spec:
                         format: int64
                         type: integer
                       minSize:
-                        description: MinSize is the minimum size of the pool
+                        description: MinSize is the minimum size of the warm pool.
                         format: int64
                         type: integer
                     type: object
@@ -943,6 +942,7 @@ spec:
                     type: array
                 type: object
             required:
+            - clusterName
             - kopsInstanceGroupSpec
             type: object
           status:

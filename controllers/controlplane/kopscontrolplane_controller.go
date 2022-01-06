@@ -18,45 +18,228 @@ package controlplane
 
 import (
 	"context"
+	"fmt"
 
+	"github.com/go-logr/logr"
+	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	"github.com/topfreegames/kubernetes-kops-operator/utils"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	kopsapi "k8s.io/kops/pkg/apis/kops"
+	"k8s.io/kops/pkg/assets"
+
+	"k8s.io/kops/pkg/client/simple"
+	"k8s.io/kops/pkg/commands"
+	"k8s.io/kops/upup/pkg/fi/cloudup"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/log"
-
-	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
 // KopsControlPlaneReconciler reconciles a KopsControlPlane object
 type KopsControlPlaneReconciler struct {
 	client.Client
-	Scheme *runtime.Scheme
+	Scheme               *runtime.Scheme
+	kopsClientset        simple.Clientset
+	log                  logr.Logger
+	PopulateClusterSpec  func(cluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error)
+	CreateCloudResources func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) error
+	GetClusterStatus     func(cluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error)
+}
+
+// PopulateClusterSpec populates the full cluster spec with some values it fetchs from provider
+func PopulateClusterSpec(cluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error) {
+	cloud, err := cloudup.BuildCloud(cluster)
+	if err != nil {
+		return nil, err
+	}
+
+	err = cloudup.PerformAssignments(cluster, cloud)
+	if err != nil {
+		return nil, err
+	}
+
+	assetBuilder := assets.NewAssetBuilder(cluster, "")
+	fullCluster, err := cloudup.PopulateClusterSpec(kopsClientset, cluster, cloud, assetBuilder)
+	if err != nil {
+		return nil, err
+	}
+
+	return fullCluster, nil
+}
+
+// CreateCloudResources renders the terraform files and effectively apply them in the cloud provider
+func CreateCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) error {
+	s3Bucket, err := utils.GetBucketName(configBase)
+	if err != nil {
+		return err
+	}
+
+	terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
+
+	cloud, err := cloudup.BuildCloud(kopsCluster)
+	if err != nil {
+		return err
+	}
+
+	applyCmd := &cloudup.ApplyClusterCmd{
+		Cloud:              cloud,
+		Clientset:          kopsClientset,
+		Cluster:            kopsCluster,
+		DryRun:             true,
+		AllowKopsDowngrade: false,
+		OutDir:             terraformOutputDir,
+		TargetName:         "terraform",
+	}
+
+	if err := applyCmd.Run(ctx); err != nil {
+		return err
+	}
+
+	err = utils.CreateTerraformBackendFile(s3Bucket, kopsCluster.Name, terraformOutputDir)
+	if err != nil {
+		return err
+	}
+
+	err = utils.ApplyTerraform(ctx, terraformOutputDir)
+	if err != nil {
+		return err
+	}
+	return nil
+
+}
+
+// GetClusterStatus retrieve the kops cluster status from the cloud provider
+func GetClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
+	statusDiscovery := &commands.CloudDiscoveryStatusStore{}
+	status, err := statusDiscovery.FindClusterStatus(kopsCluster)
+	if err != nil {
+		return nil, err
+	}
+	return status, nil
+}
+
+// addSSHCredential creates a SSHCredential using the PublicKey retrieved from the KopsControlPlane
+func (r *KopsControlPlaneReconciler) addSSHCredential(cluster *kopsapi.Cluster, SSHPublicKey string) error {
+	sshCredential := kopsapi.SSHCredential{
+		Spec: kopsapi.SSHCredentialSpec{
+			PublicKey: SSHPublicKey,
+		},
+	}
+
+	sshCredentialStore, err := r.kopsClientset.SSHCredentialStore(cluster)
+	if err != nil {
+		return err
+	}
+	sshKeyArr := []byte(sshCredential.Spec.PublicKey)
+	err = sshCredentialStore.AddSSHPublicKey("admin", sshKeyArr)
+	if err != nil {
+		return err
+	}
+
+	r.log.Info("Added ssh credential")
+
+	return nil
+}
+
+// updateKopsState creates or updates the kops state in the remote storage
+func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsCluster *kopsapi.Cluster, SSHPublicKey string) error {
+	oldCluster, _ := r.kopsClientset.GetCluster(ctx, kopsCluster.Name)
+	if oldCluster != nil {
+		status, err := r.GetClusterStatus(oldCluster)
+		if err != nil {
+			return err
+		}
+		r.kopsClientset.UpdateCluster(ctx, kopsCluster, status)
+		r.log.Info(fmt.Sprintf("updated kops state for cluster %s", kopsCluster.ObjectMeta.Name))
+		return nil
+	}
+
+	_, err := r.kopsClientset.CreateCluster(ctx, kopsCluster)
+	if err != nil {
+		return err
+	}
+
+	err = r.addSSHCredential(kopsCluster, SSHPublicKey)
+	if err != nil {
+		return err
+	}
+
+	r.log.Info(fmt.Sprintf("created kops state for cluster %s", kopsCluster.ObjectMeta.Name))
+
+	return nil
 }
 
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/finalizers,verbs=update
-
-// Reconcile is part of the main kubernetes reconciliation loop which aims to
-// move the current state of the cluster closer to the desired state.
-// TODO(user): Modify the Reconcile function to compare the state specified by
-// the KopsControlPlane object against the actual cluster state, and then
-// perform operations to make the cluster state reflect the state specified by
-// the user.
-//
-// For more details, check Reconcile and its Result here:
-// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.8.3/pkg/reconcile
 func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
-	_ = log.FromContext(ctx)
+	r.log = ctrl.LoggerFrom(ctx)
 
-	// your logic here
+	var kopsControlPlane controlplanev1alpha1.KopsControlPlane
+	if err := r.Get(ctx, req.NamespacedName, &kopsControlPlane); err != nil {
+		return ctrl.Result{}, client.IgnoreNotFound(err)
+	}
+
+	kopsClientset, err := utils.GetKopsClientset(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	r.kopsClientset = kopsClientset
+
+	kopsCluster := &kopsapi.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: kopsControlPlane.ObjectMeta.Labels[kopsapi.LabelClusterName],
+		},
+		Spec: kopsControlPlane.Spec.KopsClusterSpec,
+	}
+
+	fullCluster, err := r.PopulateClusterSpec(kopsCluster, r.kopsClientset)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	err = r.updateKopsState(ctx, fullCluster, kopsControlPlane.Spec.SSHPublicKey)
+	if err != nil {
+		r.log.Error(err, fmt.Sprintf("failed to create cluster: %v", err))
+		return ctrl.Result{}, err
+	}
+
+	err = r.CreateCloudResources(r.kopsClientset, ctx, kopsCluster, fullCluster.Spec.ConfigBase)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	return ctrl.Result{}, nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *KopsControlPlaneReconciler) SetupWithManager(mgr ctrl.Manager) error {
+func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1alpha1.KopsControlPlane{}).
+		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
+		Watches(
+			&source.Kind{Type: &clusterv1.Cluster{}},
+			handler.EnqueueRequestsFromMapFunc(clusterToInfrastructureMapFunc),
+		).
 		Complete(r)
+}
+
+func clusterToInfrastructureMapFunc(o client.Object) []ctrl.Request {
+	c, ok := o.(*clusterv1.Cluster)
+	if !ok {
+		panic(fmt.Sprintf("Expected a Cluster but got a %T", o))
+	}
+
+	result := []ctrl.Request{}
+	if c.Spec.InfrastructureRef != nil && c.Spec.InfrastructureRef.GroupVersionKind() == controlplanev1alpha1.GroupVersion.WithKind("KopsControlPlane") {
+		name := client.ObjectKey{Namespace: c.Spec.InfrastructureRef.Namespace, Name: c.Spec.InfrastructureRef.Name}
+		result = append(result, ctrl.Request{NamespacedName: name})
+	}
+
+	return result
 }

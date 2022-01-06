@@ -2,28 +2,26 @@ apiVersion: v1
 kind: Namespace
 metadata:
   labels:
-    control-plane: controller-manager
-  name: system
+    control-plane: kubernetes-kops-operator-controller-manager
+  name: kubernetes-kops-operator-system
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: controller-manager
-  namespace: system
+  name: kubernetes-kops-operator-controller-manager
+  namespace: kubernetes-kops-operator-system
   labels:
-    control-plane: controller-manager
+    control-plane: kubernetes-kops-operator-controller-manager
 spec:
   selector:
     matchLabels:
-      control-plane: controller-manager
+      control-plane: kubernetes-kops-operator-controller-manager
   replicas: 1
   template:
     metadata:
       labels:
-        control-plane: controller-manager
+        control-plane: kubernetes-kops-operator-controller-manager
     spec:
-      securityContext:
-        runAsNonRoot: true
       containers:
       - command:
         - /manager
@@ -52,5 +50,5 @@ spec:
           requests:
             cpu: 100m
             memory: 20Mi
-      serviceAccountName: controller-manager
+      serviceAccountName: kubernetes-kops-operator-controller-manager
       terminationGracePeriodSeconds: 10
