@@ -4372,6 +4372,12 @@ spec:
             type: object
           status:
             description: KopsControlPlaneStatus defines the observed state of KopsControlPlane
+            properties:
+              ready:
+                default: false
+                description: Ready denotes that the API Server is ready to receive
+                  requests.
+                type: boolean
             type: object
         type: object
     served: true
