@@ -55,6 +55,7 @@ type KopsControlPlaneReconciler struct {
 	Scheme               *runtime.Scheme
 	kopsClientset        simple.Clientset
 	log                  logr.Logger
+	cloud                fi.Cloud
 	PopulateClusterSpec  func(cluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error)
 	CreateCloudResources func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) error
 	GetClusterStatus     func(cluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error)
@@ -130,6 +131,14 @@ func GetClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, err
 		return nil, err
 	}
 	return status, nil
+}
+
+func NewCloud(kopsCluster *kopsapi.Cluster) (fi.Cloud, error) {
+	cloud, err := cloudup.BuildCloud(kopsCluster)
+	if err != nil {
+		return nil, err
+	}
+	return cloud, nil
 }
 
 // addSSHCredential creates a SSHCredential using the PublicKey retrieved from the KopsControlPlane
@@ -238,7 +247,7 @@ func (r *KopsControlPlaneReconciler) getKubernetesClientFromKopsState(kopsCluste
 	return k8sClient, nil
 }
 
-func (r *KopsControlPlaneReconciler) validateCluster(ctx context.Context, cloud fi.Cloud, kopsCluster *kopsapi.Cluster) (*validation.ValidationCluster, error) {
+func (r *KopsControlPlaneReconciler) validateCluster(ctx context.Context, kopsCluster *kopsapi.Cluster) (*validation.ValidationCluster, error) {
 	list, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).List(ctx, metav1.ListOptions{})
 	if err != nil || len(list.Items) == 0 {
 		return nil, fmt.Errorf("cannot get InstanceGroups for %q: %v", kopsCluster.ObjectMeta.Name, err)
@@ -256,7 +265,7 @@ func (r *KopsControlPlaneReconciler) validateCluster(ctx context.Context, cloud 
 		return nil, err
 	}
 
-	validator, err := validation.NewClusterValidator(kopsCluster, cloud, filteredIGs, fmt.Sprintf("https://api.%s:443", kopsCluster.ObjectMeta.Name), k8sClient)
+	validator, err := validation.NewClusterValidator(kopsCluster, r.cloud, filteredIGs, fmt.Sprintf("https://api.%s:443", kopsCluster.ObjectMeta.Name), k8sClient)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected error creating validator: %v", err)
 	}
@@ -336,7 +345,17 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
+	r.cloud, err = NewCloud(kopsCluster)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	fullCluster, err := PopulateClusterSpec(kopsCluster, r.kopsClientset)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	err = r.updateKopsState(ctx, fullCluster, kopsControlPlane.Spec.SSHPublicKey)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -352,12 +371,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	cloud, err := cloudup.BuildCloud(kopsCluster)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	result, err := r.validateCluster(ctx, cloud, fullCluster)
+	result, err := r.validateCluster(ctx, fullCluster)
 	if err != nil {
 		return ctrl.Result{}, nil
 	}
