@@ -23,6 +23,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+type MockKopsControlPlaneManagedScope struct{}
+
+func (mkcpms MockKopsControlPlaneManagedScope) buildCloud(kopscluster *kopsapi.Cluster) (fi.Cloud, error) {
+	return nil, nil
+}
+
+func (mkcpms MockKopsControlPlaneManagedScope) populateClusterSpec(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error) {
+	return kopsCluster, nil
+}
+
+func (mkcpms MockKopsControlPlaneManagedScope) createCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) error {
+	return nil
+}
+
+func (mkcpms MockKopsControlPlaneManagedScope) getClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
+	clusterStatus := &kopsapi.ClusterStatus{}
+	return clusterStatus, nil
+}
+
 func newMockedK8sClient(objects ...client.Object) client.Client {
 	err := clusterv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
@@ -164,8 +183,9 @@ func TestGetClusterOwnerRef(t *testing.T) {
 			}
 			fakeClient := newMockedK8sClient(cluster)
 			reconciler := &KopsControlPlaneReconciler{
-				log:    ctrl.LoggerFrom(ctx),
-				Client: fakeClient,
+				log:          ctrl.LoggerFrom(ctx),
+				Client:       fakeClient,
+				ManagedScope: MockKopsControlPlaneManagedScope{},
 			}
 			owner, err := reconciler.getClusterOwnerRef(ctx, tc["input"].(*controlplanev1alpha1.KopsControlPlane))
 			if !tc["expectedError"].(bool) {
@@ -302,9 +322,6 @@ func TestUpdateKopsState(t *testing.T) {
 			reconciler := &KopsControlPlaneReconciler{
 				log:           ctrl.LoggerFrom(ctx),
 				kopsClientset: fakeKopsClientset,
-				GetClusterStatus: func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
-					return &kopsapi.ClusterStatus{}, nil
-				},
 			}
 
 			err := reconciler.updateKopsState(ctx, bareKopsCluster, dummySSHPublicKey)
@@ -351,12 +368,6 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			reconciler := &KopsControlPlaneReconciler{
 				log:    ctrl.LoggerFrom(ctx),
 				Client: fakeClient,
-				PopulateClusterSpec: func(cluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error) {
-					return cluster, nil
-				},
-				CreateCloudResources: func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) error {
-					return nil
-				},
 			}
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: client.ObjectKey{
@@ -366,7 +377,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			})
 			if !tc["expectedError"].(bool) {
 				g.Expect(result).ToNot(BeNil())
-				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(err).ToNot(HaveOccurred())
 			} else {
 				g.Expect(err).To(HaveOccurred())
 			}

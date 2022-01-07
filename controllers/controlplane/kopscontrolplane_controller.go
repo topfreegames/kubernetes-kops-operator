@@ -48,7 +48,6 @@ import (
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
@@ -56,38 +55,40 @@ import (
 // KopsControlPlaneReconciler reconciles a KopsControlPlane object
 type KopsControlPlaneReconciler struct {
 	client.Client
-	Scheme               *runtime.Scheme
-	kopsClientset        simple.Clientset
-	log                  logr.Logger
-	cloud                fi.Cloud
-	PopulateClusterSpec  func(cluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error)
-	CreateCloudResources func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) error
-	GetClusterStatus     func(cluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error)
+	Scheme        *runtime.Scheme
+	kopsClientset simple.Clientset
+	log           logr.Logger
+	ManagedScope  IKopsControlPlaneManagedScope
 }
 
-// PopulateClusterSpec populates the full cluster spec with some values it fetchs from provider
-func PopulateClusterSpec(cluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error) {
-	cloud, err := cloudup.BuildCloud(cluster)
+type IKopsControlPlaneManagedScope interface {
+	buildCloud(*kopsapi.Cluster) (fi.Cloud, error)
+	populateClusterSpec(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error)
+	createCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) error
+	getClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error)
+}
+type KopsControlPlaneManagedScope struct{}
+
+func (kcpms *KopsControlPlaneManagedScope) getClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
+	statusDiscovery := &commands.CloudDiscoveryStatusStore{}
+	status, err := statusDiscovery.FindClusterStatus(kopsCluster)
+	if err != nil {
+		return nil, err
+	}
+	return status, nil
+}
+
+func (kcpms *KopsControlPlaneManagedScope) buildCloud(kopscluster *kopsapi.Cluster) (fi.Cloud, error) {
+	cloud, err := cloudup.BuildCloud(kopscluster)
 	if err != nil {
 		return nil, err
 	}
 
-	err = cloudup.PerformAssignments(cluster, cloud)
-	if err != nil {
-		return nil, err
-	}
-
-	assetBuilder := assets.NewAssetBuilder(cluster, "")
-	fullCluster, err := cloudup.PopulateClusterSpec(kopsClientset, cluster, cloud, assetBuilder)
-	if err != nil {
-		return nil, err
-	}
-
-	return fullCluster, nil
+	return cloud, nil
 }
 
 // CreateCloudResources renders the terraform files and effectively apply them in the cloud provider
-func CreateCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) error {
+func (kcpms *KopsControlPlaneManagedScope) createCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) error {
 	s3Bucket, err := utils.GetBucketName(configBase)
 	if err != nil {
 		return err
@@ -95,7 +96,7 @@ func CreateCloudResources(kopsClientset simple.Clientset, ctx context.Context, k
 
 	terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
 
-	cloud, err := cloudup.BuildCloud(kopsCluster)
+	cloud, err := kcpms.buildCloud(kopsCluster)
 	if err != nil {
 		return err
 	}
@@ -127,33 +128,36 @@ func CreateCloudResources(kopsClientset simple.Clientset, ctx context.Context, k
 
 }
 
-// GetClusterStatus retrieve the kops cluster status from the cloud provider
-func GetClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
-	statusDiscovery := &commands.CloudDiscoveryStatusStore{}
-	status, err := statusDiscovery.FindClusterStatus(kopsCluster)
+// PopulateClusterSpec populates the full cluster spec with some values it fetchs from provider
+func (kcpms *KopsControlPlaneManagedScope) populateClusterSpec(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error) {
+	cloud, err := kcpms.buildCloud(kopsCluster)
 	if err != nil {
 		return nil, err
 	}
-	return status, nil
-}
 
-func NewCloud(kopsCluster *kopsapi.Cluster) (fi.Cloud, error) {
-	cloud, err := cloudup.BuildCloud(kopsCluster)
+	err = cloudup.PerformAssignments(kopsCluster, cloud)
 	if err != nil {
 		return nil, err
 	}
-	return cloud, nil
+
+	assetBuilder := assets.NewAssetBuilder(kopsCluster, "")
+	fullCluster, err := cloudup.PopulateClusterSpec(kopsClientset, kopsCluster, cloud, assetBuilder)
+	if err != nil {
+		return nil, err
+	}
+
+	return fullCluster, nil
 }
 
 // addSSHCredential creates a SSHCredential using the PublicKey retrieved from the KopsControlPlane
-func (r *KopsControlPlaneReconciler) addSSHCredential(cluster *kopsapi.Cluster, SSHPublicKey string) error {
+func (r *KopsControlPlaneReconciler) addSSHCredential(kopsCluster *kopsapi.Cluster, SSHPublicKey string) error {
 	sshCredential := kopsapi.SSHCredential{
 		Spec: kopsapi.SSHCredentialSpec{
 			PublicKey: SSHPublicKey,
 		},
 	}
 
-	sshCredentialStore, err := r.kopsClientset.SSHCredentialStore(cluster)
+	sshCredentialStore, err := r.kopsClientset.SSHCredentialStore(kopsCluster)
 	if err != nil {
 		return err
 	}
@@ -163,7 +167,7 @@ func (r *KopsControlPlaneReconciler) addSSHCredential(cluster *kopsapi.Cluster, 
 		return err
 	}
 
-	r.log.Info("Added ssh credential")
+	r.log.Info("added ssh credential")
 
 	return nil
 }
@@ -172,7 +176,7 @@ func (r *KopsControlPlaneReconciler) addSSHCredential(cluster *kopsapi.Cluster, 
 func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsCluster *kopsapi.Cluster, SSHPublicKey string) error {
 	oldCluster, _ := r.kopsClientset.GetCluster(ctx, kopsCluster.Name)
 	if oldCluster != nil {
-		status, err := r.GetClusterStatus(oldCluster)
+		status, err := r.ManagedScope.getClusterStatus(oldCluster)
 		if err != nil {
 			return err
 		}
@@ -205,7 +209,7 @@ func getOwnerByRef(ctx context.Context, c client.Client, ref *corev1.ObjectRefer
 	return obj, nil
 }
 
-// getOwner returns the Cluster owning the c.
+// getOwner returns the Cluster owning the KopsControlPlane object.
 func (r *KopsControlPlaneReconciler) getClusterOwnerRef(ctx context.Context, obj metav1.Object) (*unstructured.Unstructured, error) {
 	for _, ref := range obj.GetOwnerReferences() {
 		if ref.Kind != "Cluster" {
@@ -299,7 +303,12 @@ func (r *KopsControlPlaneReconciler) validateCluster(ctx context.Context, kopsCl
 		return nil, err
 	}
 
-	validator, err := validation.NewClusterValidator(kopsCluster, r.cloud, filteredIGs, fmt.Sprintf("https://api.%s:443", kopsCluster.ObjectMeta.Name), k8sClient)
+	cloud, err := r.ManagedScope.buildCloud(kopsCluster)
+	if err != nil {
+		return nil, err
+	}
+
+	validator, err := validation.NewClusterValidator(kopsCluster, cloud, filteredIGs, fmt.Sprintf("https://api.%s:443", kopsCluster.ObjectMeta.Name), k8sClient)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected error creating validator: %v", err)
 	}
@@ -371,7 +380,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}()
 
-	controllerutil.AddFinalizer(&kopsControlPlane, controlplanev1alpha1.KopsControlPlaneFinalizer)
+	// controllerutil.AddFinalizer(&kopsControlPlane, controlplanev1alpha1.KopsControlPlaneFinalizer)
 	err = patchHelper.Patch(ctx, &kopsControlPlane,
 		patch.WithOwnedConditions{
 			Conditions: applicableConditions,
@@ -395,12 +404,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
-	r.cloud, err = NewCloud(kopsCluster)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	fullCluster, err := PopulateClusterSpec(kopsCluster, r.kopsClientset)
+	fullCluster, err := r.ManagedScope.populateClusterSpec(kopsCluster, r.kopsClientset)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -411,7 +415,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	err = r.CreateCloudResources(r.kopsClientset, ctx, kopsCluster, fullCluster.Spec.ConfigBase)
+	err = r.ManagedScope.createCloudResources(r.kopsClientset, ctx, kopsCluster, fullCluster.Spec.ConfigBase)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
@@ -423,6 +427,8 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	if len(result.Failures) == 0 {
 		kopsControlPlane.Status.Ready = true
+	} else {
+		kopsControlPlane.Status.Ready = false
 	}
 
 	return ctrl.Result{}, nil
