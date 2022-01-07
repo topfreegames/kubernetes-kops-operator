@@ -8,6 +8,8 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	v1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
@@ -15,10 +17,172 @@ import (
 	"k8s.io/kops/pkg/client/simple/vfsclientset"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/util/pkg/vfs"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+func newMockedK8sClient(objects ...client.Object) client.Client {
+	err := clusterv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	fakeClient := fake.NewClientBuilder().WithObjects(objects...).WithScheme(scheme.Scheme).Build()
+	return fakeClient
+}
+
+func TestGetOwnerByRef(t *testing.T) {
+	testCases := []map[string]interface{}{
+		{
+			"description": "Should succeed in retrieving owner",
+			"input": &v1.ObjectReference{
+				APIVersion: "cluster.x-k8s.io/v1beta1",
+				Kind:       "Cluster",
+				Name:       "testCluster",
+			},
+			"expectedError": false,
+		},
+		{
+			"description": "Should fail to retrieve the owner referenced",
+			"input": &v1.ObjectReference{
+				APIVersion: "v1",
+				Kind:       "Pod",
+				Name:       "testPod",
+			},
+			"expectedError": true,
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		t.Run(tc["description"].(string), func(t *testing.T) {
+			ctx := context.TODO()
+			cluster := &clusterv1.Cluster{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Cluster",
+					APIVersion: "cluster.x-k8s.io/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "testCluster",
+				},
+			}
+			fakeClient := newMockedK8sClient(cluster)
+			owner, err := getOwnerByRef(ctx, fakeClient, tc["input"].(*v1.ObjectReference))
+
+			if !tc["expectedError"].(bool) {
+				g.Expect(err).NotTo(HaveOccurred())
+				if owner != nil {
+					g.Expect(owner.GetName()).To(Equal(cluster.ObjectMeta.GetName()))
+				}
+			} else {
+				g.Expect(err).To(HaveOccurred())
+			}
+		})
+	}
+}
+
+func TestGetClusterOwnerRef(t *testing.T) {
+	testCases := []map[string]interface{}{
+		{
+			"description": "Should succeed in retrieving owner",
+			"input": &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "cluster.x-k8s.io/v1beta1",
+							Kind:       "Cluster",
+							Name:       "testCluster",
+						},
+					},
+				},
+			},
+			"expectedError": false,
+		},
+		{
+			"description": "Should succeed with many ownerReferences",
+			"input": &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "apps/v1",
+							Kind:       "Pod",
+							Name:       "testPod",
+						},
+						{
+							APIVersion: "apps/v1",
+							Kind:       "Deploy",
+							Name:       "testDeploy",
+						},
+						{
+							APIVersion: "cluster.x-k8s.io/v1beta1",
+							Kind:       "Cluster",
+							Name:       "testCluster",
+						},
+					},
+				},
+			},
+			"expectedError": false,
+		},
+		{
+			"description": "Should return nil when don't belong to a cluster yet",
+			"input": &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{},
+			},
+			"expectedError": false,
+		},
+		{
+			"description": "Should return NoCluster error when cluster not yet created",
+			"input": &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					OwnerReferences: []metav1.OwnerReference{
+						{
+							APIVersion: "cluster.x-k8s.io/v1beta1",
+							Kind:       "Cluster",
+							Name:       "nonExistingCluster",
+						},
+					},
+				},
+			},
+			"expectedError":     true,
+			"expectedErrorType": metav1.StatusReasonNotFound,
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		t.Run(tc["description"].(string), func(t *testing.T) {
+			ctx := context.TODO()
+			cluster := &clusterv1.Cluster{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "Cluster",
+					APIVersion: "cluster.x-k8s.io/v1beta1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "testCluster",
+				},
+			}
+			fakeClient := newMockedK8sClient(cluster)
+			reconciler := &KopsControlPlaneReconciler{
+				log:    ctrl.LoggerFrom(ctx),
+				Client: fakeClient,
+			}
+			owner, err := reconciler.getClusterOwnerRef(ctx, tc["input"].(*controlplanev1alpha1.KopsControlPlane))
+			if !tc["expectedError"].(bool) {
+				g.Expect(err).NotTo(HaveOccurred())
+				if owner != nil {
+					g.Expect(owner.GetName()).To(Equal(cluster.ObjectMeta.GetName()))
+				}
+			} else {
+				g.Expect(err).To(HaveOccurred())
+				if tc["expectedErrorType"] != nil {
+					g.Expect(apierrors.ReasonForError(err)).To(Equal(tc["expectedErrorType"].(metav1.StatusReason)))
+
+				}
+			}
+		})
+	}
+}
 
 func TestAddSSHCredential(t *testing.T) {
 

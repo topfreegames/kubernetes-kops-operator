@@ -24,14 +24,18 @@ import (
 	"github.com/go-logr/logr"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/assets"
 	"k8s.io/kops/pkg/pki"
 	"k8s.io/kops/pkg/rbac"
+	"sigs.k8s.io/cluster-api/controllers/external"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/commands"
 	"k8s.io/kops/pkg/kubeconfig"
@@ -192,6 +196,36 @@ func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsCl
 	return nil
 }
 
+// GetOwnerByRef finds and returns the owner by looking at the object reference.
+func getOwnerByRef(ctx context.Context, c client.Client, ref *corev1.ObjectReference) (*unstructured.Unstructured, error) {
+	obj, err := external.Get(ctx, c, ref, ref.Namespace)
+	if err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
+// getOwner returns the Cluster owning the c.
+func (r *KopsControlPlaneReconciler) getClusterOwnerRef(ctx context.Context, obj metav1.Object) (*unstructured.Unstructured, error) {
+	for _, ref := range obj.GetOwnerReferences() {
+		if ref.Kind != "Cluster" {
+			continue
+		}
+		owner, err := getOwnerByRef(ctx, r.Client, &corev1.ObjectReference{
+			APIVersion: ref.APIVersion,
+			Kind:       ref.Kind,
+			Name:       ref.Name,
+			Namespace:  obj.GetNamespace(),
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		return owner, nil
+	}
+	return nil, nil
+}
+
 func (r *KopsControlPlaneReconciler) getKubernetesClientFromKopsState(kopsCluster *kopsapi.Cluster) (*kubernetes.Clientset, error) {
 	builder := kubeconfig.NewKubeconfigBuilder()
 
@@ -293,6 +327,22 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, client.IgnoreNotFound(err)
 	}
 
+	// Look up the owner of this kopscontrolplane config if there is one
+	owner, err := r.getClusterOwnerRef(ctx, &kopsControlPlane)
+	if err != nil || owner == nil {
+		if apierrors.IsNotFound(err) {
+			r.log.Info("Cluster does not exist yet, re-queueing until it is created")
+			return ctrl.Result{}, nil
+		}
+		if err == nil && owner == nil {
+			r.log.Info(fmt.Sprintf("kopscontrolplane/%s does not belong to a cluster yet, waiting until it's part of a cluster", kopsControlPlane.ObjectMeta.Name))
+
+			return ctrl.Result{}, nil
+		}
+		r.log.Error(err, "could not get cluster with metadata")
+		return ctrl.Result{}, err
+	}
+
 	// Initialize the patch helper.
 	patchHelper, err := patch.NewHelper(&kopsControlPlane, r.Client)
 	if err != nil {
@@ -340,7 +390,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	kopsCluster := &kopsapi.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: kopsControlPlane.ObjectMeta.Labels[kopsapi.LabelClusterName],
+			Name: owner.GetName(),
 		},
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
