@@ -407,11 +407,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	err = r.updateKopsState(ctx, fullCluster, kopsControlPlane.Spec.SSHPublicKey)
 	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	err = r.updateKopsState(ctx, fullCluster, kopsControlPlane.Spec.SSHPublicKey)
-	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed to create cluster: %v", err))
 		return ctrl.Result{}, err
 	}
