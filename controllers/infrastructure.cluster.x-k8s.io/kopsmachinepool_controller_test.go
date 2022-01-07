@@ -286,7 +286,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 		t.Run(tc["description"].(string), func(t *testing.T) {
 			vfs.Context.ResetMemfsContext(true)
 			cluster := newCluster("test-cluster", "test-kops-control-plane", "default")
-			kopsMachinePool := newKopsMachinePool("test-kops-machine-pool", "test-cluster", "default")
+			kopsMachinePool := newKopsMachinePool("test-cluster-test-kops-machine-pool", "test-cluster", "default")
 			if tc["kopsMachinePoolFunction"] != nil {
 				kopsMachinePoolFunction := tc["kopsMachinePoolFunction"].(func(kops *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool)
 				kopsMachinePool = kopsMachinePoolFunction(kopsMachinePool)
@@ -301,7 +301,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: client.ObjectKey{
 					Namespace: "default",
-					Name:      "test-kops-machine-pool",
+					Name:      "test-cluster-test-kops-machine-pool",
 				},
 			})
 			if !tc["expectedError"].(bool) {
