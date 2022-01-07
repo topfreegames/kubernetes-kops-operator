@@ -23,6 +23,63 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
+func TestGetInstanceGroupName(t *testing.T) {
+	testCases := []map[string]interface{}{
+		{
+			"description": "Should successfully return IG name",
+			"input": &infrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "<cluster-name>-<ig-name>",
+				},
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: "<cluster-name>",
+				},
+			},
+			"expectedError": false,
+			"expected":      "<ig-name>",
+		},
+		{
+			"description": "Should fail with an unexpected input",
+			"input": &infrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "<ig-name>",
+				},
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: "<cluster-name>",
+				},
+			},
+			"expectedError": true,
+		},
+		{
+			"description": "Should fail if the kopsMachinePool name has the same length as the clusterName",
+			"input": &infrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "<cluster-name>",
+				},
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: "<cluster-name>",
+				},
+			},
+			"expectedError": true,
+		},
+	}
+
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		t.Run(tc["description"].(string), func(t *testing.T) {
+			igName, err := getInstanceGroupNameFromKopsMachinePool(tc["input"].(*infrastructurev1alpha1.KopsMachinePool))
+			if !tc["expectedError"].(bool) {
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(igName).To(Equal(tc["expected"].(string)))
+			} else {
+				g.Expect(err).To(HaveOccurred())
+			}
+		})
+	}
+}
+
 func TestGetClusterByName(t *testing.T) {
 	testCases := []map[string]interface{}{
 		{

@@ -102,6 +102,19 @@ func (r *KopsMachinePoolReconciler) updateInstanceGroup(ctx context.Context, kop
 	return nil
 }
 
+func getInstanceGroupNameFromKopsMachinePool(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (string, error) {
+	clusterName := kopsMachinePool.Spec.ClusterName
+	kopsMachinePoolName := kopsMachinePool.ObjectMeta.Name
+
+	if len(kopsMachinePoolName) <= len(clusterName) {
+		return "", errors.New("kopsMachinePool name unexpected format")
+	}
+
+	igName := kopsMachinePool.ObjectMeta.Name[len(kopsMachinePool.Spec.ClusterName)+1:]
+
+	return igName, nil
+}
+
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io.cluster.x-k8s.io,resources=kopsmachinepools,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io.cluster.x-k8s.io,resources=kopsmachinepools/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io.cluster.x-k8s.io,resources=kopsmachinepools/finalizers,verbs=update
@@ -113,10 +126,17 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+	igName, err := getInstanceGroupNameFromKopsMachinePool(kopsMachinePool)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
 	kopsInstanceGroup := &kopsapi.InstanceGroup{
-		ObjectMeta: kopsMachinePool.ObjectMeta,
-		Spec:       kopsMachinePool.Spec.KopsInstanceGroupSpec,
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      igName,
+			Namespace: kopsMachinePool.ObjectMeta.Namespace,
+		},
+		Spec: kopsMachinePool.Spec.KopsInstanceGroupSpec,
 	}
 
 	cluster, err := r.getClusterByName(ctx, kopsInstanceGroup.ObjectMeta.Namespace, kopsMachinePool.Spec.ClusterName)
