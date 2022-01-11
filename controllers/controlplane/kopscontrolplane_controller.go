@@ -55,24 +55,18 @@ import (
 // KopsControlPlaneReconciler reconciles a KopsControlPlane object
 type KopsControlPlaneReconciler struct {
 	client.Client
-	Scheme        *runtime.Scheme
-	kopsClientset simple.Clientset
-	log           logr.Logger
-	ManagedScope  IKopsControlPlaneManagedScope
+	Scheme                       *runtime.Scheme
+	kopsClientset                simple.Clientset
+	log                          logr.Logger
+	BuildCloudFactory            func(*kopsapi.Cluster) (fi.Cloud, error)
+	PopulateClusterSpecFactory   func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
+	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error)
+	ApplyTerraformFactory        func(ctx context.Context, terraformDir string) error
+	ValidateKopsClusterFactory   func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
+	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error)
 }
 
-type IKopsControlPlaneManagedScope interface {
-	buildCloud(*kopsapi.Cluster) (fi.Cloud, error)
-	populateClusterSpec(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error)
-	updateKopsState(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, SSHPublicKey string) error
-	prepareCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) (string, error)
-	applyTerraform(ctx context.Context, terraformDir string) error
-	getClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error)
-	validateKopsCluster(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
-}
-type KopsControlPlaneManagedScope struct{}
-
-func (kcpms *KopsControlPlaneManagedScope) applyTerraform(ctx context.Context, terraformDir string) error {
+func ApplyTerraform(ctx context.Context, terraformDir string) error {
 	err := utils.ApplyTerraform(ctx, terraformDir)
 	if err != nil {
 		return err
@@ -80,7 +74,7 @@ func (kcpms *KopsControlPlaneManagedScope) applyTerraform(ctx context.Context, t
 	return nil
 }
 
-func (kcpms *KopsControlPlaneManagedScope) validateKopsCluster(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+func ValidateKopsCluster(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 	validator, err := validation.NewClusterValidator(kopsCluster, cloud, igs, fmt.Sprintf("https://api.%s:443", kopsCluster.ObjectMeta.Name), k8sClient)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected error creating validator: %v", err)
@@ -93,7 +87,7 @@ func (kcpms *KopsControlPlaneManagedScope) validateKopsCluster(k8sClient *kubern
 	return result, nil
 }
 
-func (kcpms *KopsControlPlaneManagedScope) getClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
+func GetClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
 	statusDiscovery := &commands.CloudDiscoveryStatusStore{}
 	status, err := statusDiscovery.FindClusterStatus(kopsCluster)
 	if err != nil {
@@ -102,7 +96,7 @@ func (kcpms *KopsControlPlaneManagedScope) getClusterStatus(kopsCluster *kopsapi
 	return status, nil
 }
 
-func (kcpms *KopsControlPlaneManagedScope) buildCloud(kopscluster *kopsapi.Cluster) (fi.Cloud, error) {
+func BuildCloud(kopscluster *kopsapi.Cluster) (fi.Cloud, error) {
 	cloud, err := cloudup.BuildCloud(kopscluster)
 	if err != nil {
 		return nil, err
@@ -112,18 +106,13 @@ func (kcpms *KopsControlPlaneManagedScope) buildCloud(kopscluster *kopsapi.Clust
 }
 
 // prepareCloudResources renders the terraform files and effectively apply them in the cloud provider
-func (kcpms *KopsControlPlaneManagedScope) prepareCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string) (string, error) {
+func PrepareCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error) {
 	s3Bucket, err := utils.GetBucketName(configBase)
 	if err != nil {
 		return "", err
 	}
 
 	terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
-
-	cloud, err := kcpms.buildCloud(kopsCluster)
-	if err != nil {
-		return "", err
-	}
 
 	applyCmd := &cloudup.ApplyClusterCmd{
 		Cloud:              cloud,
@@ -149,11 +138,11 @@ func (kcpms *KopsControlPlaneManagedScope) prepareCloudResources(kopsClientset s
 }
 
 // updateKopsState creates or updates the kops state in the remote storage
-func (kcpms *KopsControlPlaneManagedScope) updateKopsState(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, SSHPublicKey string) error {
+func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, SSHPublicKey string) error {
 	log := ctrl.LoggerFrom(ctx)
 	oldCluster, _ := kopsClientset.GetCluster(ctx, kopsCluster.Name)
 	if oldCluster != nil {
-		status, err := kcpms.getClusterStatus(oldCluster)
+		status, err := r.GetClusterStatusFactory(oldCluster)
 		if err != nil {
 			return err
 		}
@@ -181,13 +170,9 @@ func (kcpms *KopsControlPlaneManagedScope) updateKopsState(ctx context.Context, 
 }
 
 // PopulateClusterSpec populates the full cluster spec with some values it fetchs from provider
-func (kcpms *KopsControlPlaneManagedScope) populateClusterSpec(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*kopsapi.Cluster, error) {
-	cloud, err := kcpms.buildCloud(kopsCluster)
-	if err != nil {
-		return nil, err
-	}
+func PopulateClusterSpec(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error) {
 
-	err = cloudup.PerformAssignments(kopsCluster, cloud)
+	err := cloudup.PerformAssignments(kopsCluster, cloud)
 	if err != nil {
 		return nil, err
 	}
@@ -325,12 +310,12 @@ func (r *KopsControlPlaneReconciler) validateCluster(ctx context.Context, kopsCl
 		return nil, err
 	}
 
-	cloud, err := r.ManagedScope.buildCloud(kopsCluster)
+	cloud, err := r.BuildCloudFactory(kopsCluster)
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := r.ManagedScope.validateKopsCluster(k8sClient, kopsCluster, cloud, masterIGs)
+	result, err := r.ValidateKopsClusterFactory(k8sClient, kopsCluster, cloud, masterIGs)
 	if err != nil {
 		return nil, err
 	}
@@ -420,13 +405,19 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
-	fullCluster, err := r.ManagedScope.populateClusterSpec(kopsCluster, r.kopsClientset)
+	cloud, err := r.BuildCloudFactory(kopsCluster)
+	if err != nil {
+		r.log.Error(rerr, "failed to build cloud")
+		return ctrl.Result{}, err
+	}
+
+	fullCluster, err := r.PopulateClusterSpecFactory(kopsCluster, r.kopsClientset, cloud)
 	if err != nil {
 		r.log.Error(rerr, "failed to populated cluster Spec")
 		return ctrl.Result{}, err
 	}
 
-	err = r.ManagedScope.updateKopsState(ctx, r.kopsClientset, fullCluster, kopsControlPlane.Spec.SSHPublicKey)
+	err = r.updateKopsState(ctx, r.kopsClientset, fullCluster, kopsControlPlane.Spec.SSHPublicKey)
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed to manage kops state: %v", err))
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneStateReadyCondition, controlplanev1alpha1.KopsControlPlaneStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
@@ -434,7 +425,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneStateReadyCondition)
 
-	terraformOutputDir, err := r.ManagedScope.prepareCloudResources(r.kopsClientset, ctx, kopsCluster, fullCluster.Spec.ConfigBase)
+	terraformOutputDir, err := r.PrepareCloudResourcesFactory(r.kopsClientset, ctx, kopsCluster, fullCluster.Spec.ConfigBase, cloud)
 	if err != nil {
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		r.log.Error(err, fmt.Sprintf("failed to prepare cloud resources: %v", err))
@@ -442,7 +433,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition)
 
-	err = r.ManagedScope.applyTerraform(ctx, terraformOutputDir)
+	err = r.ApplyTerraformFactory(ctx, terraformOutputDir)
 	if err != nil {
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition, controlplanev1alpha1.TerraformApplyReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		r.log.Error(err, fmt.Sprintf("failed to apply terraform: %v", err))

@@ -34,7 +34,7 @@ import (
 
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
-	controlplanecontrollers "github.com/topfreegames/kubernetes-kops-operator/controllers/controlplane"
+	"github.com/topfreegames/kubernetes-kops-operator/controllers/controlplane"
 	infrastructureclusterxk8siocontrollers "github.com/topfreegames/kubernetes-kops-operator/controllers/infrastructure.cluster.x-k8s.io"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	//+kubebuilder:scaffold:imports
@@ -90,10 +90,15 @@ func main() {
 	// Setup the context that's going to be used in controllers and for the manager.
 	ctx := ctrl.SetupSignalHandler()
 
-	if err = (&controlplanecontrollers.KopsControlPlaneReconciler{
-		Client:       mgr.GetClient(),
-		Scheme:       mgr.GetScheme(),
-		ManagedScope: &controlplanecontrollers.KopsControlPlaneManagedScope{},
+	if err = (&controlplane.KopsControlPlaneReconciler{
+		Client:                       mgr.GetClient(),
+		Scheme:                       mgr.GetScheme(),
+		BuildCloudFactory:            controlplane.BuildCloud,
+		PopulateClusterSpecFactory:   controlplane.PopulateClusterSpec,
+		PrepareCloudResourcesFactory: controlplane.PrepareCloudResources,
+		ApplyTerraformFactory:        controlplane.ApplyTerraform,
+		ValidateKopsClusterFactory:   controlplane.ValidateKopsCluster,
+		GetClusterStatusFactory:      controlplane.GetClusterStatus,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsControlPlane")
 		os.Exit(1)
