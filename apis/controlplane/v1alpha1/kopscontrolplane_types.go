@@ -23,11 +23,35 @@ import (
 )
 
 const (
-	// KopsControlPlaneReadyCondition condition reports on the successful reconciliation of control plane.
-	KopsControlPlaneReadyCondition clusterv1.ConditionType = "KopsControlPlaneReady"
+	// KopsControlPlaneStateReadyCondition reports on the successful management of the Kops state.
+	KopsControlPlaneStateReadyCondition clusterv1.ConditionType = "KopsControlPlaneStateReady"
+
+	// KopsterraformGenerationReadyCondition reports on the successful generation of Terraform files by Kops.
+	KopsTerraformGenerationReadyCondition clusterv1.ConditionType = "KopsTerraformGenerationReady"
+
+	// TerraformApplyReadyCondition reports on the successful apply of the Terraform files.
+	TerraformApplyReadyCondition clusterv1.ConditionType = "TerraformApplyReady"
+
+	// KopsValidationSuccessfulCondition reports on the successful validation of the Kubernetes cluster by Kops.
+	KopsValidationSuccessfulCondition clusterv1.ConditionType = "KopsValidationSuccessful"
 
 	// KopsControlPlaneFinalizer allows the controller to clean up resources on delete.
 	KopsControlPlaneFinalizer = "kopscontrolplane.controlplane.cluster.x-k8s.io"
+)
+
+const (
+
+	// KopsControlPlaneStateReconciliationFailedReason (Severity=Error) indicates that Kops state couldn't be created/updated.
+	KopsControlPlaneStateReconciliationFailedReason = "KopsControlPlaneStateReconciliationFailed"
+
+	// KopsTerraformGenerationReconciliationFailedReason (Severity=Error) indicates that Terraform files couldn't be generated.
+	KopsTerraformGenerationReconciliationFailedReason = "KopsTerraformGenerationReconciliationFailed"
+
+	// TerraformApplyReconciliationFailedReason (Severity=Error) indicates that Terraform files couldn't be applied.
+	TerraformApplyReconciliationFailedReason = "TerraformApplyReconciliationFailed"
+
+	// KopsValidationFailedReason (Severity=Warning) indicates that Kubernetes cluster validation isn't passing yet.
+	KopsValidationFailedReason = "KopsValidationFailedReason"
 )
 
 // KopsControlPlaneSpec defines the desired state of KopsControlPlane
@@ -44,6 +68,11 @@ type KopsControlPlaneStatus struct {
 	// receive requests.
 	// +kubebuilder:default=false
 	Ready bool `json:"ready,omitempty"`
+
+	// ErrorMessage indicates that there is a terminal problem reconciling the
+	// state, and will be set to a descriptive error message.
+	// +optional
+	FailureMessage *string `json:"failureMessage,omitempty"`
 
 	// Conditions defines current service state of the KubeadmConfig.
 	// +optional

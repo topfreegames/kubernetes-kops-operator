@@ -4418,6 +4418,10 @@ spec:
                   - type
                   type: object
                 type: array
+              failureMessage:
+                description: ErrorMessage indicates that there is a terminal problem
+                  reconciling the state, and will be set to a descriptive error message.
+                type: string
               ready:
                 default: false
                 description: Ready denotes that the API Server is ready to receive
