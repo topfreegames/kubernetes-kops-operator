@@ -313,12 +313,22 @@ func (r *KopsControlPlaneReconciler) validateCluster(ctx context.Context, kopsCl
 		return nil, fmt.Errorf("unexpected error creating validator: %v", err)
 	}
 
-	result, err := validator.Validate()
-	if err != nil {
-		return nil, fmt.Errorf("%v", err)
+func evaluateKopsValidationResult(validation *validation.ValidationCluster) bool {
+	result := true
+	failures := validation.Failures
+	if len(failures) > 0 {
+		result = false
 	}
 
-	return result, nil
+	nodes := validation.Nodes
+	for _, node := range nodes {
+		if node.Status == corev1.ConditionFalse {
+			result = false
+			break
+		}
+	}
+
+	return result
 }
 
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes,verbs=get;list;watch;create;update;patch;delete
@@ -420,12 +430,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	result, err := r.validateCluster(ctx, fullCluster)
+	validation, err := r.validateCluster(ctx, fullCluster)
 	if err != nil {
 		return ctrl.Result{}, nil
 	}
 
-	if len(result.Failures) == 0 {
+	if evaluateKopsValidationResult(validation) {
 		kopsControlPlane.Status.Ready = true
 	} else {
 		kopsControlPlane.Status.Ready = false

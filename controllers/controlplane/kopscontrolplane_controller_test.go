@@ -15,6 +15,7 @@ import (
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/client/simple/vfsclientset"
+	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/util/pkg/vfs"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -47,6 +48,74 @@ func newMockedK8sClient(objects ...client.Object) client.Client {
 	Expect(err).NotTo(HaveOccurred())
 	fakeClient := fake.NewClientBuilder().WithObjects(objects...).WithScheme(scheme.Scheme).Build()
 	return fakeClient
+}
+
+
+func TestEvaluateKopsValidationResult(t *testing.T) {
+	testCases := []map[string]interface{}{
+		{
+			"description":    "should succeeded without failures and nodes",
+			"input":          &validation.ValidationCluster{},
+			"expectedResult": true,
+		},
+		{
+			"description": "should fail with failures not empty",
+			"input": &validation.ValidationCluster{
+				Failures: []*validation.ValidationError{
+					{
+						Name: "TestError",
+					},
+				},
+			},
+			"expectedResult": false,
+		},
+		{
+			"description": "should succeed with nodes with condition true",
+			"input": &validation.ValidationCluster{
+				Failures: []*validation.ValidationError{},
+				Nodes: []*validation.ValidationNode{
+					{
+						Name:   "Test1",
+						Status: corev1.ConditionTrue,
+					},
+					{
+						Name:   "Test2",
+						Status: corev1.ConditionTrue,
+					},
+				},
+			},
+			"expectedResult": true,
+		},
+		{
+			"description": "should fail if any node with condition false",
+			"input": &validation.ValidationCluster{
+				Failures: []*validation.ValidationError{},
+				Nodes: []*validation.ValidationNode{
+					{
+						Name:   "Test1",
+						Status: corev1.ConditionTrue,
+					},
+					{
+						Name:   "Test2",
+						Status: corev1.ConditionFalse,
+					},
+				},
+			},
+			"expectedResult": false,
+		},
+	}
+
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		result := evaluateKopsValidationResult(tc["input"].(*validation.ValidationCluster))
+		if tc["expectedResult"].(bool) {
+			g.Expect(result).To(BeTrue())
+		} else {
+			g.Expect(result).To(BeFalse())
+		}
+	}
 }
 
 func TestGetOwnerByRef(t *testing.T) {
