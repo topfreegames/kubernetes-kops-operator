@@ -292,7 +292,7 @@ func (r *KopsControlPlaneReconciler) getKubernetesClientFromKopsState(kopsCluste
 	return k8sClient, nil
 }
 
-func (r *KopsControlPlaneReconciler) validateCluster(ctx context.Context, kopsCluster *kopsapi.Cluster) (*validation.ValidationCluster, error) {
+func (r *KopsControlPlaneReconciler) validateCluster(ctx context.Context, cloud fi.Cloud, kopsCluster *kopsapi.Cluster) (*validation.ValidationCluster, error) {
 	list, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).List(ctx, metav1.ListOptions{})
 	if err != nil || len(list.Items) == 0 {
 		return nil, fmt.Errorf("cannot get InstanceGroups for %q: %v", kopsCluster.ObjectMeta.Name, err)
@@ -306,11 +306,6 @@ func (r *KopsControlPlaneReconciler) validateCluster(ctx context.Context, kopsCl
 	}
 
 	k8sClient, err := r.getKubernetesClientFromKopsState(kopsCluster)
-	if err != nil {
-		return nil, err
-	}
-
-	cloud, err := r.BuildCloudFactory(kopsCluster)
 	if err != nil {
 		return nil, err
 	}
@@ -441,9 +436,11 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition)
 
-	validation, err := r.validateCluster(ctx, fullCluster)
+	validation, err := r.validateCluster(ctx, cloud, fullCluster)
 	if err != nil {
-		return ctrl.Result{}, nil
+		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsValidationSuccessfulCondition, controlplanev1alpha1.KopsValidationFailedReason, clusterv1.ConditionSeverityError, err.Error())
+		r.log.Error(err, fmt.Sprintf("failed trying to validate Kubernetes cluster: %v", err))
+		return ctrl.Result{}, err
 	}
 
 	if evaluateKopsValidationResult(validation) {
@@ -451,7 +448,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsValidationSuccessfulCondition)
 	} else {
 		kopsControlPlane.Status.Ready = false
-		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition, controlplanev1alpha1.TerraformApplyReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
+		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsValidationSuccessfulCondition, controlplanev1alpha1.KopsValidationFailedReason, clusterv1.ConditionSeverityWarning, "waiting for cluster to be ready, validating again in the next iteration")
 	}
 
 	return ctrl.Result{}, nil

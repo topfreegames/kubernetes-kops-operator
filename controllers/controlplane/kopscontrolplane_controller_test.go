@@ -14,6 +14,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
@@ -422,6 +423,18 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 
 			fakeKopsClientset := newFakeKopsClientset()
 
+			kopsCluster := newKopsCluster("testCluster")
+
+			kopsCluster, err := fakeKopsClientset.CreateCluster(ctx, kopsCluster)
+			g.Expect(cluster).NotTo(BeNil())
+			g.Expect(err).NotTo(HaveOccurred())
+
+			ig := newKopsIG("testIG", kopsCluster.GetObjectMeta().GetName())
+
+			ig, err = fakeKopsClientset.InstanceGroupsFor(kopsCluster).Create(ctx, ig, metav1.CreateOptions{})
+			g.Expect(ig).NotTo(BeNil())
+			g.Expect(err).NotTo(HaveOccurred())
+
 			reconciler := &KopsControlPlaneReconciler{
 				log:           ctrl.LoggerFrom(ctx),
 				Client:        fakeClient,
@@ -437,6 +450,12 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				},
 				ApplyTerraformFactory: func(ctx context.Context, terraformDir string) error {
 					return nil
+				},
+				GetClusterStatusFactory: func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
+					return nil, nil
+				},
+				ValidateKopsClusterFactory: func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+					return &validation.ValidationCluster{}, nil
 				},
 			}
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
@@ -468,7 +487,7 @@ func TestKopsControlPlaneConditions(t *testing.T) {
 			"conditionsToAssert":      []*clusterv1.Condition{},
 		},
 		{
-			"description":             "should patch condition failed for KopsControlPlaneStateReadyCondition",
+			"description":             "should mark false for condition KopsControlPlaneStateReadyCondition",
 			"expectedReconcilerError": true,
 			"expectedErrorGetClusterStatusFactory": func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
 				return nil, errors.New("")
@@ -478,7 +497,7 @@ func TestKopsControlPlaneConditions(t *testing.T) {
 			},
 		},
 		{
-			"description":             "should patch condition failed for KopsTerraformGenerationReadyCondition",
+			"description":             "should mark false for condition KopsTerraformGenerationReadyCondition",
 			"expectedReconcilerError": true,
 			"expectedErrorPrepareCloudResources": func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error) {
 				return "", errors.New("")
@@ -488,13 +507,39 @@ func TestKopsControlPlaneConditions(t *testing.T) {
 			},
 		},
 		{
-			"description":             "should patch condition failed for TerraformApplyReadyCondition",
+			"description":             "should mark false for condition TerraformApplyReadyCondition",
 			"expectedReconcilerError": true,
 			"expectedErrorApplyTerraform": func(ctx context.Context, terraformDir string) error {
 				return errors.New("")
 			},
 			"conditionsToAssert": []*clusterv1.Condition{
 				conditions.FalseCondition(controlplanev1alpha1.TerraformApplyReadyCondition, controlplanev1alpha1.TerraformApplyReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
+			},
+		},
+		{
+			"description":             "should mark false with error severity for condition KopsValidationSuccessfulCondition when validation returns error",
+			"expectedReconcilerError": true,
+			"expectedValidateKopsCluster": func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+				return nil, errors.New("")
+			},
+			"conditionsToAssert": []*clusterv1.Condition{
+				conditions.FalseCondition(controlplanev1alpha1.KopsValidationSuccessfulCondition, controlplanev1alpha1.KopsValidationFailedReason, clusterv1.ConditionSeverityError, ""),
+			},
+		},
+		{
+			"description":             "should mark false with warning severity for condition KopsValidationSuccessfulCondition when evaluation of validation fails",
+			"expectedReconcilerError": false,
+			"expectedValidateKopsCluster": func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+				return &validation.ValidationCluster{
+					Failures: []*validation.ValidationError{
+						{
+							Name: "dummy failure",
+						},
+					},
+				}, nil
+			},
+			"conditionsToAssert": []*clusterv1.Condition{
+				conditions.FalseCondition(controlplanev1alpha1.KopsValidationSuccessfulCondition, controlplanev1alpha1.KopsValidationFailedReason, clusterv1.ConditionSeverityWarning, ""),
 			},
 		},
 	}
@@ -513,6 +558,20 @@ func TestKopsControlPlaneConditions(t *testing.T) {
 			cluster := newCluster("testCluster", getFQDN(kopsControlPlane.Name), metav1.NamespaceDefault)
 
 			fakeClient := fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
+
+			fakeKopsClientset := newFakeKopsClientset()
+
+			kopsCluster := newKopsCluster("testCluster")
+
+			kopsCluster, err := fakeKopsClientset.CreateCluster(ctx, kopsCluster)
+			g.Expect(cluster).NotTo(BeNil())
+			g.Expect(err).NotTo(HaveOccurred())
+
+			ig := newKopsIG("testIG", kopsCluster.GetObjectMeta().GetName())
+
+			ig, err = fakeKopsClientset.InstanceGroupsFor(kopsCluster).Create(ctx, ig, metav1.CreateOptions{})
+			g.Expect(ig).NotTo(BeNil())
+			g.Expect(err).NotTo(HaveOccurred())
 
 			var getClusterStatus func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error)
 			if _, ok := tc["expectedErrorGetClusterStatusFactory"]; ok {
@@ -541,9 +600,19 @@ func TestKopsControlPlaneConditions(t *testing.T) {
 				}
 			}
 
+			var validateKopsCluster func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
+			if _, ok := tc["expectedValidateKopsCluster"]; ok {
+				validateKopsCluster = tc["expectedValidateKopsCluster"].(func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error))
+			} else {
+				validateKopsCluster = func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+					return &validation.ValidationCluster{}, nil
+				}
+			}
+
 			reconciler := &KopsControlPlaneReconciler{
-				log:    ctrl.LoggerFrom(ctx),
-				Client: fakeClient,
+				log:           ctrl.LoggerFrom(ctx),
+				Client:        fakeClient,
+				kopsClientset: fakeKopsClientset,
 				BuildCloudFactory: func(*kopsapi.Cluster) (fi.Cloud, error) {
 					return nil, nil
 				},
@@ -553,6 +622,7 @@ func TestKopsControlPlaneConditions(t *testing.T) {
 				PrepareCloudResourcesFactory: prepareCloudResources,
 				ApplyTerraformFactory:        applyTerraform,
 				GetClusterStatusFactory:      getClusterStatus,
+				ValidateKopsClusterFactory:   validateKopsCluster,
 			}
 
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
@@ -740,4 +810,18 @@ func newFakeKopsClientset() simple.Clientset {
 
 func getFQDN(name string) string {
 	return strings.ToLower(fmt.Sprintf("%s.test.k8s.cluster", name))
+}
+
+func newKopsIG(name, clusterName string) *kopsapi.InstanceGroup {
+	return &kopsapi.InstanceGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: kopsapi.InstanceGroupSpec{
+			Role: "Master",
+			Subnets: []string{
+				"dummy-subnet",
+			},
+		},
+	}
 }
