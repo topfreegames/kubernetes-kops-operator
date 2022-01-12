@@ -32,9 +32,6 @@ const (
 	// TerraformApplyReadyCondition reports on the successful apply of the Terraform files.
 	TerraformApplyReadyCondition clusterv1.ConditionType = "TerraformApplyReady"
 
-	// KopsValidationSuccessfulCondition reports on the successful validation of the Kubernetes cluster by Kops.
-	KopsValidationSuccessfulCondition clusterv1.ConditionType = "KopsValidationSuccessful"
-
 	// KopsControlPlaneFinalizer allows the controller to clean up resources on delete.
 	KopsControlPlaneFinalizer = "kopscontrolplane.controlplane.cluster.x-k8s.io"
 )
@@ -49,9 +46,6 @@ const (
 
 	// TerraformApplyReconciliationFailedReason (Severity=Error) indicates that Terraform files couldn't be applied.
 	TerraformApplyReconciliationFailedReason = "TerraformApplyReconciliationFailed"
-
-	// KopsValidationFailedReason (Severity=Warning) indicates that Kubernetes cluster validation isn't passing yet.
-	KopsValidationFailedReason = "KopsValidationFailedReason"
 )
 
 // KopsControlPlaneSpec defines the desired state of KopsControlPlane

@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/client/simple/vfsclientset"
@@ -87,7 +88,7 @@ func TestEvaluateKopsValidationResult(t *testing.T) {
 	g := NewWithT(t)
 
 	for _, tc := range testCases {
-		result := evaluateKopsValidationResult(tc["input"].(*validation.ValidationCluster))
+		result, _ := evaluateKopsValidationResult(tc["input"].(*validation.ValidationCluster))
 		if tc["expectedResult"].(bool) {
 			g.Expect(result).To(BeTrue())
 		} else {
@@ -439,6 +440,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				log:           ctrl.LoggerFrom(ctx),
 				Client:        fakeClient,
 				kopsClientset: fakeKopsClientset,
+				Recorder:      record.NewFakeRecorder(5),
 				BuildCloudFactory: func(*kopsapi.Cluster) (fi.Cloud, error) {
 					return nil, nil
 				},
@@ -479,12 +481,11 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 	}
 }
 
-func TestKopsControlPlaneConditions(t *testing.T) {
+func TestKopsControlPlaneStatus(t *testing.T) {
 	testCases := []map[string]interface{}{
 		{
 			"description":             "should successfully patch KopsControlPlane",
 			"expectedReconcilerError": false,
-			"conditionsToAssert":      []*clusterv1.Condition{},
 		},
 		{
 			"description":             "should mark false for condition KopsControlPlaneStateReadyCondition",
@@ -517,29 +518,63 @@ func TestKopsControlPlaneConditions(t *testing.T) {
 			},
 		},
 		{
-			"description":             "should mark false with error severity for condition KopsValidationSuccessfulCondition when validation returns error",
+			"description":             "should have an event with the error from ValidateKopsCluster",
 			"expectedReconcilerError": true,
-			"expectedValidateKopsCluster": func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
-				return nil, errors.New("")
+			"eventsToAssert": []string{
+				"dummy error message",
 			},
-			"conditionsToAssert": []*clusterv1.Condition{
-				conditions.FalseCondition(controlplanev1alpha1.KopsValidationSuccessfulCondition, controlplanev1alpha1.KopsValidationFailedReason, clusterv1.ConditionSeverityError, ""),
+			"expectedValidateKopsCluster": func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+				return nil, errors.New("dummy error message")
 			},
 		},
 		{
-			"description":             "should mark false with warning severity for condition KopsValidationSuccessfulCondition when evaluation of validation fails",
+			"description":             "should have an event when the validation succeeds",
 			"expectedReconcilerError": false,
+			"eventsToAssert": []string{
+				"Kops validation succeed",
+			},
+		},
+		{
+			"description":             "should have an event with the failed validation",
+			"expectedReconcilerError": false,
+			"eventsToAssert": []string{
+				"failed to validate this test case",
+			},
 			"expectedValidateKopsCluster": func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 				return &validation.ValidationCluster{
 					Failures: []*validation.ValidationError{
 						{
-							Name: "dummy failure",
+							Message: "failed to validate this test case",
 						},
 					},
 				}, nil
 			},
-			"conditionsToAssert": []*clusterv1.Condition{
-				conditions.FalseCondition(controlplanev1alpha1.KopsValidationSuccessfulCondition, controlplanev1alpha1.KopsValidationFailedReason, clusterv1.ConditionSeverityWarning, ""),
+		},
+		{
+			"description":             "should have an event with the failed validations",
+			"expectedReconcilerError": false,
+			"eventsToAssert": []string{
+				"test case A",
+				"test case B",
+				"node hostA condition is False",
+			},
+			"expectedValidateKopsCluster": func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+				return &validation.ValidationCluster{
+					Failures: []*validation.ValidationError{
+						{
+							Message: "failed to validate this test case A",
+						},
+						{
+							Message: "failed to validate this test case B",
+						},
+					},
+					Nodes: []*validation.ValidationNode{
+						{
+							Hostname: "hostA",
+							Status:   corev1.ConditionFalse,
+						},
+					},
+				}, nil
 			},
 		},
 	}
@@ -562,6 +597,8 @@ func TestKopsControlPlaneConditions(t *testing.T) {
 			fakeKopsClientset := newFakeKopsClientset()
 
 			kopsCluster := newKopsCluster("testCluster")
+
+			recorder := record.NewFakeRecorder(5)
 
 			kopsCluster, err := fakeKopsClientset.CreateCluster(ctx, kopsCluster)
 			g.Expect(cluster).NotTo(BeNil())
@@ -613,6 +650,7 @@ func TestKopsControlPlaneConditions(t *testing.T) {
 				log:           ctrl.LoggerFrom(ctx),
 				Client:        fakeClient,
 				kopsClientset: fakeKopsClientset,
+				Recorder:      recorder,
 				BuildCloudFactory: func(*kopsapi.Cluster) (fi.Cloud, error) {
 					return nil, nil
 				},
@@ -639,12 +677,20 @@ func TestKopsControlPlaneConditions(t *testing.T) {
 				g.Expect(err).To(HaveOccurred())
 			}
 
-			kcp := &controlplanev1alpha1.KopsControlPlane{}
-			err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsControlPlane), kcp)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(kcp.Status.Conditions).ToNot(BeNil())
-			conditionsToAssert := tc["conditionsToAssert"].([]*clusterv1.Condition)
-			assertConditions(g, kcp, conditionsToAssert...)
+			if _, ok := tc["conditionsToAssert"]; ok {
+				kcp := &controlplanev1alpha1.KopsControlPlane{}
+				err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsControlPlane), kcp)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(kcp.Status.Conditions).ToNot(BeNil())
+				conditionsToAssert := tc["conditionsToAssert"].([]*clusterv1.Condition)
+				assertConditions(g, kcp, conditionsToAssert...)
+			}
+
+			if _, ok := tc["eventsToAssert"]; ok {
+				for _, eventMessage := range tc["eventsToAssert"].([]string) {
+					g.Expect(recorder.Events).Should(Receive(ContainSubstring(eventMessage)))
+				}
+			}
 		})
 	}
 }

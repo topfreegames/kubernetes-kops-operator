@@ -29,6 +29,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/record"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/assets"
 	"k8s.io/kops/pkg/pki"
@@ -58,6 +59,7 @@ type KopsControlPlaneReconciler struct {
 	Scheme                       *runtime.Scheme
 	kopsClientset                simple.Clientset
 	log                          logr.Logger
+	Recorder                     record.EventRecorder
 	BuildCloudFactory            func(*kopsapi.Cluster) (fi.Cloud, error)
 	PopulateClusterSpecFactory   func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
 	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error)
@@ -317,27 +319,33 @@ func (r *KopsControlPlaneReconciler) validateCluster(ctx context.Context, cloud 
 	return result, nil
 }
 
-func evaluateKopsValidationResult(validation *validation.ValidationCluster) bool {
+func evaluateKopsValidationResult(validation *validation.ValidationCluster) (bool, []string) {
 	result := true
+	var errorMessages []string
+
 	failures := validation.Failures
 	if len(failures) > 0 {
 		result = false
+		for _, failure := range failures {
+			errorMessages = append(errorMessages, failure.Message)
+		}
 	}
 
 	nodes := validation.Nodes
 	for _, node := range nodes {
 		if node.Status == corev1.ConditionFalse {
 			result = false
-			break
+			errorMessages = append(errorMessages, fmt.Sprintf("node %s condition is %s", node.Hostname, node.Status))
 		}
 	}
 
-	return result
+	return result, errorMessages
 }
 
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/finalizers,verbs=update
+//+kubebuilder:rbac:groups=,resources=events,verbs=get;list;watch;create;patch
 func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	r.log = ctrl.LoggerFrom(ctx)
 
@@ -438,17 +446,20 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	validation, err := r.validateCluster(ctx, cloud, fullCluster)
 	if err != nil {
-		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsValidationSuccessfulCondition, controlplanev1alpha1.KopsValidationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		r.log.Error(err, fmt.Sprintf("failed trying to validate Kubernetes cluster: %v", err))
+		r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "KubernetesClusterValidationFailed", err.Error())
 		return ctrl.Result{}, err
 	}
 
-	if evaluateKopsValidationResult(validation) {
+	result, errorMessages := evaluateKopsValidationResult(validation)
+	if result {
 		kopsControlPlane.Status.Ready = true
-		conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsValidationSuccessfulCondition)
+		r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeNormal, "KubernetesClusterValidationSucceed", "Kops validation succeed")
 	} else {
 		kopsControlPlane.Status.Ready = false
-		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsValidationSuccessfulCondition, controlplanev1alpha1.KopsValidationFailedReason, clusterv1.ConditionSeverityWarning, "waiting for cluster to be ready, validating again in the next iteration")
+		for _, errorMessage := range errorMessages {
+			r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "KubernetesClusterValidationFailed", errorMessage)
+		}
 	}
 
 	return ctrl.Result{}, nil
