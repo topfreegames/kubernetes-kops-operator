@@ -71,7 +71,7 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	syncPeriod := time.Duration(5) * time.Minute
+	syncPeriod := 5 * time.Minute
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
@@ -93,6 +93,7 @@ func main() {
 	if err = (&controlplane.KopsControlPlaneReconciler{
 		Client:                       mgr.GetClient(),
 		Scheme:                       mgr.GetScheme(),
+		Recorder:                     mgr.GetEventRecorderFor("kopscontrolplane-controller"),
 		BuildCloudFactory:            controlplane.BuildCloud,
 		PopulateClusterSpecFactory:   controlplane.PopulateClusterSpec,
 		PrepareCloudResourcesFactory: controlplane.PrepareCloudResources,
