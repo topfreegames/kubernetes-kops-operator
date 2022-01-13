@@ -68,7 +68,7 @@ type KopsControlPlaneStatus struct {
 	// +optional
 	FailureMessage *string `json:"failureMessage,omitempty"`
 
-	// Conditions defines current service state of the KubeadmConfig.
+	// Conditions defines current service state of the KopsControlPlane.
 	// +optional
 	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
 }

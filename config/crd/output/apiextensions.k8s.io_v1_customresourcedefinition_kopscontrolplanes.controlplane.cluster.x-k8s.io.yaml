@@ -3249,7 +3249,7 @@ spec:
             description: KopsControlPlaneStatus defines the observed state of KopsControlPlane
             properties:
               conditions:
-                description: Conditions defines current service state of the KubeadmConfig.
+                description: Conditions defines current service state of the KopsControlPlane.
                 items:
                   description: Condition defines an observation of a Cluster API resource operational state.
                   properties:
