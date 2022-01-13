@@ -1,6 +1,6 @@
 
 # Image URL to use all building/pushing image targets
-IMG ?= controller:latest
+IMG ?= manager:latest
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
 
@@ -59,7 +59,7 @@ test: manifests generate fmt vet ## Run tests.
 ##@ Build
 
 build: generate fmt vet ## Build manager binary.
-	go build -o bin/manager main.go
+	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o bin/manager main.go
 
 run: manifests generate fmt vet ## Run a controller from your host.
 	go run ./main.go
@@ -85,7 +85,6 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/default | kubectl delete -f -
 
-
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
 	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.4.1)
@@ -107,3 +106,27 @@ GOBIN=$(PROJECT_DIR)/bin go get $(2) ;\
 rm -rf $$TMP_DIR ;\
 }
 endef
+
+# Development environment targets
+setup-dev-env: create-kind init-tilt
+
+create-kind:
+	bash ./hack/scripts/kind.sh kaas-cluster
+
+init-tilt:
+	kind export kubeconfig --name kaas-cluster
+	tilt down
+	tilt up
+
+# Tilt targets
+apply-capi-dependencies:
+	kubectl apply -f ./hack/assets/crds/dependencies
+
+wait-capi-dependencies-resources:
+	bash ./hack/scripts/wait-controllers.sh dependencies
+
+apply-capi:
+	kubectl apply -f ./hack/assets/crds/cluster-api
+
+wait-capi-resources:
+	bash ./hack/scripts/wait-controllers.sh cluster-api
