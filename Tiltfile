@@ -32,7 +32,7 @@ local_resource('Build manager binary',
 
 docker_build_with_restart('manager:test',
              '.',
-             dockerfile='./Dockerfile',
+             dockerfile='./Dockerfile.dev',
              entrypoint='/manager',
              live_update=[
                sync('./bin/manager', '/manager')
