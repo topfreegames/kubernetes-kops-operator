@@ -9,4 +9,4 @@ elif [[ ${1} == "cluster-api" ]]; then
   kubectl rollout status deployment -n capi-system capi-controller-manager
 fi
 
-#sleep 60
+sleep 60
