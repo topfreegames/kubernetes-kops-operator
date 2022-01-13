@@ -43,3 +43,19 @@ docker_build_with_restart('manager:test',
 )
 
 k8s_yaml('.kubernetes/dev/manifest.yaml')
+
+k8s_resource(
+  objects=[
+    'kubernetes-kops-operator-system:namespace',
+    'kubernetes-kops-operator-controller-manager:serviceaccount',
+    'kubernetes-kops-operator-leader-election-role:role',
+    'kubernetes-kops-operator-manager-role:clusterrole',
+    'kubernetes-kops-operator-metrics-reader:clusterrole',
+    'kubernetes-kops-operator-proxy-role:clusterrole',
+    'kubernetes-kops-operator-leader-election-rolebinding:rolebinding',
+    'kubernetes-kops-operator-manager-rolebinding:clusterrolebinding',
+    'kubernetes-kops-operator-proxy-rolebinding:clusterrolebinding',
+    'kubernetes-kops-operator-manager-config:configmap'
+  ],
+  new_name='Deploy Kubernetes resources'
+)
