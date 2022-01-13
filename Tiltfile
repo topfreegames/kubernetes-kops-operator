@@ -36,7 +36,10 @@ docker_build_with_restart('manager:test',
              entrypoint='/manager',
              live_update=[
                sync('./bin/manager', '/manager')
-             ]
+             ],
+             only=[
+               "./bin/manager",
+             ],
 )
 
 k8s_yaml('.kubernetes/dev/manifest.yaml')
