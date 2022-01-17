@@ -49,10 +49,10 @@ func CreateTerraformBackendFile(bucket, clusterName, backendPath string) error {
 	terraform {
 		backend "s3" {
 			bucket = "%s"
-			key = "%s/terraform/%s.tfstate"
+			key = ".terraform/%s.tfstate"
 			region = "us-east-1"
 		}
-	}`, bucket, clusterName, clusterName)
+	}`, bucket, clusterName)
 
 	err := os.MkdirAll(backendPath, 0755)
 	if err != nil {

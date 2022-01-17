@@ -4,7 +4,7 @@ metadata:
   labels:
     control-plane: controller-manager
   name: controller-manager-metrics-service
-  namespace: kubernetes-kops-operator-system
+  namespace: system
 spec:
   ports:
   - name: https

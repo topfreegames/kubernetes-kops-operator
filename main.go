@@ -19,6 +19,7 @@ package main
 import (
 	"flag"
 	"os"
+	"time"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -33,7 +34,7 @@ import (
 
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
-	controlplanecontrollers "github.com/topfreegames/kubernetes-kops-operator/controllers/controlplane"
+	"github.com/topfreegames/kubernetes-kops-operator/controllers/controlplane"
 	infrastructureclusterxk8siocontrollers "github.com/topfreegames/kubernetes-kops-operator/controllers/infrastructure.cluster.x-k8s.io"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	//+kubebuilder:scaffold:imports
@@ -70,6 +71,8 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
+	syncPeriod := 5 * time.Minute
+
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		MetricsBindAddress:     metricsAddr,
@@ -77,6 +80,7 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "a7b2d45c.cluster.x-k8s.io",
+		SyncPeriod:             &syncPeriod,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
@@ -86,12 +90,16 @@ func main() {
 	// Setup the context that's going to be used in controllers and for the manager.
 	ctx := ctrl.SetupSignalHandler()
 
-	if err = (&controlplanecontrollers.KopsControlPlaneReconciler{
-		Client:               mgr.GetClient(),
-		Scheme:               mgr.GetScheme(),
-		PopulateClusterSpec:  controlplanecontrollers.PopulateClusterSpec,
-		CreateCloudResources: controlplanecontrollers.CreateCloudResources,
-		GetClusterStatus:     controlplanecontrollers.GetClusterStatus,
+	if err = (&controlplane.KopsControlPlaneReconciler{
+		Client:                       mgr.GetClient(),
+		Scheme:                       mgr.GetScheme(),
+		Recorder:                     mgr.GetEventRecorderFor("kopscontrolplane-controller"),
+		BuildCloudFactory:            controlplane.BuildCloud,
+		PopulateClusterSpecFactory:   controlplane.PopulateClusterSpec,
+		PrepareCloudResourcesFactory: controlplane.PrepareCloudResources,
+		ApplyTerraformFactory:        controlplane.ApplyTerraform,
+		ValidateKopsClusterFactory:   controlplane.ValidateKopsCluster,
+		GetClusterStatusFactory:      controlplane.GetClusterStatus,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsControlPlane")
 		os.Exit(1)
