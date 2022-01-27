@@ -33,6 +33,7 @@ replace (
 )
 
 require (
+	github.com/aws/aws-sdk-go v1.42.36
 	github.com/go-logr/logr v0.4.0
 	github.com/hashicorp/go-version v1.3.0
 	github.com/hashicorp/hc-install v0.2.0
