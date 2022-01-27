@@ -94,11 +94,11 @@ func main() {
 		Client:                       mgr.GetClient(),
 		Scheme:                       mgr.GetScheme(),
 		Recorder:                     mgr.GetEventRecorderFor("kopscontrolplane-controller"),
-		BuildCloudFactory:            controlplane.BuildCloud,
+		BuildCloudFactory:            utils.BuildCloud,
 		PopulateClusterSpecFactory:   controlplane.PopulateClusterSpec,
 		PrepareCloudResourcesFactory: controlplane.PrepareCloudResources,
 		ApplyTerraformFactory:        controlplane.ApplyTerraform,
-		ValidateKopsClusterFactory:   controlplane.ValidateKopsCluster,
+		ValidateKopsClusterFactory:   utils.ValidateKopsCluster,
 		GetClusterStatusFactory:      controlplane.GetClusterStatus,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsControlPlane")

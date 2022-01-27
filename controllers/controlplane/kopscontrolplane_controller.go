@@ -65,7 +65,7 @@ type KopsControlPlaneReconciler struct {
 	PopulateClusterSpecFactory   func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
 	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error)
 	ApplyTerraformFactory        func(ctx context.Context, terraformDir string) error
-	ValidateKopsClusterFactory   func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
+	ValidateKopsClusterFactory   func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error)
 }
 
@@ -77,19 +77,6 @@ func ApplyTerraform(ctx context.Context, terraformDir string) error {
 	return nil
 }
 
-func ValidateKopsCluster(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
-	validator, err := validation.NewClusterValidator(kopsCluster, cloud, igs, fmt.Sprintf("https://api.%s:443", kopsCluster.ObjectMeta.Name), k8sClient)
-	if err != nil {
-		return nil, fmt.Errorf("unexpected error creating validator: %v", err)
-	}
-
-	result, err := validator.Validate()
-	if err != nil {
-		return nil, fmt.Errorf("%v", err)
-	}
-	return result, nil
-}
-
 func GetClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
 	statusDiscovery := &commands.CloudDiscoveryStatusStore{}
 	status, err := statusDiscovery.FindClusterStatus(kopsCluster)
@@ -97,15 +84,6 @@ func GetClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, err
 		return nil, err
 	}
 	return status, nil
-}
-
-func BuildCloud(kopscluster *kopsapi.Cluster) (fi.Cloud, error) {
-	cloud, err := cloudup.BuildCloud(kopscluster)
-	if err != nil {
-		return nil, err
-	}
-
-	return cloud, nil
 }
 
 // prepareCloudResources renders the terraform files and effectively apply them in the cloud provider
@@ -285,7 +263,7 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ko
 		Kind:       "Cluster",
 		UID:        cluster.GetUID(),
 		Name:       clusterName,
-}
+	}
 
 	kubeconfigSecret := kubeconfig.GenerateSecretWithOwner(clusterRef, out, ref)
 
@@ -293,11 +271,11 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ko
 	if err != nil {
 		if !apierrors.IsNotFound(err) {
 			return errors.Wrap(err, "failed to get kubeconfig secret")
-	}
+		}
 		err = r.Client.Create(ctx, kubeconfigSecret)
-	if err != nil {
+		if err != nil {
 			return errors.Wrap(err, "failed creating kubeconfig secret")
-	}
+		}
 	} else {
 		updateErr := r.Client.Update(ctx, kubeconfigSecret)
 		if updateErr != nil {
@@ -416,23 +394,31 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition)
 
-	validation, err := r.validateCluster(ctx, cloud, fullCluster)
+	list, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).List(ctx, metav1.ListOptions{})
+	if err != nil || len(list.Items) == 0 {
+		return ctrl.Result{}, fmt.Errorf("cannot get InstanceGroups for %q: %v", kopsCluster.ObjectMeta.Name, err)
+	}
+
+	masterIGs := &kopsapi.InstanceGroupList{}
+	for _, ig := range list.Items {
+		if ig.Spec.Role == "Master" {
+			masterIGs.Items = append(masterIGs.Items, ig)
+		}
+	}
+
+	validation, err := r.ValidateKopsClusterFactory(r.kopsClientset, kopsCluster, masterIGs)
+
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed trying to validate Kubernetes cluster: %v", err))
 		r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "KubernetesClusterValidationFailed", err.Error())
 		return ctrl.Result{}, err
 	}
 
-	result, errorMessages := evaluateKopsValidationResult(validation)
-	if result {
-		kopsControlPlane.Status.Ready = true
-		r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeNormal, "KubernetesClusterValidationSucceed", "Kops validation succeed")
-	} else {
-		kopsControlPlane.Status.Ready = false
-		for _, errorMessage := range errorMessages {
-			r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "KubernetesClusterValidationFailed", errorMessage)
-		}
+	statusReady, err := utils.KopsClusterValidation(kopsControlPlane, r.Recorder, r.log, validation)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
+	kopsControlPlane.Status.Ready = statusReady
 
 	return ctrl.Result{}, nil
 }
