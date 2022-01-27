@@ -36,6 +36,7 @@ import (
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	"github.com/topfreegames/kubernetes-kops-operator/controllers/controlplane"
 	infrastructureclusterxk8siocontrollers "github.com/topfreegames/kubernetes-kops-operator/controllers/infrastructure.cluster.x-k8s.io"
+	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	//+kubebuilder:scaffold:imports
 )
@@ -105,8 +106,11 @@ func main() {
 		os.Exit(1)
 	}
 	if err = (&infrastructureclusterxk8siocontrollers.KopsMachinePoolReconciler{
-		Client: mgr.GetClient(),
-		Scheme: mgr.GetScheme(),
+		Client:                     mgr.GetClient(),
+		Scheme:                     mgr.GetScheme(),
+		Recorder:                   mgr.GetEventRecorderFor("kopsmachinepool-controller"),
+		ValidateKopsClusterFactory: utils.ValidateKopsCluster,
+		GetASGByTagFactory:         infrastructureclusterxk8siocontrollers.GetASGByTag,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsMachinePool")
 		os.Exit(1)
