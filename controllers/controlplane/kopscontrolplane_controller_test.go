@@ -11,20 +11,23 @@ import (
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/client/simple/vfsclientset"
+	"k8s.io/kops/pkg/pki"
 	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/util/pkg/vfs"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/secret"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -88,7 +91,7 @@ func TestEvaluateKopsValidationResult(t *testing.T) {
 	g := NewWithT(t)
 
 	for _, tc := range testCases {
-		result, _ := evaluateKopsValidationResult(tc["input"].(*validation.ValidationCluster))
+		result, _ := utils.EvaluateKopsValidationResult(tc["input"].(*validation.ValidationCluster))
 		if tc["expectedResult"].(bool) {
 			g.Expect(result).To(BeTrue())
 		} else {
@@ -400,6 +403,18 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				return kopsControlPlane
 			},
 		},
+		{
+			"description":              "should successfully create secret with Kubeconfig",
+			"expectedError":            false,
+			"kopsControlPlaneFunction": nil,
+			"createKubeconfigSecret":   "should create",
+		},
+		{
+			"description":              "should successfully update Kubeconfig secret",
+			"expectedError":            false,
+			"kopsControlPlaneFunction": nil,
+			"updateKubeconfigSecret":   "should update",
+		},
 	}
 	RegisterFailHandler(Fail)
 	vfs.Context.ResetMemfsContext(true)
@@ -413,21 +428,46 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc["description"].(string), func(t *testing.T) {
 			kopsControlPlane := newKopsControlPlane("testKopsControlPlane", metav1.NamespaceDefault)
+
+			cluster := newCluster("testCluster", getFQDN(kopsControlPlane.Name), metav1.NamespaceDefault)
+
+			fakeKopsClientset := newFakeKopsClientset()
+
+			kopsCluster := &kopsapi.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: getFQDN("testCluster"),
+				},
+				Spec: kopsControlPlane.Spec.KopsClusterSpec,
+			}
+
+			kopsCluster, err := fakeKopsClientset.CreateCluster(ctx, kopsCluster)
+			g.Expect(cluster).NotTo(BeNil())
+			g.Expect(err).NotTo(HaveOccurred())
+
 			if tc["kopsControlPlaneFunction"] != nil {
 				kopsControlPlaneFunction := tc["kopsControlPlaneFunction"].(func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane)
 				kopsControlPlane = kopsControlPlaneFunction(kopsControlPlane)
 			}
 
-			cluster := newCluster("testCluster", getFQDN(kopsControlPlane.Name), metav1.NamespaceDefault)
-
 			fakeClient := fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
 
-			fakeKopsClientset := newFakeKopsClientset()
+			if _, ok := tc["updateKubeconfigSecret"]; ok {
+				secretKubeconfig := &corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      fmt.Sprintf("%s-%s", cluster.GetName(), "kubeconfig"),
+						Namespace: cluster.GetNamespace(),
+					},
+					Type: clusterv1.ClusterSecretType,
+				}
 
-			kopsCluster := newKopsCluster("testCluster")
+				err = fakeClient.Create(ctx, secretKubeconfig)
+				g.Expect(err).NotTo(HaveOccurred())
+			}
 
-			kopsCluster, err := fakeKopsClientset.CreateCluster(ctx, kopsCluster)
-			g.Expect(cluster).NotTo(BeNil())
+			keyStore, err := fakeKopsClientset.KeyStore(kopsCluster)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			err = createFakeKopsKeyPair(keyStore)
 			g.Expect(err).NotTo(HaveOccurred())
 
 			ig := newKopsIG("testIG", kopsCluster.GetObjectMeta().GetName())
@@ -456,7 +496,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				GetClusterStatusFactory: func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
 					return nil, nil
 				},
-				ValidateKopsClusterFactory: func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+				ValidateKopsClusterFactory: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 					return &validation.ValidationCluster{}, nil
 				},
 			}
@@ -476,6 +516,31 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				g.Expect(err).ToNot(HaveOccurred())
 			} else {
 				g.Expect(err).To(HaveOccurred())
+			}
+			if _, ok := tc["createKubeconfigSecret"]; ok {
+				secretKubeconfig := corev1.Secret{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      fmt.Sprintf("%s-%s", cluster.GetName(), "kubeconfig"),
+						Namespace: cluster.GetNamespace(),
+					},
+				}
+				clusterRef := types.NamespacedName{
+					Namespace: cluster.GetNamespace(),
+					Name:      cluster.GetName(),
+				}
+				fakeSecret, err := secret.GetFromNamespacedName(ctx, fakeClient, clusterRef, secret.Kubeconfig)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(fakeSecret.Name).To(Equal(secretKubeconfig.Name))
+				g.Expect(fakeSecret.Data).NotTo(BeNil())
+			}
+			if _, ok := tc["updateKubeconfigSecret"]; ok {
+				clusterRef := types.NamespacedName{
+					Namespace: cluster.GetNamespace(),
+					Name:      cluster.GetName(),
+				}
+				fakeSecret, err := secret.GetFromNamespacedName(ctx, fakeClient, clusterRef, secret.Kubeconfig)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(fakeSecret.Data).NotTo(BeNil())
 			}
 		})
 	}
@@ -523,7 +588,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			"eventsToAssert": []string{
 				"dummy error message",
 			},
-			"expectedValidateKopsCluster": func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+			"expectedValidateKopsCluster": func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 				return nil, errors.New("dummy error message")
 			},
 		},
@@ -540,7 +605,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			"eventsToAssert": []string{
 				"failed to validate this test case",
 			},
-			"expectedValidateKopsCluster": func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+			"expectedValidateKopsCluster": func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 				return &validation.ValidationCluster{
 					Failures: []*validation.ValidationError{
 						{
@@ -558,7 +623,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				"test case B",
 				"node hostA condition is False",
 			},
-			"expectedValidateKopsCluster": func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+			"expectedValidateKopsCluster": func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 				return &validation.ValidationCluster{
 					Failures: []*validation.ValidationError{
 						{
@@ -596,13 +661,24 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 
 			fakeKopsClientset := newFakeKopsClientset()
 
-			kopsCluster := newKopsCluster("testCluster")
-
-			recorder := record.NewFakeRecorder(5)
+			kopsCluster := &kopsapi.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: getFQDN("testCluster"),
+				},
+				Spec: kopsControlPlane.Spec.KopsClusterSpec,
+			}
 
 			kopsCluster, err := fakeKopsClientset.CreateCluster(ctx, kopsCluster)
 			g.Expect(cluster).NotTo(BeNil())
 			g.Expect(err).NotTo(HaveOccurred())
+
+			keyStore, err := fakeKopsClientset.KeyStore(kopsCluster)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			err = createFakeKopsKeyPair(keyStore)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			recorder := record.NewFakeRecorder(5)
 
 			ig := newKopsIG("testIG", kopsCluster.GetObjectMeta().GetName())
 
@@ -637,11 +713,11 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				}
 			}
 
-			var validateKopsCluster func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
+			var validateKopsCluster func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 			if _, ok := tc["expectedValidateKopsCluster"]; ok {
-				validateKopsCluster = tc["expectedValidateKopsCluster"].(func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error))
+				validateKopsCluster = tc["expectedValidateKopsCluster"].(func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error))
 			} else {
-				validateKopsCluster = func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+				validateKopsCluster = func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 					return &validation.ValidationCluster{}, nil
 				}
 			}
@@ -704,6 +780,7 @@ func newCluster(name, controlplane, namespace string) *clusterv1.Cluster {
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			Name:      getFQDN(name),
+			UID:       "12793d7abd2813dnba87e6",
 		},
 		Spec: clusterv1.ClusterSpec{
 			ControlPlaneRef: &corev1.ObjectReference{
@@ -870,4 +947,14 @@ func newKopsIG(name, clusterName string) *kopsapi.InstanceGroup {
 			},
 		},
 	}
+}
+
+func createFakeKopsKeyPair(keyStore fi.CAStore) error {
+	certData := "-----BEGIN CERTIFICATE-----\nMIIC2DCCAcCgAwIBAgIRALJXAkVj964tq67wMSI8oJQwDQYJKoZIhvcNAQELBQAw\nFTETMBEGA1UEAxMKa3ViZXJuZXRlczAeFw0xNzEyMjcyMzUyNDBaFw0yNzEyMjcy\nMzUyNDBaMBUxEzARBgNVBAMTCmt1YmVybmV0ZXMwggEiMA0GCSqGSIb3DQEBAQUA\nA4IBDwAwggEKAoIBAQDgnCkSmtnmfxEgS3qNPaUCH5QOBGDH/inHbWCODLBCK9gd\nXEcBl7FVv8T2kFr1DYb0HVDtMI7tixRVFDLgkwNlW34xwWdZXB7GeoFgU1xWOQSY\nOACC8JgYTQ/139HBEvgq4sej67p+/s/SNcw34Kk7HIuFhlk1rRk5kMexKIlJBKP1\nYYUYetsJ/QpUOkqJ5HW4GoetE76YtHnORfYvnybviSMrh2wGGaN6r/s4ChOaIbZC\nAn8/YiPKGIDaZGpj6GXnmXARRX/TIdgSQkLwt0aTDBnPZ4XvtpI8aaL8DYJIqAzA\nNPH2b4/uNylat5jDo0b0G54agMi97+2AUrC9UUXpAgMBAAGjIzAhMA4GA1UdDwEB\n/wQEAwIBBjAPBgNVHRMBAf8EBTADAQH/MA0GCSqGSIb3DQEBCwUAA4IBAQBVGR2r\nhzXzRMU5wriPQAJScszNORvoBpXfZoZ09FIupudFxBVU3d4hV9StKnQgPSGA5XQO\nHE97+BxJDuA/rB5oBUsMBjc7y1cde/T6hmi3rLoEYBSnSudCOXJE4G9/0f8byAJe\nrN8+No1r2VgZvZh6p74TEkXv/l3HBPWM7IdUV0HO9JDhSgOVF1fyQKJxRuLJR8jt\nO6mPH2UX0vMwVa4jvwtkddqk2OAdYQvH9rbDjjbzaiW0KnmdueRo92KHAN7BsDZy\nVpXHpqo1Kzg7D3fpaXCf5si7lqqrdJVXH4JC72zxsPehqgi8eIuqOBkiDWmRxAxh\n8yGeRx9AbknHh4Ia\n-----END CERTIFICATE-----\n"
+	privatekeyData := "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA4JwpEprZ5n8RIEt6jT2lAh+UDgRgx/4px21gjgywQivYHVxH\nAZexVb/E9pBa9Q2G9B1Q7TCO7YsUVRQy4JMDZVt+McFnWVwexnqBYFNcVjkEmDgA\ngvCYGE0P9d/RwRL4KuLHo+u6fv7P0jXMN+CpOxyLhYZZNa0ZOZDHsSiJSQSj9WGF\nGHrbCf0KVDpKieR1uBqHrRO+mLR5zkX2L58m74kjK4dsBhmjeq/7OAoTmiG2QgJ/\nP2IjyhiA2mRqY+hl55lwEUV/0yHYEkJC8LdGkwwZz2eF77aSPGmi/A2CSKgMwDTx\n9m+P7jcpWreYw6NG9BueGoDIve/tgFKwvVFF6QIDAQABAoIBAA0ktjaTfyrAxsTI\nBezb7Zr5NBW55dvuII299cd6MJo+rI/TRYhvUv48kY8IFXp/hyUjzgeDLunxmIf9\n/Zgsoic9Ol44/g45mMduhcGYPzAAeCdcJ5OB9rR9VfDCXyjYLlN8H8iU0734tTqM\n0V13tQ9zdSqkGPZOIcq/kR/pylbOZaQMe97BTlsAnOMSMKDgnftY4122Lq3GYy+t\nvpr+bKVaQZwvkLoSU3rECCaKaghgwCyX7jft9aEkhdJv+KlwbsGY6WErvxOaLWHd\ncuMQjGapY1Fa/4UD00mvrA260NyKfzrp6+P46RrVMwEYRJMIQ8YBAk6N6Hh7dc0G\n8Z6i1m0CgYEA9HeCJR0TSwbIQ1bDXUrzpftHuidG5BnSBtax/ND9qIPhR/FBW5nj\n22nwLc48KkyirlfIULd0ae4qVXJn7wfYcuX/cJMLDmSVtlM5Dzmi/91xRiFgIzx1\nAsbBzaFjISP2HpSgL+e9FtSXaaqeZVrflitVhYKUpI/AKV31qGHf04sCgYEA6zTV\n99Sb49Wdlns5IgsfnXl6ToRttB18lfEKcVfjAM4frnkk06JpFAZeR+9GGKUXZHqs\nz2qcplw4d/moCC6p3rYPBMLXsrGNEUFZqBlgz72QA6BBq3X0Cg1Bc2ZbK5VIzwkg\nST2SSux6ccROfgULmN5ZiLOtdUKNEZpFF3i3qtsCgYADT/s7dYFlatobz3kmMnXK\nsfTu2MllHdRys0YGHu7Q8biDuQkhrJwhxPW0KS83g4JQym+0aEfzh36bWcl+u6R7\nKhKj+9oSf9pndgk345gJz35RbPJYh+EuAHNvzdgCAvK6x1jETWeKf6btj5pF1U1i\nQ4QNIw/QiwIXjWZeubTGsQKBgQCbduLu2rLnlyyAaJZM8DlHZyH2gAXbBZpxqU8T\nt9mtkJDUS/KRiEoYGFV9CqS0aXrayVMsDfXY6B/S/UuZjO5u7LtklDzqOf1aKG3Q\ndGXPKibknqqJYH+bnUNjuYYNerETV57lijMGHuSYCf8vwLn3oxBfERRX61M/DU8Z\nworz/QKBgQDCTJI2+jdXg26XuYUmM4XXfnocfzAXhXBULt1nENcogNf1fcptAVtu\nBAiz4/HipQKqoWVUYmxfgbbLRKKLK0s0lOWKbYdVjhEm/m2ZU8wtXTagNwkIGoyq\nY/C1Lox4f1ROJnCjc/hfcOjcxX5M8A8peecHWlVtUPKTJgxQ7oMKcw==\n-----END RSA PRIVATE KEY-----\n"
+
+	cert, _ := pki.ParsePEMCertificate([]byte(certData))
+	key, _ := pki.ParsePEMPrivateKey([]byte(privatekeyData))
+	err := keyStore.StoreKeypair(fi.CertificateIDCA, cert, key)
+	return err
 }
