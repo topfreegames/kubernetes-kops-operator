@@ -19,15 +19,29 @@ package v1alpha1
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kops "k8s.io/kops/pkg/apis/kops"
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
-// EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
-// NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
+const (
+	// KopsMachinePoolStateReady reports on the successful management of the Kops state.
+	KopsMachinePoolStateReadyCondition clusterv1.ConditionType = "KopsMachinePoolStateReady"
+)
+
+const (
+	// KopsMachinePoolStateReconciliationFailedReason (Severity=Error) indicates that Kops state couldn't be created/updated.
+	KopsMachinePoolStateReconciliationFailedReason = "KopsMachinePoolStateReconciliationFailed"
+)
 
 // KopsMachinePoolSpec defines the desired state of KopsMachinePool
 type KopsMachinePoolSpec struct {
-	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// ProviderID is the ARN of the associated ASG
+	// +optional
+	ProviderID string `json:"providerID,omitempty"`
+
+	// ProviderIDList are the identification IDs of machine instances provided by the provider.
+	// This field must match the provider IDs as seen on the node objects corresponding to a machine pool's machine instances.
+	// +optional
+	ProviderIDList []string `json:"providerIDList,omitempty"`
 
 	// ClusterName is the name of the Cluster this object belongs to.
 	// +kubebuilder:validation:MinLength=1
@@ -39,8 +53,23 @@ type KopsMachinePoolSpec struct {
 
 // KopsMachinePoolStatus defines the observed state of KopsMachinePool
 type KopsMachinePoolStatus struct {
-	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
-	// Important: Run "make" to regenerate code after modifying this file
+	// Ready denotes that the API Server is ready to
+	// receive requests.
+	// +kubebuilder:default=false
+	Ready bool `json:"ready,omitempty"`
+
+	// Replicas is the most recently observed number of replicas
+	// +optional
+	Replicas int32 `json:"replicas"`
+
+	// ErrorMessage indicates that there is a terminal problem reconciling the
+	// state, and will be set to a descriptive error message.
+	// +optional
+	FailureMessage *string `json:"failureMessage,omitempty"`
+
+	// Conditions defines current service state of the KopsMachinePool.
+	// +optional
+	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -66,4 +95,14 @@ type KopsMachinePoolList struct {
 
 func init() {
 	SchemeBuilder.Register(&KopsMachinePool{}, &KopsMachinePoolList{})
+}
+
+// GetConditions returns the set of conditions for this object.
+func (cp *KopsMachinePool) GetConditions() clusterv1.Conditions {
+	return cp.Status.Conditions
+}
+
+// SetConditions sets the conditions on this object.
+func (cp *KopsMachinePool) SetConditions(conditions clusterv1.Conditions) {
+	cp.Status.Conditions = conditions
 }

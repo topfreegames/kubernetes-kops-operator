@@ -18,35 +18,36 @@ package controlplane
 
 import (
 	"context"
-	"crypto/x509/pkix"
 	"fmt"
 
 	"github.com/go-logr/logr"
+	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/client-go/kubernetes"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/assets"
-	"k8s.io/kops/pkg/pki"
-	"k8s.io/kops/pkg/rbac"
+	"k8s.io/kops/pkg/validation"
 	"sigs.k8s.io/cluster-api/controllers/external"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/commands"
-	"k8s.io/kops/pkg/kubeconfig"
-	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/kubeconfig"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
+	"sigs.k8s.io/cluster-api/util/secret"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -64,7 +65,7 @@ type KopsControlPlaneReconciler struct {
 	PopulateClusterSpecFactory   func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
 	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error)
 	ApplyTerraformFactory        func(ctx context.Context, terraformDir string) error
-	ValidateKopsClusterFactory   func(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
+	ValidateKopsClusterFactory   func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error)
 }
 
@@ -76,19 +77,6 @@ func ApplyTerraform(ctx context.Context, terraformDir string) error {
 	return nil
 }
 
-func ValidateKopsCluster(k8sClient *kubernetes.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
-	validator, err := validation.NewClusterValidator(kopsCluster, cloud, igs, fmt.Sprintf("https://api.%s:443", kopsCluster.ObjectMeta.Name), k8sClient)
-	if err != nil {
-		return nil, fmt.Errorf("unexpected error creating validator: %v", err)
-	}
-
-	result, err := validator.Validate()
-	if err != nil {
-		return nil, fmt.Errorf("%v", err)
-	}
-	return result, nil
-}
-
 func GetClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
 	statusDiscovery := &commands.CloudDiscoveryStatusStore{}
 	status, err := statusDiscovery.FindClusterStatus(kopsCluster)
@@ -96,15 +84,6 @@ func GetClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, err
 		return nil, err
 	}
 	return status, nil
-}
-
-func BuildCloud(kopscluster *kopsapi.Cluster) (fi.Cloud, error) {
-	cloud, err := cloudup.BuildCloud(kopscluster)
-	if err != nil {
-		return nil, err
-	}
-
-	return cloud, nil
 }
 
 // prepareCloudResources renders the terraform files and effectively apply them in the cloud provider
@@ -239,107 +218,72 @@ func (r *KopsControlPlaneReconciler) getClusterOwnerRef(ctx context.Context, obj
 	return nil, nil
 }
 
-func (r *KopsControlPlaneReconciler) getKubernetesClientFromKopsState(kopsCluster *kopsapi.Cluster) (*kubernetes.Clientset, error) {
-	builder := kubeconfig.NewKubeconfigBuilder()
-
-	keyStore, err := r.kopsClientset.KeyStore(kopsCluster)
+func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, kopsCluster *kopsapi.Cluster, cluster *unstructured.Unstructured) error {
+	config, err := utils.GetKubeconfigFromKopsState(kopsCluster, r.kopsClientset)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
-	builder.Context = kopsCluster.ObjectMeta.Name
-	builder.Server = fmt.Sprintf("https://api.%s", kopsCluster.ObjectMeta.Name)
-	caCert, _, _, err := keyStore.FindKeypair(fi.CertificateIDCA)
-	if err != nil || caCert == nil {
-		return nil, err
-	}
+	clusterName := cluster.GetName()
 
-	builder.CACert, err = caCert.AsBytes()
-	if err != nil {
-		return nil, err
-	}
-
-	req := pki.IssueCertRequest{
-		Signer: fi.CertificateIDCA,
-		Type:   "client",
-		Subject: pkix.Name{
-			CommonName:   "kops-operator",
-			Organization: []string{rbac.SystemPrivilegedGroup},
+	cfg := &api.Config{
+		Clusters: map[string]*api.Cluster{
+			clusterName: {
+				Server:                   config.Host,
+				CertificateAuthorityData: config.CAData,
+			},
 		},
-		Validity: 64800000000000,
-	}
-	cert, privateKey, _, err := pki.IssueCert(&req, keyStore)
-	if err != nil {
-		return nil, err
-	}
-	builder.ClientCert, err = cert.AsBytes()
-	if err != nil {
-		return nil, err
-	}
-	builder.ClientKey, err = privateKey.AsBytes()
-	if err != nil {
-		return nil, err
-	}
-
-	config, err := builder.BuildRestConfig()
-	if err != nil {
-		return nil, err
+		Contexts: map[string]*api.Context{
+			clusterName: {
+				Cluster:  clusterName,
+				AuthInfo: clusterName,
+			},
+		},
+		CurrentContext: kopsCluster.ObjectMeta.Name,
+		AuthInfos: map[string]*api.AuthInfo{
+			clusterName: {
+				ClientCertificateData: config.CertData,
+				ClientKeyData:         config.KeyData,
+			},
+		},
 	}
 
-	k8sClient, err := kubernetes.NewForConfig(config)
+	out, err := clientcmd.Write(*cfg)
 	if err != nil {
-		return nil, err
+		return errors.Wrap(err, "failed to serialize config to yaml")
 	}
 
-	return k8sClient, nil
-}
-
-func (r *KopsControlPlaneReconciler) validateCluster(ctx context.Context, cloud fi.Cloud, kopsCluster *kopsapi.Cluster) (*validation.ValidationCluster, error) {
-	list, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).List(ctx, metav1.ListOptions{})
-	if err != nil || len(list.Items) == 0 {
-		return nil, fmt.Errorf("cannot get InstanceGroups for %q: %v", kopsCluster.ObjectMeta.Name, err)
+	clusterRef := types.NamespacedName{
+		Namespace: cluster.GetNamespace(),
+		Name:      clusterName,
 	}
 
-	masterIGs := &kopsapi.InstanceGroupList{}
-	for _, ig := range list.Items {
-		if ig.Spec.Role == "Master" {
-			masterIGs.Items = append(masterIGs.Items, ig)
+	ref := metav1.OwnerReference{
+		APIVersion: clusterv1.GroupVersion.String(),
+		Kind:       "Cluster",
+		UID:        cluster.GetUID(),
+		Name:       clusterName,
+	}
+
+	kubeconfigSecret := kubeconfig.GenerateSecretWithOwner(clusterRef, out, ref)
+
+	_, err = secret.GetFromNamespacedName(ctx, r.Client, clusterRef, secret.Kubeconfig)
+	if err != nil {
+		if !apierrors.IsNotFound(err) {
+			return errors.Wrap(err, "failed to get kubeconfig secret")
+		}
+		err = r.Client.Create(ctx, kubeconfigSecret)
+		if err != nil {
+			return errors.Wrap(err, "failed creating kubeconfig secret")
+		}
+	} else {
+		updateErr := r.Client.Update(ctx, kubeconfigSecret)
+		if updateErr != nil {
+			return errors.Wrap(err, "failed updating kubeconfig secret")
 		}
 	}
 
-	k8sClient, err := r.getKubernetesClientFromKopsState(kopsCluster)
-	if err != nil {
-		return nil, err
-	}
-
-	result, err := r.ValidateKopsClusterFactory(k8sClient, kopsCluster, cloud, masterIGs)
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-func evaluateKopsValidationResult(validation *validation.ValidationCluster) (bool, []string) {
-	result := true
-	var errorMessages []string
-
-	failures := validation.Failures
-	if len(failures) > 0 {
-		result = false
-		for _, failure := range failures {
-			errorMessages = append(errorMessages, failure.Message)
-		}
-	}
-
-	nodes := validation.Nodes
-	for _, node := range nodes {
-		if node.Status == corev1.ConditionFalse {
-			result = false
-			errorMessages = append(errorMessages, fmt.Sprintf("node %s condition is %s", node.Hostname, node.Status))
-		}
-	}
-
-	return result, errorMessages
+	return nil
 }
 
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes,verbs=get;list;watch;create;update;patch;delete
@@ -408,6 +352,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
+	err = r.reconcileKubeconfig(ctx, kopsCluster, owner)
+	if err != nil {
+		r.log.Error(rerr, "failed to reconcile kubeconfig")
+		return ctrl.Result{}, err
+	}
+
 	cloud, err := r.BuildCloudFactory(kopsCluster)
 	if err != nil {
 		r.log.Error(rerr, "failed to build cloud")
@@ -444,23 +394,31 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition)
 
-	validation, err := r.validateCluster(ctx, cloud, fullCluster)
+	list, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).List(ctx, metav1.ListOptions{})
+	if err != nil || len(list.Items) == 0 {
+		return ctrl.Result{}, fmt.Errorf("cannot get InstanceGroups for %q: %v", kopsCluster.ObjectMeta.Name, err)
+	}
+
+	masterIGs := &kopsapi.InstanceGroupList{}
+	for _, ig := range list.Items {
+		if ig.Spec.Role == "Master" {
+			masterIGs.Items = append(masterIGs.Items, ig)
+		}
+	}
+
+	validation, err := r.ValidateKopsClusterFactory(r.kopsClientset, kopsCluster, masterIGs)
+
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed trying to validate Kubernetes cluster: %v", err))
 		r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "KubernetesClusterValidationFailed", err.Error())
 		return ctrl.Result{}, err
 	}
 
-	result, errorMessages := evaluateKopsValidationResult(validation)
-	if result {
-		kopsControlPlane.Status.Ready = true
-		r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeNormal, "KubernetesClusterValidationSucceed", "Kops validation succeed")
-	} else {
-		kopsControlPlane.Status.Ready = false
-		for _, errorMessage := range errorMessages {
-			r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "KubernetesClusterValidationFailed", errorMessage)
-		}
+	statusReady, err := utils.KopsClusterValidation(kopsControlPlane, r.Recorder, r.log, validation)
+	if err != nil {
+		return ctrl.Result{}, err
 	}
+	kopsControlPlane.Status.Ready = statusReady
 
 	return ctrl.Result{}, nil
 }

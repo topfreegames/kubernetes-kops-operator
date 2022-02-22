@@ -4,20 +4,27 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
+	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/client/simple/vfsclientset"
+	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/util/pkg/vfs"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/conditions"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -269,6 +276,22 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			},
 			"expectedError": true,
 		},
+		{
+			"description":             "Should fail if couldn't retrieve ASG",
+			"kopsMachinePoolFunction": nil,
+			"getASGByTagFunction": func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error) {
+				return nil, errors.New("fail to retrieve ASG")
+			},
+			"expectedError": true,
+		},
+		{
+			"description":             "Should have sucessfull populate the providerID",
+			"kopsMachinePoolFunction": nil,
+			"expectedError":           false,
+			"providerIDList": []string{
+				"aws:///us-east-1/<teste>",
+			},
+		},
 	}
 	RegisterFailHandler(Fail)
 	g := NewWithT(t)
@@ -294,8 +317,29 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			kopsControlPlane := newKopsControlPlane("test-kops-control-plane", "default")
 			fakeClient := fake.NewClientBuilder().WithObjects(kopsMachinePool, kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
 
+			var getASGByTag func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error)
+			if _, ok := tc["getASGByTagFunction"]; ok {
+				getASGByTag = tc["getASGByTagFunction"].(func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error))
+			} else {
+				getASGByTag = func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error) {
+					return &autoscaling.Group{
+						Instances: []*autoscaling.Instance{
+							{
+								AvailabilityZone: aws.String("us-east-1"),
+								InstanceId:       aws.String("<teste>"),
+							},
+						},
+					}, nil
+				}
+			}
+
 			reconciler := KopsMachinePoolReconciler{
-				Client: fakeClient,
+				Client:   fakeClient,
+				Recorder: record.NewFakeRecorder(5),
+				ValidateKopsClusterFactory: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+					return &validation.ValidationCluster{}, nil
+				},
+				GetASGByTagFactory: getASGByTag,
 			}
 
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
@@ -310,10 +354,193 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			} else {
 				g.Expect(err).NotTo(BeNil())
 			}
-
+			if _, ok := tc["providerIDList"]; ok {
+				kmp := &infrastructurev1alpha1.KopsMachinePool{}
+				err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsMachinePool), kmp)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(kmp.Spec.ProviderIDList).To(Equal(tc["providerIDList"].([]string)))
+			}
 		})
 	}
+}
 
+func TestMachinePoolStatus(t *testing.T) {
+	testCases := []map[string]interface{}{
+		{
+			"description":             "should successfully create ready condition and patch KopsMachinePool",
+			"expectedReconcilerError": false,
+			"conditionsToAssert": []*clusterv1.Condition{
+				conditions.TrueCondition(infrastructurev1alpha1.KopsMachinePoolStateReadyCondition),
+			},
+		},
+		{
+			"description":             "should have a failed event when there is a validation error",
+			"expectedReconcilerError": false,
+			"eventsToAssert": []string{
+				"failed to validate this test case",
+			},
+			"expectedValidateKopsCluster": func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+				return &validation.ValidationCluster{
+					Failures: []*validation.ValidationError{
+						{
+							Message: "failed to validate this test case",
+						},
+					},
+				}, nil
+			},
+		},
+		{
+			"description":             "should have a failed event when there is a error with the validation function",
+			"expectedReconcilerError": true,
+			"eventsToAssert": []string{
+				"failed to validate this test case",
+			},
+			"expectedValidateKopsCluster": func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+				return &validation.ValidationCluster{
+					Failures: []*validation.ValidationError{
+						{
+							Message: "failed to validate this test case",
+						},
+					},
+				}, errors.New("failed to validate this test case")
+			},
+		},
+		{
+			"description":             "should have an event when the validation succeeds",
+			"expectedReconcilerError": false,
+			"eventsToAssert": []string{
+				"Kops validation succeed",
+			},
+		},
+		{
+			"description":             "should have a failed condition when InstanceGroupSpec is not set",
+			"instanceGroupSpec":       "should fail",
+			"expectedReconcilerError": true,
+			"conditionsToAssert": []*clusterv1.Condition{
+				conditions.FalseCondition(infrastructurev1alpha1.KopsMachinePoolStateReadyCondition, infrastructurev1alpha1.KopsMachinePoolStateReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
+			},
+		},
+		{
+			"description":             "should set the status replicas",
+			"expectedReconcilerError": false,
+			"replicas":                int32(1),
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+	ctx := context.TODO()
+	err := clusterv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = infrastructurev1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = controlplanev1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	for _, tc := range testCases {
+		t.Run(tc["description"].(string), func(t *testing.T) {
+			vfs.Context.ResetMemfsContext(true)
+			cluster := newCluster("test-cluster", "test-kops-control-plane", "default")
+			var kopsMachinePool *infrastructurev1alpha1.KopsMachinePool
+			if _, ok := tc["instanceGroupSpec"]; ok {
+				kopsMachinePool = &infrastructurev1alpha1.KopsMachinePool{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: "default",
+						Name:      "test-cluster-test-kops-machine-pool",
+					},
+					Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+						ClusterName: fmt.Sprintf("%s.k8s.cluster", "test-cluster"),
+					},
+				}
+			} else {
+				kopsMachinePool = newKopsMachinePool("test-cluster-test-kops-machine-pool", "test-cluster", "default")
+			}
+			kopsControlPlane := newKopsControlPlane("test-kops-control-plane", "default")
+			fakeClient := fake.NewClientBuilder().WithObjects(kopsMachinePool, kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
+			recorder := record.NewFakeRecorder(5)
+			var validateKopsCluster func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
+			if _, ok := tc["expectedValidateKopsCluster"]; ok {
+				validateKopsCluster = tc["expectedValidateKopsCluster"].(func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error))
+			} else {
+				validateKopsCluster = func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+					return &validation.ValidationCluster{}, nil
+				}
+			}
+
+			reconciler := KopsMachinePoolReconciler{
+				Client:                     fakeClient,
+				Recorder:                   recorder,
+				ValidateKopsClusterFactory: validateKopsCluster,
+				GetASGByTagFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error) {
+					return &autoscaling.Group{
+						Instances: []*autoscaling.Instance{
+							{
+								AvailabilityZone: aws.String("us-east-1"),
+								InstanceId:       aws.String("<teste>"),
+							},
+						},
+					}, nil
+				},
+			}
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{
+				NamespacedName: client.ObjectKey{
+					Namespace: "default",
+					Name:      "test-cluster-test-kops-machine-pool",
+				},
+			})
+			if !tc["expectedReconcilerError"].(bool) {
+				g.Expect(err).ToNot(HaveOccurred())
+				g.Expect(result.Requeue).To(BeFalse())
+				g.Expect(result.RequeueAfter).To(Equal(time.Duration(0)))
+			} else {
+				g.Expect(err).To(HaveOccurred())
+			}
+			if _, ok := tc["conditionsToAssert"]; ok {
+				kmp := &infrastructurev1alpha1.KopsMachinePool{}
+				err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsMachinePool), kmp)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(kmp.Status.Conditions).ToNot(BeNil())
+				conditionsToAssert := tc["conditionsToAssert"].([]*clusterv1.Condition)
+				assertConditions(g, kmp, conditionsToAssert...)
+			}
+
+			if _, ok := tc["eventsToAssert"]; ok {
+				for _, eventMessage := range tc["eventsToAssert"].([]string) {
+					g.Expect(recorder.Events).Should(Receive(ContainSubstring(eventMessage)))
+				}
+			}
+
+			if _, ok := tc["replicas"]; ok {
+				kmp := &infrastructurev1alpha1.KopsMachinePool{}
+				err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsMachinePool), kmp)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(kmp.Status.Replicas).To(Equal(tc["replicas"].(int32)))
+			}
+		})
+	}
+}
+
+func assertConditions(g *WithT, from conditions.Getter, conditions ...*clusterv1.Condition) {
+	for _, condition := range conditions {
+		assertCondition(g, from, condition)
+	}
+}
+
+func assertCondition(g *WithT, from conditions.Getter, condition *clusterv1.Condition) {
+	g.Expect(conditions.Has(from, condition.Type)).To(BeTrue())
+
+	if condition.Status == corev1.ConditionTrue {
+		conditions.IsTrue(from, condition.Type)
+	} else {
+		conditionToBeAsserted := conditions.Get(from, condition.Type)
+		g.Expect(conditionToBeAsserted.Status).To(Equal(condition.Status))
+		g.Expect(conditionToBeAsserted.Severity).To(Equal(condition.Severity))
+		g.Expect(conditionToBeAsserted.Reason).To(Equal(condition.Reason))
+		if condition.Message != "" {
+			g.Expect(conditionToBeAsserted.Message).To(Equal(condition.Message))
+		}
+	}
 }
 
 func newFakeKopsClientset() simple.Clientset {

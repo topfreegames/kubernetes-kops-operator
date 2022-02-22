@@ -20,16 +20,24 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/record"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
+	"k8s.io/kops/pkg/validation"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/util/conditions"
+	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -38,10 +46,13 @@ import (
 // KopsMachinePoolReconciler reconciles a KopsMachinePool object
 type KopsMachinePoolReconciler struct {
 	client.Client
-	Scheme           *runtime.Scheme
-	log              logr.Logger
-	WatchFilterValue string
-	kopsClientset    simple.Clientset
+	Scheme                     *runtime.Scheme
+	log                        logr.Logger
+	WatchFilterValue           string
+	kopsClientset              simple.Clientset
+	Recorder                   record.EventRecorder
+	ValidateKopsClusterFactory func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
+	GetASGByTagFactory         func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error)
 }
 
 // getClusterByName returns cluster from Kubernetes by its name
@@ -118,7 +129,7 @@ func getInstanceGroupNameFromKopsMachinePool(kopsMachinePool *infrastructurev1al
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io.cluster.x-k8s.io,resources=kopsmachinepools,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io.cluster.x-k8s.io,resources=kopsmachinepools/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io.cluster.x-k8s.io,resources=kopsmachinepools/finalizers,verbs=update
-func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	r.log = ctrl.LoggerFrom(ctx)
 
 	kopsMachinePool := &infrastructurev1alpha1.KopsMachinePool{}
@@ -130,6 +141,25 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err != nil {
 		return ctrl.Result{}, err
 	}
+
+	// Initialize the patch helper.
+	patchHelper, err := patch.NewHelper(kopsMachinePool, r.Client)
+	if err != nil {
+		r.log.Error(err, "failed to initialize patch helper")
+		return ctrl.Result{}, err
+	}
+	// Attempt to Patch the KopsMachinePool object and status after each reconciliation if no error occurs.
+	defer func() {
+		err = patchHelper.Patch(ctx, kopsMachinePool)
+
+		if err != nil {
+			r.log.Error(rerr, "Failed to patch kopsMachinePool")
+			if rerr == nil {
+				rerr = err
+			}
+		}
+		r.log.Info(fmt.Sprintf("finished reconcile loop for %s", kopsMachinePool.ObjectMeta.GetName()))
+	}()
 
 	kopsInstanceGroup := &kopsapi.InstanceGroup{
 		ObjectMeta: metav1.ObjectMeta{
@@ -167,10 +197,100 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 	err = r.updateInstanceGroup(ctx, kopsCluster, kopsInstanceGroup)
 	if err != nil {
+		conditions.MarkFalse(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition, infrastructurev1alpha1.KopsMachinePoolStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
+		return ctrl.Result{}, err
+	}
+	conditions.MarkTrue(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition)
+
+	asg, err := r.GetASGByTagFactory(kopsMachinePool)
+	if err != nil {
+		r.log.Error(err, fmt.Sprintf("failed retriving ASG: %v", err))
 		return ctrl.Result{}, err
 	}
 
+	providerIDList := make([]string, len(asg.Instances))
+	for i, instance := range asg.Instances {
+		providerIDList[i] = fmt.Sprintf("aws:///%s/%s", *instance.AvailabilityZone, *instance.InstanceId)
+	}
+
+	kopsMachinePool.Spec.ProviderIDList = providerIDList
+	kopsMachinePool.Status.Replicas = int32(len(providerIDList))
+
+	igList := &kopsapi.InstanceGroupList{
+		Items: []kopsapi.InstanceGroup{
+			*kopsInstanceGroup,
+		},
+	}
+
+	validation, err := r.ValidateKopsClusterFactory(r.kopsClientset, kopsCluster, igList)
+
+	if err != nil {
+		r.log.Error(err, fmt.Sprintf("failed trying to validate Kubernetes cluster: %v", err))
+		r.Recorder.Eventf(kopsMachinePool, corev1.EventTypeWarning, "KubernetesClusterValidationFailed", err.Error())
+		return ctrl.Result{}, err
+	}
+
+	statusReady, err := utils.KopsClusterValidation(kopsMachinePool, r.Recorder, r.log, validation)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	kopsMachinePool.Status.Ready = statusReady
+
 	return ctrl.Result{}, nil
+}
+
+// GetASGByName returns the existing ASG or nothing if it doesn't exist.
+func GetASGByTag(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error) {
+	awsClient, err := session.NewSession()
+	if err != nil {
+		return nil, err
+	}
+	svc := autoscaling.New(awsClient)
+
+	clusterFilterKey := "tag:KubernetesCluster"
+	instanceGroupKey := "tag:kops.k8s.io/instancegroup"
+
+	igName, err := getInstanceGroupNameFromKopsMachinePool(kopsMachinePool)
+	if err != nil {
+		return nil, err
+	}
+
+	input := &autoscaling.DescribeAutoScalingGroupsInput{
+		Filters: []*autoscaling.Filter{
+			{
+				Name: &clusterFilterKey,
+				Values: []*string{
+					&kopsMachinePool.Spec.ClusterName,
+				},
+			},
+			{
+				Name: &instanceGroupKey,
+				Values: []*string{
+					&igName,
+				},
+			},
+		},
+	}
+
+	out, err := svc.DescribeAutoScalingGroups(input)
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case autoscaling.ErrCodeInvalidNextToken:
+				return nil, fmt.Errorf(aerr.Error(), autoscaling.ErrCodeInvalidNextToken)
+			case autoscaling.ErrCodeResourceContentionFault:
+				return nil, fmt.Errorf(aerr.Error(), autoscaling.ErrCodeResourceContentionFault)
+			default:
+				return nil, fmt.Errorf(aerr.Error(), aerr.Error())
+			}
+		} else {
+			return nil, fmt.Errorf(aerr.Error(), aerr.Error())
+		}
+	}
+	if len(out.AutoScalingGroups) > 0 {
+		return out.AutoScalingGroups[0], nil
+	}
+	return nil, errors.New("fail to retrieve ASG")
 }
 
 func (r *KopsMachinePoolReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
