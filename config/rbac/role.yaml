@@ -6,6 +6,14 @@ metadata:
   creationTimestamp: null
   name: manager-role
 rules:
+- resources:
+  - events
+  verbs:
+  - create
+  - get
+  - list
+  - patch
+  - watch
 - apiGroups:
   - cluster.x-k8s.io
   resources:
@@ -23,25 +31,15 @@ rules:
   resources:
   - clusters/finalizers
   verbs:
+  - get
+  - patch
   - update
 - apiGroups:
   - cluster.x-k8s.io
   resources:
   - clusters/status
   verbs:
-  - get
-  - patch
   - update
-- apiGroups:
-  - ""
-  resources:
-  - events
-  verbs:
-  - create
-  - get
-  - list
-  - patch
-  - watch
 - apiGroups:
   - controlplane.cluster.x-k8s.io
   resources:
@@ -69,7 +67,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - infrastructure.cluster.x-k8s.io
+  - infrastructure.cluster.x-k8s.io.cluster.x-k8s.io
   resources:
   - kopsmachinepools
   verbs:
@@ -81,13 +79,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - infrastructure.cluster.x-k8s.io
+  - infrastructure.cluster.x-k8s.io.cluster.x-k8s.io
   resources:
   - kopsmachinepools/finalizers
   verbs:
   - update
 - apiGroups:
-  - infrastructure.cluster.x-k8s.io
+  - infrastructure.cluster.x-k8s.io.cluster.x-k8s.io
   resources:
   - kopsmachinepools/status
   verbs:
