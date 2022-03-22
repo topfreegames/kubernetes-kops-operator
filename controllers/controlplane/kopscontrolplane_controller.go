@@ -289,7 +289,11 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ko
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/finalizers,verbs=update
+//+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters,verbs=get;list;watch;create;update;patch;delete
+//+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters/finalizers,verbs=get;patch;update
+//+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters/status,verbs=update
 //+kubebuilder:rbac:groups=,resources=events,verbs=get;list;watch;create;patch
+
 func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	r.log = ctrl.LoggerFrom(ctx)
 
@@ -339,7 +343,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if r.kopsClientset == nil {
 		kopsClientset, err := utils.GetKopsClientset(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
 		if err != nil {
-			r.log.Error(rerr, "failed to get kops clientset")
+			r.log.Error(err, "failed to get kops clientset")
 			return ctrl.Result{}, err
 		}
 		r.kopsClientset = kopsClientset
@@ -354,19 +358,19 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	err = r.reconcileKubeconfig(ctx, kopsCluster, owner)
 	if err != nil {
-		r.log.Error(rerr, "failed to reconcile kubeconfig")
+		r.log.Error(err, "failed to reconcile kubeconfig")
 		return ctrl.Result{}, err
 	}
 
 	cloud, err := r.BuildCloudFactory(kopsCluster)
 	if err != nil {
-		r.log.Error(rerr, "failed to build cloud")
+		r.log.Error(err, "failed to build cloud")
 		return ctrl.Result{}, err
 	}
 
 	fullCluster, err := r.PopulateClusterSpecFactory(kopsCluster, r.kopsClientset, cloud)
 	if err != nil {
-		r.log.Error(rerr, "failed to populated cluster Spec")
+		r.log.Error(err, "failed to populated cluster Spec")
 		return ctrl.Result{}, err
 	}
 
