@@ -22,11 +22,6 @@ func TestCreateTerraformBackendFile(t *testing.T) {
 			"outputDir":     fmt.Sprintf("%s/%s", os.TempDir(), clusterName),
 			"expectedError": false,
 		},
-		{
-			"description":   "Should fail without permissions",
-			"outputDir":     fmt.Sprintf("%s/%s", "/opt", clusterName),
-			"expectedError": true,
-		},
 	}
 
 	for _, tc := range testCases {
