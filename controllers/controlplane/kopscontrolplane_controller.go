@@ -23,6 +23,8 @@ import (
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
+	"github.com/topfreegames/kubernetes-kops-operator/pkg/util"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -436,6 +438,10 @@ func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr c
 			&source.Kind{Type: &clusterv1.Cluster{}},
 			handler.EnqueueRequestsFromMapFunc(clusterToInfrastructureMapFunc),
 		).
+		Watches(
+			&source.Kind{Type: &infrastructurev1alpha1.KopsMachinePool{}},
+			handler.EnqueueRequestsFromMapFunc(r.kopsMachinePoolToInfrastructureMapFunc),
+		).
 		Complete(r)
 }
 
@@ -445,9 +451,28 @@ func clusterToInfrastructureMapFunc(o client.Object) []ctrl.Request {
 		panic(fmt.Sprintf("Expected a Cluster but got a %T", o))
 	}
 
-	result := []ctrl.Request{}
+	var result []ctrl.Request
 	if c.Spec.InfrastructureRef != nil && c.Spec.InfrastructureRef.GroupVersionKind() == controlplanev1alpha1.GroupVersion.WithKind("KopsControlPlane") {
 		name := client.ObjectKey{Namespace: c.Spec.InfrastructureRef.Namespace, Name: c.Spec.InfrastructureRef.Name}
+		result = append(result, ctrl.Request{NamespacedName: name})
+	}
+
+	return result
+}
+
+func (r *KopsControlPlaneReconciler) kopsMachinePoolToInfrastructureMapFunc(o client.Object) []ctrl.Request {
+	kmp, ok := o.(*infrastructurev1alpha1.KopsMachinePool)
+	if !ok {
+		panic(fmt.Sprintf("expected a KopsMachinePool but got a %T", o))
+	}
+
+	var result []ctrl.Request
+	cluster, err := util.GetClusterByName(context.TODO(), r.Client, kmp.GetNamespace(), kmp.Spec.ClusterName)
+	if err != nil {
+		panic(err)
+	}
+	if cluster.Spec.InfrastructureRef != nil && cluster.Spec.InfrastructureRef.GroupVersionKind() == controlplanev1alpha1.GroupVersion.WithKind("KopsControlPlane") {
+		name := client.ObjectKey{Namespace: cluster.Spec.InfrastructureRef.Namespace, Name: cluster.Spec.InfrastructureRef.Name}
 		result = append(result, ctrl.Request{NamespacedName: name})
 	}
 
