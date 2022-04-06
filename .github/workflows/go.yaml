@@ -41,7 +41,7 @@ jobs:
       run: sudo apt update && sudo apt install make -y
 
     - name: Run tests
-      run: make test
+      run: make test-ci
 
   docker-image:
     runs-on: ubuntu-latest
