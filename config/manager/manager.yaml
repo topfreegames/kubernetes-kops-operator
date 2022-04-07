@@ -42,6 +42,8 @@ spec:
             secretKeyRef:
               name: aws-credentials
               key: secret-access-key
+        - name: AWS_REGION
+          value: us-east-1
         securityContext:
           allowPrivilegeEscalation: false
         livenessProbe:
@@ -58,8 +60,8 @@ spec:
           periodSeconds: 10
         resources:
           limits:
-            cpu: 1
-            memory: 400Mi
+            cpu: 2
+            memory: 1Gi
           requests:
             cpu: 1
             memory: 400Mi

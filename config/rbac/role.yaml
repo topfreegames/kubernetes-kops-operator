@@ -17,6 +17,15 @@ rules:
   - patch
   - watch
 - apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - get
+  - list
+  - watch
+- apiGroups:
   - cluster.x-k8s.io
   resources:
   - clusters
@@ -69,7 +78,7 @@ rules:
   - patch
   - update
 - apiGroups:
-  - infrastructure.cluster.x-k8s.io.cluster.x-k8s.io
+  - infrastructure.cluster.x-k8s.io
   resources:
   - kopsmachinepools
   verbs:
@@ -81,13 +90,13 @@ rules:
   - update
   - watch
 - apiGroups:
-  - infrastructure.cluster.x-k8s.io.cluster.x-k8s.io
+  - infrastructure.cluster.x-k8s.io
   resources:
   - kopsmachinepools/finalizers
   verbs:
   - update
 - apiGroups:
-  - infrastructure.cluster.x-k8s.io.cluster.x-k8s.io
+  - infrastructure.cluster.x-k8s.io
   resources:
   - kopsmachinepools/status
   verbs:

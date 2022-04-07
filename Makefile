@@ -1,6 +1,6 @@
 
 # Image URL to use all building/pushing image targets
-IMG ?= manager:latest
+IMG ?= tfgco/kubernetes-kops-operator:latest
 # Produce CRDs that work back to Kubernetes 1.11 (no version conversion)
 CRD_OPTIONS ?= "crd:trivialVersions=true,preserveUnknownFields=false"
 
@@ -94,6 +94,10 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | kubectl apply -f -
+
+gen-k8s-manifests: manifests kustomize ## 
+	cd config/manager && $(KUSTOMIZE) edit set image manager=${IMG}
+	$(KUSTOMIZE) build config/default > .kubernetes/manifests.yaml
 
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/default | kubectl delete -f -
