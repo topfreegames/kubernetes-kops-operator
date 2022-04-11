@@ -27,6 +27,7 @@ import (
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
+	"github.com/topfreegames/kubernetes-kops-operator/pkg/util"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -53,21 +54,6 @@ type KopsMachinePoolReconciler struct {
 	Recorder                   record.EventRecorder
 	ValidateKopsClusterFactory func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetASGByTagFactory         func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error)
-}
-
-// getClusterByName returns cluster from Kubernetes by its name
-func (r *KopsMachinePoolReconciler) getClusterByName(ctx context.Context, namespace, name string) (*clusterv1.Cluster, error) {
-	cluster := &clusterv1.Cluster{}
-	key := client.ObjectKey{
-		Namespace: namespace,
-		Name:      name,
-	}
-
-	if err := r.Client.Get(ctx, key, cluster); err != nil {
-		return nil, errors.Wrapf(err, "failed to get Cluster/%s", name)
-	}
-
-	return cluster, nil
 }
 
 // getKopsControlPlaneByName returns kopsControlPLane by its name
@@ -170,7 +156,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		Spec: kopsMachinePool.Spec.KopsInstanceGroupSpec,
 	}
 
-	cluster, err := r.getClusterByName(ctx, kopsInstanceGroup.ObjectMeta.Namespace, kopsMachinePool.Spec.ClusterName)
+	cluster, err := util.GetClusterByName(ctx, r.Client, kopsInstanceGroup.ObjectMeta.Namespace, kopsMachinePool.Spec.ClusterName)
 	if err != nil {
 		return ctrl.Result{}, err
 	}

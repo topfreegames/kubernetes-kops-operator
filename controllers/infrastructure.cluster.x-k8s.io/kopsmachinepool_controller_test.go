@@ -87,55 +87,6 @@ func TestGetInstanceGroupName(t *testing.T) {
 	}
 }
 
-func TestGetClusterByName(t *testing.T) {
-	testCases := []map[string]interface{}{
-		{
-			"description":     "Should successfully return cluster",
-			"expectedError":   false,
-			"clusterFunction": nil,
-		},
-		{
-			"description":   "Cluster don't exist, should return error",
-			"expectedError": true,
-			"clusterFunction": func(kopsCluster *clusterv1.Cluster) *clusterv1.Cluster {
-				return &clusterv1.Cluster{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "another-test-cluster",
-					},
-				}
-			},
-		},
-	}
-
-	RegisterFailHandler(Fail)
-	g := NewWithT(t)
-	ctx := context.TODO()
-
-	err := clusterv1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
-	for _, tc := range testCases {
-		t.Run(tc["description"].(string), func(t *testing.T) {
-			cluster := newCluster("test-cluster", "", metav1.NamespaceDefault)
-			if tc["clusterFunction"] != nil {
-				clusterFunction := tc["clusterFunction"].(func(cluster *clusterv1.Cluster) *clusterv1.Cluster)
-				cluster = clusterFunction(cluster)
-			}
-			fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithObjects(cluster).Build()
-			reconciler := &KopsMachinePoolReconciler{
-				Client: fakeClient,
-			}
-			cluster, err := reconciler.getClusterByName(ctx, metav1.NamespaceDefault, "test-cluster.k8s.cluster")
-			if !tc["expectedError"].(bool) {
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(cluster).NotTo(BeNil())
-			} else {
-				g.Expect(err).To(HaveOccurred())
-			}
-
-		})
-	}
-}
-
 func TestIsInstanceGroupCreated(t *testing.T) {
 
 	testCases := []map[string]interface{}{
