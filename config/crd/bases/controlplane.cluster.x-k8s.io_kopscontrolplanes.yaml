@@ -1,10 +1,9 @@
-
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.4.1
+    controller-gen.kubebuilder.io/version: v0.8.0
   creationTimestamp: null
   name: kopscontrolplanes.controlplane.cluster.x-k8s.io
 spec:
@@ -1332,9 +1331,9 @@ spec:
                       down masters so that they are not on the pod network. true is
                       the kube-up behaviour, but it is very surprising: it means that
                       daemonsets only work on the master if they have hostNetwork=true.
-                      false is now the default, and it will:  * give the master a
-                      normal PodCIDR  * run kube-proxy on the master  * enable debugging
-                      handlers on the master, so kubectl logs works'
+                      false is now the default, and it will: * give the master a normal
+                      PodCIDR * run kube-proxy on the master * enable debugging handlers
+                      on the master, so kubectl logs works'
                     type: boolean
                   keyStore:
                     description: KeyStore is the VFS path to where SSL keys and certificates
@@ -3618,9 +3617,9 @@ spec:
                         description: 'How should the kubelet configure the container
                           bridge for hairpin packets. Setting this flag allows endpoints
                           in a Service to loadbalance back to themselves if they should
-                          try to access their own Service. Values:   "promiscuous-bridge":
-                          make the container bridge promiscuous.   "hairpin-veth":       set
-                          the hairpin flag on container veth interfaces.   "none":               do
+                          try to access their own Service. Values: "promiscuous-bridge":
+                          make the container bridge promiscuous. "hairpin-veth":       set
+                          the hairpin flag on container veth interfaces. "none":               do
                           nothing. Setting --configure-cbr0 to false implies that
                           to achieve hairpin NAT one must set --hairpin-mode=veth-flag,
                           because bridge assumes the existence of a container bridge
@@ -4056,9 +4055,9 @@ spec:
                         description: 'How should the kubelet configure the container
                           bridge for hairpin packets. Setting this flag allows endpoints
                           in a Service to loadbalance back to themselves if they should
-                          try to access their own Service. Values:   "promiscuous-bridge":
-                          make the container bridge promiscuous.   "hairpin-veth":       set
-                          the hairpin flag on container veth interfaces.   "none":               do
+                          try to access their own Service. Values: "promiscuous-bridge":
+                          make the container bridge promiscuous. "hairpin-veth":       set
+                          the hairpin flag on container veth interfaces. "none":               do
                           nothing. Setting --configure-cbr0 to false implies that
                           to achieve hairpin NAT one must set --hairpin-mode=veth-flag,
                           because bridge assumes the existence of a container bridge
@@ -5419,9 +5418,9 @@ spec:
                     type: object
                   updatePolicy:
                     description: 'UpdatePolicy determines the policy for applying
-                      upgrades automatically. Valid values:   ''automatic'' (default):
+                      upgrades automatically. Valid values: ''automatic'' (default):
                       apply updates automatically (apply OS security upgrades, avoiding
-                      rebooting when possible)   ''external'': do not apply updates
+                      rebooting when possible) ''external'': do not apply updates
                       automatically; they are applied manually or by an external system'
                     type: string
                   useHostCertificates:

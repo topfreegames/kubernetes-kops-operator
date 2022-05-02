@@ -1,10 +1,9 @@
-
 ---
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.4.1
+    controller-gen.kubebuilder.io/version: v0.8.0
   creationTimestamp: null
   name: kopsmachinepools.infrastructure.cluster.x-k8s.io
 spec:
@@ -411,9 +410,9 @@ spec:
                         description: 'How should the kubelet configure the container
                           bridge for hairpin packets. Setting this flag allows endpoints
                           in a Service to loadbalance back to themselves if they should
-                          try to access their own Service. Values:   "promiscuous-bridge":
-                          make the container bridge promiscuous.   "hairpin-veth":       set
-                          the hairpin flag on container veth interfaces.   "none":               do
+                          try to access their own Service. Values: "promiscuous-bridge":
+                          make the container bridge promiscuous. "hairpin-veth":       set
+                          the hairpin flag on container veth interfaces. "none":               do
                           nothing. Setting --configure-cbr0 to false implies that
                           to achieve hairpin NAT one must set --hairpin-mode=veth-flag,
                           because bridge assumes the existence of a container bridge
@@ -848,10 +847,10 @@ spec:
                     description: 'UpdatePolicy determines the policy for applying
                       upgrades automatically. If specified, this value overrides a
                       value specified in the Cluster''s "spec.updatePolicy" field.
-                      Valid values:   ''automatic'' (default): apply updates automatically
-                      (apply OS security upgrades, avoiding rebooting when possible)   ''external'':
-                      do not apply updates automatically; they are applied manually
-                      or by an external system'
+                      Valid values: ''automatic'' (default): apply updates automatically
+                      (apply OS security upgrades, avoiding rebooting when possible)
+                      ''external'': do not apply updates automatically; they are applied
+                      manually or by an external system'
                     type: string
                   volumeMounts:
                     description: VolumeMounts a collection of volume mounts
