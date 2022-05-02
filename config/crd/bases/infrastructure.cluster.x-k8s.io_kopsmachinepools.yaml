@@ -68,7 +68,7 @@ spec:
                           type: string
                       type: object
                     type: array
-                  associatePublicIp:
+                  associatePublicIP:
                     description: AssociatePublicIP is true if we want instances to
                       have a public IP
                     type: boolean
@@ -104,7 +104,7 @@ spec:
                           description: LoadBalancerName to associate with this instance
                             group (AWS ELB)
                           type: string
-                        targetGroupArn:
+                        targetGroupARN:
                           description: TargetGroupARN to associate with this instance
                             group (AWS ALB/NLB)
                           type: string
@@ -151,9 +151,9 @@ spec:
                           items:
                             type: string
                           type: array
-                        disabled:
-                          description: Disabled indicates if you want the unit switched
-                            off
+                        enabled:
+                          description: 'Enabled indicates if you want the unit switched
+                            on. Default: true'
                           type: boolean
                         execContainer:
                           description: ExecContainer is the image itself
@@ -267,7 +267,7 @@ spec:
                         description: AuthenticationTokenWebhook uses the TokenReview
                           API to determine authentication for bearer tokens.
                         type: boolean
-                      authenticationTokenWebhookCacheTtl:
+                      authenticationTokenWebhookCacheTTL:
                         description: AuthenticationTokenWebhook sets the duration
                           to cache responses from the webhook token authenticator.
                           Default is 2m. (default 2m0s)
@@ -293,7 +293,7 @@ spec:
                           This is handled by the container runtime on a best effort
                           basis.
                         type: string
-                      clientCaFile:
+                      clientCAFile:
                         description: ClientCAFile is the path to a CA certificate
                         type: string
                       cloudProvider:
@@ -444,6 +444,11 @@ spec:
                           image pulls If no pulling progress is made before this deadline,
                           the image pulling will be cancelled. (default 1m0s)
                         type: string
+                      kernelMemcgNotification:
+                        description: Integrate with the kernel memcg notification
+                          to determine if memory eviction thresholds are crossed rather
+                          than polling.
+                        type: boolean
                       kubeReserved:
                         additionalProperties:
                           type: string
@@ -461,6 +466,10 @@ spec:
                       kubeletCgroups:
                         description: KubeletCgroups is the absolute name of cgroups
                           to isolate the kubelet in.
+                        type: string
+                      logFormat:
+                        description: 'LogFormat is the logging format of the kubelet.
+                          Supported values: text, json. Default: text'
                         type: string
                       logLevel:
                         description: LogLevel is the logging level of the kubelet
@@ -514,6 +523,11 @@ spec:
                         description: config is the path to the config file or directory
                           of files
                         type: string
+                      podPidsLimit:
+                        description: PodPidsLimit is the maximum number of pids in
+                          any pod.
+                        format: int64
+                        type: integer
                       protectKernelDefaults:
                         description: 'Default kubelet behaviour for kernel tuning.
                           If set, kubelet errors if any of kernel tunables is different
@@ -586,6 +600,15 @@ spec:
                           with version  < 1.9 or an Aufs storage backend. // Issue
                           #10959 has more details.'
                         type: boolean
+                      shutdownGracePeriod:
+                        description: 'ShutdownGracePeriod specifies the total duration
+                          that the node should delay the shutdown by. Default: 30s'
+                        type: string
+                      shutdownGracePeriodCriticalPods:
+                        description: 'ShutdownGracePeriodCriticalPods specifies the
+                          duration used to terminate critical pods during a node shutdown.
+                          Default: 10s'
+                        type: string
                       streamingConnectionIdleTimeout:
                         description: StreamingConnectionIdleTimeout is the maximum
                           time a streaming connection can be idle before the connection
@@ -752,10 +775,6 @@ spec:
                           of desired nodes.'
                         x-kubernetes-int-or-string: true
                     type: object
-                  rootVolumeDeleteOnTermination:
-                    description: RootVolumeDeleteOnTermination is deprecated as of
-                      kOps 1.21 and has no effect
-                    type: boolean
                   rootVolumeEncryption:
                     description: RootVolumeEncryption enables EBS root volume encryption
                       for an instance
@@ -764,8 +783,8 @@ spec:
                     description: RootVolumeEncryptionKey provides the key identifier
                       for root volume encryption
                     type: string
-                  rootVolumeIops:
-                    description: RootVolumeIops is the provisioned IOPS when the volume
+                  rootVolumeIOPS:
+                    description: RootVolumeIOPS is the provisioned IOPS when the volume
                       type is io1, io2 or gp3 (AWS only).
                     format: int32
                     type: integer
@@ -872,11 +891,10 @@ spec:
                         attached to the instance group
                       properties:
                         deleteOnTermination:
-                          description: 'DeleteOnTermination configures volume retention
+                          description: DeleteOnTermination configures volume retention
                             policy upon instance termination. The volume is deleted
                             by default. Cluster deletion does not remove retained
-                            volumes. NOTE: This setting applies only to the Launch
-                            Configuration and does not affect Launch Templates.'
+                            volumes.
                           type: boolean
                         device:
                           description: Device is an optional device name of the block
@@ -887,7 +905,7 @@ spec:
                             volume
                           type: boolean
                         iops:
-                          description: Iops is the provisioned IOPS for the volume
+                          description: IOPS is the provisioned IOPS for the volume
                             when the volume type is io1, io2 or gp3 (AWS only).
                           format: int64
                           type: integer
