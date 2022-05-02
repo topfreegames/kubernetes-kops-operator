@@ -126,12 +126,13 @@ func GetKubeconfigFromKopsState(kopsCluster *kopsapi.Cluster, kopsClientset simp
 	if err != nil {
 		return nil, err
 	}
-	keyStore.ListKeysets()
 
 	builder.Context = kopsCluster.ObjectMeta.Name
 	builder.Server = fmt.Sprintf("https://api.%s", kopsCluster.ObjectMeta.Name)
 	keySet, err := keyStore.FindKeyset(fi.CertificateIDCA)
-
+	if err != nil {
+		return nil, err
+	}
 	if keySet != nil {
 		builder.CACerts, err = keySet.ToCertificateBytes()
 		if err != nil {
