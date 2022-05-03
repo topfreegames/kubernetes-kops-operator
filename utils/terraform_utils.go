@@ -17,7 +17,7 @@ func ApplyTerraform(ctx context.Context, workingDir string) error {
 
 	installer := &releases.ExactVersion{
 		Product: product.Terraform,
-		Version: version.Must(version.NewVersion("0.15.0")),
+		Version: version.Must(version.NewVersion("1.1.7")),
 	}
 
 	execPath, err := installer.Install(ctx)
