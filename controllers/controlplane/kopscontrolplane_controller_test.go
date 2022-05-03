@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	"strings"
 	"testing"
 	"time"
+
+	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -311,9 +312,10 @@ func TestAddSSHCredential(t *testing.T) {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(sshCredentialStore).NotTo(BeNil())
 
-				sshCredential, err := sshCredentialStore.FindSSHPublicKeys("admin")
+				var sshCredentials []*kopsapi.SSHCredential
+				sshCredentials, err = sshCredentialStore.FindSSHPublicKeys()
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(sshCredential).NotTo(BeNil())
+				g.Expect(sshCredentials).NotTo(BeNil())
 			} else {
 				g.Expect(err).To(HaveOccurred())
 			}
@@ -368,12 +370,12 @@ func TestUpdateKopsState(t *testing.T) {
 
 			reconciler := &KopsControlPlaneReconciler{
 				log: ctrl.LoggerFrom(ctx),
-				GetClusterStatusFactory: func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
+				GetClusterStatusFactory: func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
 					return nil, nil
 				},
 			}
 
-			err := reconciler.updateKopsState(ctx, fakeKopsClientset, bareKopsCluster, dummySSHPublicKey)
+			err := reconciler.updateKopsState(ctx, fakeKopsClientset, bareKopsCluster, dummySSHPublicKey, nil)
 			if !tc["expectedError"].(bool) {
 				g.Expect(err).NotTo(HaveOccurred())
 				cluster, err := fakeKopsClientset.GetCluster(ctx, bareKopsCluster.Name)
@@ -494,7 +496,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				ApplyTerraformFactory: func(ctx context.Context, terraformDir string) error {
 					return nil
 				},
-				GetClusterStatusFactory: func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
+				GetClusterStatusFactory: func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
 					return nil, nil
 				},
 				ValidateKopsClusterFactory: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
@@ -556,7 +558,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 		{
 			"description":             "should mark false for condition KopsControlPlaneStateReadyCondition",
 			"expectedReconcilerError": true,
-			"expectedErrorGetClusterStatusFactory": func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
+			"expectedErrorGetClusterStatusFactory": func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
 				return nil, errors.New("")
 			},
 			"conditionsToAssert": []*clusterv1.Condition{
@@ -687,11 +689,11 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			g.Expect(ig).NotTo(BeNil())
 			g.Expect(err).NotTo(HaveOccurred())
 
-			var getClusterStatus func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error)
+			var getClusterStatus func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
 			if _, ok := tc["expectedErrorGetClusterStatusFactory"]; ok {
-				getClusterStatus = tc["expectedErrorGetClusterStatusFactory"].(func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error))
+				getClusterStatus = tc["expectedErrorGetClusterStatusFactory"].(func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error))
 			} else {
-				getClusterStatus = func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
+				getClusterStatus = func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
 					return nil, nil
 				}
 			}
@@ -1187,6 +1189,20 @@ func createFakeKopsKeyPair(keyStore fi.CAStore) error {
 
 	cert, _ := pki.ParsePEMCertificate([]byte(certData))
 	key, _ := pki.ParsePEMPrivateKey([]byte(privatekeyData))
-	err := keyStore.StoreKeypair(fi.CertificateIDCA, cert, key)
+	keyset := &fi.Keyset{
+		Items: map[string]*fi.KeysetItem{
+			"1": {
+				Id:          "1",
+				Certificate: cert,
+				PrivateKey:  key,
+			},
+		},
+		Primary: &fi.KeysetItem{
+			Id:          "1",
+			Certificate: cert,
+			PrivateKey:  key,
+		},
+	}
+	err := keyStore.StoreKeyset(fi.CertificateIDCA, keyset)
 	return err
 }

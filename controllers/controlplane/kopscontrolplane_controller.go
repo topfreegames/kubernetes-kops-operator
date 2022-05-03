@@ -41,7 +41,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/kops/pkg/client/simple"
-	"k8s.io/kops/pkg/commands"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -68,7 +67,7 @@ type KopsControlPlaneReconciler struct {
 	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error)
 	ApplyTerraformFactory        func(ctx context.Context, terraformDir string) error
 	ValidateKopsClusterFactory   func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
-	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error)
+	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
 }
 
 func ApplyTerraform(ctx context.Context, terraformDir string) error {
@@ -79,9 +78,8 @@ func ApplyTerraform(ctx context.Context, terraformDir string) error {
 	return nil
 }
 
-func GetClusterStatus(kopsCluster *kopsapi.Cluster) (*kopsapi.ClusterStatus, error) {
-	statusDiscovery := &commands.CloudDiscoveryStatusStore{}
-	status, err := statusDiscovery.FindClusterStatus(kopsCluster)
+func GetClusterStatus(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
+	status, err := cloud.FindClusterStatus(kopsCluster)
 	if err != nil {
 		return nil, err
 	}
@@ -121,11 +119,11 @@ func PrepareCloudResources(kopsClientset simple.Clientset, ctx context.Context, 
 }
 
 // updateKopsState creates or updates the kops state in the remote storage
-func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, SSHPublicKey string) error {
+func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, SSHPublicKey string, cloud fi.Cloud) error {
 	log := ctrl.LoggerFrom(ctx)
 	oldCluster, _ := kopsClientset.GetCluster(ctx, kopsCluster.Name)
 	if oldCluster != nil {
-		status, err := r.GetClusterStatusFactory(oldCluster)
+		status, err := r.GetClusterStatusFactory(oldCluster, cloud)
 		if err != nil {
 			return err
 		}
@@ -160,7 +158,7 @@ func PopulateClusterSpec(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clie
 		return nil, err
 	}
 
-	assetBuilder := assets.NewAssetBuilder(kopsCluster, "")
+	assetBuilder := assets.NewAssetBuilder(kopsCluster, true)
 	fullCluster, err := cloudup.PopulateClusterSpec(kopsClientset, kopsCluster, cloud, assetBuilder)
 	if err != nil {
 		return nil, err
@@ -182,7 +180,7 @@ func addSSHCredential(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clients
 		return err
 	}
 	sshKeyArr := []byte(sshCredential.Spec.PublicKey)
-	err = sshCredentialStore.AddSSHPublicKey("admin", sshKeyArr)
+	err = sshCredentialStore.AddSSHPublicKey(sshKeyArr)
 	if err != nil {
 		return err
 	}
@@ -377,7 +375,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	err = r.updateKopsState(ctx, r.kopsClientset, fullCluster, kopsControlPlane.Spec.SSHPublicKey)
+	err = r.updateKopsState(ctx, r.kopsClientset, fullCluster, kopsControlPlane.Spec.SSHPublicKey, cloud)
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed to manage kops state: %v", err))
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneStateReadyCondition, controlplanev1alpha1.KopsControlPlaneStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
