@@ -312,9 +312,10 @@ func TestAddSSHCredential(t *testing.T) {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(sshCredentialStore).NotTo(BeNil())
 
-				sshCredential, err := sshCredentialStore.FindSSHPublicKeys()
+				var sshCredentials []*kopsapi.SSHCredential
+				sshCredentials, err = sshCredentialStore.FindSSHPublicKeys()
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(sshCredential).NotTo(BeNil())
+				g.Expect(sshCredentials).NotTo(BeNil())
 			} else {
 				g.Expect(err).To(HaveOccurred())
 			}
