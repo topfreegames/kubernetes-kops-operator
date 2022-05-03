@@ -49,7 +49,7 @@ func CreateTerraformBackendFile(bucket, clusterName, backendPath string) error {
 	terraform {
 		backend "s3" {
 			bucket = "%s"
-			key = ".terraform/%s.tfstate"
+			key = "_terraform/%s.tfstate"
 			region = "us-east-1"
 		}
 	}`, bucket, clusterName)
