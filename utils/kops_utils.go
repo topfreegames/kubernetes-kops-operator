@@ -1,9 +1,13 @@
 package utils
 
 import (
+	"bytes"
+	"context"
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
+	"github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 
 	"github.com/go-logr/logr"
@@ -170,4 +174,90 @@ func GetKubeconfigFromKopsState(kopsCluster *kopsapi.Cluster, kopsClientset simp
 	}
 
 	return config, nil
+}
+
+func reconcileKopsSecretsDelete(secretStore fi.SecretStore, kopsControlPlane *v1alpha1.KopsControlPlane, k8sSecretData map[string][]byte) error {
+
+	if len(kopsControlPlane.Status.Secrets) == 0 {
+		return nil
+	}
+
+	actualKopsSecretNames := make([]string, len(kopsControlPlane.Status.Secrets))
+
+	copy(actualKopsSecretNames, kopsControlPlane.Status.Secrets)
+
+	actualKopsSecretNamesMap := make(map[string]struct{}, len(k8sSecretData))
+	for kopsSecretKey := range k8sSecretData {
+		actualKopsSecretNamesMap[kopsSecretKey] = struct{}{}
+	}
+	for _, kopsSecretKey := range actualKopsSecretNames {
+		if _, found := actualKopsSecretNamesMap[kopsSecretKey]; !found {
+			err := secretStore.DeleteSecret(kopsSecretKey)
+			if err != nil {
+				return err
+			}
+			for index, kopsSecretNameStatus := range kopsControlPlane.Status.Secrets {
+				if kopsSecretNameStatus == kopsSecretKey {
+					kopsControlPlane.Status.Secrets = append(kopsControlPlane.Status.Secrets[:index], kopsControlPlane.Status.Secrets[index+1:]...)
+					break
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func reconcileKopsSecretsNormal(secretStore fi.SecretStore, kopsControlPlane *v1alpha1.KopsControlPlane, k8sSecretData map[string][]byte) error {
+	for kopsSecretName, data := range k8sSecretData {
+
+		kopsSecret := &fi.Secret{
+			Data: data,
+		}
+
+		stateKopsSecret, created, err := secretStore.GetOrCreateSecret(kopsSecretName, kopsSecret)
+		if err != nil {
+			return err
+		}
+		if !created && !bytes.Equal(stateKopsSecret.Data, kopsSecret.Data) {
+			_, err := secretStore.ReplaceSecret(kopsSecretName, kopsSecret)
+			if err != nil {
+				return err
+			}
+		}
+
+		if !isKopsSecretInStatus(kopsSecretName, kopsControlPlane.Status.Secrets) {
+			kopsControlPlane.Status.Secrets = append(kopsControlPlane.Status.Secrets, kopsSecretName)
+		}
+
+	}
+	return nil
+}
+
+func ReconcileKopsSecrets(ctx context.Context, k8sClient client.Client, secretStore fi.SecretStore, kopsControlPlane *v1alpha1.KopsControlPlane, k8sSecretKey client.ObjectKey) error {
+
+	k8sSecret := &corev1.Secret{}
+	if err := k8sClient.Get(ctx, k8sSecretKey, k8sSecret); err != nil {
+		return err
+	}
+
+	err := reconcileKopsSecretsDelete(secretStore, kopsControlPlane, k8sSecret.Data)
+	if err != nil {
+		return nil
+	}
+
+	err = reconcileKopsSecretsNormal(secretStore, kopsControlPlane, k8sSecret.Data)
+	if err != nil {
+		return nil
+	}
+
+	return nil
+}
+
+func isKopsSecretInStatus(kopsSecretName string, kopsSecretStatus []string) bool {
+	for _, statusKopsSecretName := range kopsSecretStatus {
+		if kopsSecretName == statusKopsSecretName {
+			return true
+		}
+	}
+	return false
 }
