@@ -86,7 +86,7 @@ func GetClusterStatus(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.Cl
 	return status, nil
 }
 
-// prepareCloudResources renders the terraform files and effectively apply them in the cloud provider
+// PrepareCloudResources renders the terraform files and effectively apply them in the cloud provider
 func PrepareCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error) {
 	s3Bucket, err := utils.GetBucketName(configBase)
 	if err != nil {
@@ -357,12 +357,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
-	err = r.reconcileKubeconfig(ctx, kopsCluster, owner)
-	if err != nil {
-		r.log.Error(rerr, "failed to reconcile kubeconfig")
-		return ctrl.Result{}, err
-	}
-
 	cloud, err := r.BuildCloudFactory(kopsCluster)
 	if err != nil {
 		r.log.Error(rerr, "failed to build cloud")
@@ -409,6 +403,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if ig.Spec.Role == "Master" {
 			masterIGs.Items = append(masterIGs.Items, ig)
 		}
+	}
+
+	err = r.reconcileKubeconfig(ctx, kopsCluster, owner)
+	if err != nil {
+		r.log.Error(rerr, "failed to reconcile kubeconfig")
+		return ctrl.Result{}, err
 	}
 
 	validation, err := r.ValidateKopsClusterFactory(r.kopsClientset, kopsCluster, masterIGs)
