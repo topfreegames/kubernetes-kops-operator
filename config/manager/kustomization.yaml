@@ -11,6 +11,9 @@ configMapGenerator:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 images:
+- name: controller
+  newName: tfgco/kubernetes-kops-operator
+  newTag: latest
 - name: manager
   newName: tfgco/kubernetes-kops-operator
   newTag: latest

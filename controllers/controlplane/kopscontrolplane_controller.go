@@ -86,7 +86,7 @@ func GetClusterStatus(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.Cl
 	return status, nil
 }
 
-// prepareCloudResources renders the terraform files and effectively apply them in the cloud provider
+// PrepareCloudResources renders the terraform files and effectively apply them in the cloud provider
 func PrepareCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error) {
 	s3Bucket, err := utils.GetBucketName(configBase)
 	if err != nil {
@@ -357,12 +357,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
-	err = r.reconcileKubeconfig(ctx, kopsCluster, owner)
-	if err != nil {
-		r.log.Error(rerr, "failed to reconcile kubeconfig")
-		return ctrl.Result{}, err
-	}
-
 	cloud, err := r.BuildCloudFactory(kopsCluster)
 	if err != nil {
 		r.log.Error(rerr, "failed to build cloud")
@@ -382,6 +376,22 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneStateReadyCondition)
+
+	if kopsControlPlane.Spec.KopsSecret != nil {
+		secretStore, err := r.kopsClientset.SecretStore(kopsCluster)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
+
+		err = utils.ReconcileKopsSecrets(ctx, r.Client, secretStore, kopsControlPlane, client.ObjectKey{
+			Name:      kopsControlPlane.Spec.KopsSecret.Name,
+			Namespace: kopsControlPlane.Spec.KopsSecret.Namespace,
+		})
+		if err != nil {
+			conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneSecretsReadyCondition, controlplanev1alpha1.KopsControlPlaneSecretsReconciliationFailedReason, clusterv1.ConditionSeverityWarning, err.Error())
+		}
+		conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneSecretsReadyCondition)
+	}
 
 	terraformOutputDir, err := r.PrepareCloudResourcesFactory(r.kopsClientset, ctx, kopsCluster, fullCluster.Spec.ConfigBase, cloud)
 	if err != nil {
@@ -409,6 +419,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if ig.Spec.Role == "Master" {
 			masterIGs.Items = append(masterIGs.Items, ig)
 		}
+	}
+
+	err = r.reconcileKubeconfig(ctx, kopsCluster, owner)
+	if err != nil {
+		r.log.Error(rerr, "failed to reconcile kubeconfig")
+		return ctrl.Result{}, err
 	}
 
 	validation, err := r.ValidateKopsClusterFactory(r.kopsClientset, kopsCluster, masterIGs)

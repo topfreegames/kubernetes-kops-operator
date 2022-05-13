@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kops/pkg/apis/kops"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -25,6 +26,9 @@ import (
 const (
 	// KopsControlPlaneStateReadyCondition reports on the successful management of the Kops state.
 	KopsControlPlaneStateReadyCondition clusterv1.ConditionType = "KopsControlPlaneStateReady"
+
+	// KopsControlPlaneSecretsReadyCondition reports on the successful reconcile of the Kops Secrets
+	KopsControlPlaneSecretsReadyCondition clusterv1.ConditionType = "KopsControlPlaneSecretsReady"
 
 	// KopsterraformGenerationReadyCondition reports on the successful generation of Terraform files by Kops.
 	KopsTerraformGenerationReadyCondition clusterv1.ConditionType = "KopsTerraformGenerationReady"
@@ -41,6 +45,9 @@ const (
 	// KopsControlPlaneStateReconciliationFailedReason (Severity=Error) indicates that Kops state couldn't be created/updated.
 	KopsControlPlaneStateReconciliationFailedReason = "KopsControlPlaneStateReconciliationFailed"
 
+	// KopsControlPlaneSecretsReconciliationFailedReason (Severity=Warn) indicates that Kops Secrets couldn't be reconciliated.
+	KopsControlPlaneSecretsReconciliationFailedReason = "KopsControlPlaneSecretsReconciliationFailed"
+
 	// KopsTerraformGenerationReconciliationFailedReason (Severity=Error) indicates that Terraform files couldn't be generated.
 	KopsTerraformGenerationReconciliationFailedReason = "KopsTerraformGenerationReconciliationFailed"
 
@@ -54,6 +61,9 @@ type KopsControlPlaneSpec struct {
 	SSHPublicKey string `json:"SSHPublicKey"`
 	// KopsClusterSpec declare the desired Cluster Kops resource: https://kops.sigs.k8s.io/cluster_spec/
 	KopsClusterSpec kops.ClusterSpec `json:"kopsClusterSpec"`
+	// KopsSecret is a reference to the Kubernetes Secret that holds a list of Kops Secrets
+	// +optional
+	KopsSecret *corev1.ObjectReference `json:"kopsSecret,omitempty"`
 }
 
 // KopsControlPlaneStatus defines the observed state of KopsControlPlane
@@ -71,6 +81,9 @@ type KopsControlPlaneStatus struct {
 	// Conditions defines current service state of the KopsControlPlane.
 	// +optional
 	Conditions clusterv1.Conditions `json:"conditions,omitempty"`
+
+	// Secrets are the list of custom secrets created with the controller
+	Secrets []string `json:"secrets,omitempty"`
 }
 
 //+kubebuilder:object:root=true
