@@ -20,6 +20,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
@@ -226,9 +227,22 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return ctrl.Result{}, nil
 }
 
-// GetASGByName returns the existing ASG or nothing if it doesn't exist.
+func regionBySubnet(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (string, error) {
+	subnets := kopsMachinePool.Spec.KopsInstanceGroupSpec.Subnets
+	if len(subnets) == 0 {
+		return "", errors.New("machinepool with no subnets")
+	}
+	return subnets[0][:len(subnets[0])-1], nil
+}
+
+// GetASGByTag returns the existing ASG or nothing if it doesn't exist.
 func GetASGByTag(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error) {
-	awsClient, err := session.NewSession()
+	region, err := regionBySubnet(kopsMachinePool)
+	if err != nil {
+		return nil, err
+	}
+
+	awsClient, err := session.NewSession(&aws.Config{Region: &region})
 	if err != nil {
 		return nil, err
 	}

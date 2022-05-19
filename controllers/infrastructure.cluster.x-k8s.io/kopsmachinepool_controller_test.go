@@ -212,6 +212,38 @@ func TestUpdateInstanceGroup(t *testing.T) {
 	}
 }
 
+func TestGetRegionBySubnet(t *testing.T) {
+	var testCases = []struct {
+		description   string
+		expectedError bool
+		expectedRes   string
+		input         []string
+	}{
+		{"Should return error about no subnets found", true, "", []string{}},
+		{"Should return the region", false, "ap-northeast-1", []string{"ap-northeast-1b", "ap-northeast-1c", "ap-northeast-1d"}},
+		{"Should return the region", false, "us-west-1", []string{"us-west-1a"}},
+	}
+
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		kmp := &infrastructurev1alpha1.KopsMachinePool{}
+		kmp.Spec.KopsInstanceGroupSpec.Subnets = tc.input
+		region, err := regionBySubnet(kmp)
+
+		t.Run(tc.description, func(t *testing.T) {
+			if tc.expectedError {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(tc.expectedRes).To(Equal(""))
+			} else {
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(tc.expectedRes).To(Equal(region))
+			}
+		})
+	}
+}
+
 func TestKopsMachinePoolReconciler(t *testing.T) {
 	testCases := []map[string]interface{}{
 		{
