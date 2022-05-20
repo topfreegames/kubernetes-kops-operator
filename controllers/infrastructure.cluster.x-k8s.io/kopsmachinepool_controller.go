@@ -19,8 +19,8 @@ package infrastructureclusterxk8sio
 import (
 	"context"
 	"fmt"
-
 	"github.com/aws/aws-sdk-go/aws"
+
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
@@ -54,7 +54,7 @@ type KopsMachinePoolReconciler struct {
 	kopsClientset              simple.Clientset
 	Recorder                   record.EventRecorder
 	ValidateKopsClusterFactory func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
-	GetASGByTagFactory         func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error)
+	GetASGByTagFactory         func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsClient *session.Session) (*autoscaling.Group, error)
 }
 
 // getKopsControlPlaneByName returns kopsControlPLane by its name
@@ -190,7 +190,17 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 	conditions.MarkTrue(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition)
 
-	asg, err := r.GetASGByTagFactory(kopsMachinePool)
+	region, err := regionBySubnet(kopsControlPlane)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	awsClient, err := session.NewSession(&aws.Config{Region: &region})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	asg, err := r.GetASGByTagFactory(kopsMachinePool, awsClient)
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed retriving ASG: %v", err))
 		return ctrl.Result{}, err
@@ -227,25 +237,19 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	return ctrl.Result{}, nil
 }
 
-func regionBySubnet(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (string, error) {
-	subnets := kopsMachinePool.Spec.KopsInstanceGroupSpec.Subnets
+func regionBySubnet(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) (string, error) {
+	subnets := kopsControlPlane.Spec.KopsClusterSpec.Subnets
 	if len(subnets) == 0 {
-		return "", errors.New("machinepool with no subnets")
+		return "", errors.New("kopsControlPlane with no subnets")
 	}
-	return subnets[0][:len(subnets[0])-1], nil
+
+	zone := subnets[0].Zone
+
+	return zone[:len(zone)-1], nil
 }
 
 // GetASGByTag returns the existing ASG or nothing if it doesn't exist.
-func GetASGByTag(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error) {
-	region, err := regionBySubnet(kopsMachinePool)
-	if err != nil {
-		return nil, err
-	}
-
-	awsClient, err := session.NewSession(&aws.Config{Region: &region})
-	if err != nil {
-		return nil, err
-	}
+func GetASGByTag(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsClient *session.Session) (*autoscaling.Group, error) {
 	svc := autoscaling.New(awsClient)
 
 	clusterFilterKey := "tag:KubernetesCluster"
