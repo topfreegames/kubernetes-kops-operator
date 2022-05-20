@@ -6977,7 +6977,7 @@ spec:
               name: aws-credentials
         - name: AWS_REGION
           value: us-east-1
-        image: tfgco/kubernetes-kops-operator:v0.0.5-alpha
+        image: tfgco/kubernetes-kops-operator:v0.0.6-alpha
         livenessProbe:
           httpGet:
             path: /healthz
