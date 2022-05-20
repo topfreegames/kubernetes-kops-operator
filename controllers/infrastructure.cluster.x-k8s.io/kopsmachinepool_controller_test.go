@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/autoscaling"
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"
@@ -217,20 +218,43 @@ func TestGetRegionBySubnet(t *testing.T) {
 		description   string
 		expectedError bool
 		expectedRes   string
-		input         []string
+		input         []kopsapi.ClusterSubnetSpec
 	}{
-		{"Should return error about no subnets found", true, "", []string{}},
-		{"Should return the region", false, "ap-northeast-1", []string{"ap-northeast-1b", "ap-northeast-1c", "ap-northeast-1d"}},
-		{"Should return the region", false, "us-west-1", []string{"us-west-1a"}},
+		{"Should return error about no subnets found", true, "", []kopsapi.ClusterSubnetSpec{}},
+		{"Should return the region", false, "ap-northeast-1",
+			[]kopsapi.ClusterSubnetSpec{
+				{
+					Name: "ap-northeast-1d",
+					Type: "Private",
+					Zone: "ap-northeast-1d",
+					CIDR: "172.27.48.0/24",
+				},
+				{
+					Name: "ap-northeast-1b",
+					Type: "Private",
+					Zone: "ap-northeast-1b",
+					CIDR: "172.27.49.0/24",
+				},
+			}},
+		{"Should return the region", false, "us-west-1",
+			[]kopsapi.ClusterSubnetSpec{
+				{
+					Name: "us-west-1a",
+					Type: "Private",
+					Zone: "us-west-1a",
+					CIDR: "172.27.53.0/24",
+				},
+			},
+		},
 	}
 
 	RegisterFailHandler(Fail)
 	g := NewWithT(t)
 
 	for _, tc := range testCases {
-		kmp := &infrastructurev1alpha1.KopsMachinePool{}
-		kmp.Spec.KopsInstanceGroupSpec.Subnets = tc.input
-		region, err := regionBySubnet(kmp)
+		kcp := &controlplanev1alpha1.KopsControlPlane{}
+		kcp.Spec.KopsClusterSpec.Subnets = tc.input
+		region, err := regionBySubnet(kcp)
 
 		t.Run(tc.description, func(t *testing.T) {
 			if tc.expectedError {
@@ -253,7 +277,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 		},
 		{
 			"description": "Should fail if kopsMachinePool don't have clusterName defined",
-			"kopsMachinePoolFunction": func(kmp *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
+			"kopsMachinePoolFunction": func(kmp *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) *infrastructurev1alpha1.KopsMachinePool {
 				kmp.Spec.ClusterName = ""
 				return kmp
 			},
@@ -262,7 +286,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 		{
 			"description":             "Should fail if couldn't retrieve ASG",
 			"kopsMachinePoolFunction": nil,
-			"getASGByTagFunction": func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error) {
+			"getASGByTagFunction": func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
 				return nil, errors.New("fail to retrieve ASG")
 			},
 			"expectedError": true,
@@ -294,17 +318,17 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			cluster := newCluster("test-cluster", "test-kops-control-plane", "default")
 			kopsMachinePool := newKopsMachinePool("test-cluster-test-kops-machine-pool", "test-cluster", "default")
 			if tc["kopsMachinePoolFunction"] != nil {
-				kopsMachinePoolFunction := tc["kopsMachinePoolFunction"].(func(kops *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool)
-				kopsMachinePool = kopsMachinePoolFunction(kopsMachinePool)
+				kopsMachinePoolFunction := tc["kopsMachinePoolFunction"].(func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) *infrastructurev1alpha1.KopsMachinePool)
+				kopsMachinePool = kopsMachinePoolFunction(kopsMachinePool, nil)
 			}
 			kopsControlPlane := newKopsControlPlane("test-kops-control-plane", "default")
 			fakeClient := fake.NewClientBuilder().WithObjects(kopsMachinePool, kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
 
-			var getASGByTag func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error)
+			var getASGByTag func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error)
 			if _, ok := tc["getASGByTagFunction"]; ok {
-				getASGByTag = tc["getASGByTagFunction"].(func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error))
+				getASGByTag = tc["getASGByTagFunction"].(func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error))
 			} else {
-				getASGByTag = func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error) {
+				getASGByTag = func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
 					return &autoscaling.Group{
 						Instances: []*autoscaling.Instance{
 							{
@@ -455,7 +479,7 @@ func TestMachinePoolStatus(t *testing.T) {
 				Client:                     fakeClient,
 				Recorder:                   recorder,
 				ValidateKopsClusterFactory: validateKopsCluster,
-				GetASGByTagFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (*autoscaling.Group, error) {
+				GetASGByTagFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
 					return &autoscaling.Group{
 						Instances: []*autoscaling.Instance{
 							{
@@ -558,6 +582,12 @@ func newKopsControlPlane(name, namespace string) *controlplanev1alpha1.KopsContr
 		Spec: controlplanev1alpha1.KopsControlPlaneSpec{
 			KopsClusterSpec: kopsapi.ClusterSpec{
 				ConfigBase: fmt.Sprintf("memfs://tests/%s.test.k8s.cluster", name),
+				Subnets: []kopsapi.ClusterSubnetSpec{
+					{
+						Name: "test-subnet-a",
+						Zone: "us-east-1a",
+					},
+				},
 			},
 		},
 	}
