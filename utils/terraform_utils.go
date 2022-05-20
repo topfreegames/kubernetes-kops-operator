@@ -6,26 +6,13 @@ import (
 	"os"
 	"path"
 
-	"github.com/hashicorp/go-version"
-	"github.com/hashicorp/hc-install/product"
-	"github.com/hashicorp/hc-install/releases"
 	"github.com/hashicorp/terraform-exec/tfexec"
 )
 
 // ApplyTerraform just applies the already created terraform files
-func ApplyTerraform(ctx context.Context, workingDir string) error {
+func ApplyTerraform(ctx context.Context, workingDir, terraformExecPath string) error {
 
-	installer := &releases.ExactVersion{
-		Product: product.Terraform,
-		Version: version.Must(version.NewVersion("1.1.7")),
-	}
-
-	execPath, err := installer.Install(ctx)
-	if err != nil {
-		return err
-	}
-
-	tf, err := tfexec.NewTerraform(workingDir, execPath)
+	tf, err := tfexec.NewTerraform(workingDir, terraformExecPath)
 	if err != nil {
 		return err
 	}

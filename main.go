@@ -18,6 +18,10 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"github.com/hashicorp/go-version"
+	"github.com/hashicorp/hc-install/product"
+	"github.com/hashicorp/hc-install/releases"
 	"os"
 	"time"
 
@@ -91,10 +95,41 @@ func main() {
 	// Setup the context that's going to be used in controllers and for the manager.
 	ctx := ctrl.SetupSignalHandler()
 
+	const tfVersion = "1.1.7"
+
+	tfPath := fmt.Sprintf("/tmp/%s_%s", product.Terraform.Name, tfVersion)
+
+	_, err = os.Stat(tfPath)
+	if os.IsNotExist(err) {
+		err = os.Mkdir(tfPath, os.ModePerm)
+		if err != nil {
+			setupLog.Error(err, "unable to create terraform directory")
+			os.Exit(1)
+		}
+	}
+
+	if err != nil {
+		setupLog.Error(err, "unable to create terraform directory")
+		os.Exit(1)
+	}
+
+	installer := &releases.ExactVersion{
+		Product:    product.Terraform,
+		Version:    version.Must(version.NewVersion(tfVersion)),
+		InstallDir: tfPath,
+	}
+
+	tfExecPath, err := installer.Install(ctx)
+	if err != nil {
+		setupLog.Error(err, "unable to install terraform")
+		os.Exit(1)
+	}
+
 	if err = (&controlplane.KopsControlPlaneReconciler{
 		Client:                       mgr.GetClient(),
 		Scheme:                       mgr.GetScheme(),
 		Recorder:                     mgr.GetEventRecorderFor("kopscontrolplane-controller"),
+		TfExecPath:                   tfExecPath,
 		BuildCloudFactory:            utils.BuildCloud,
 		PopulateClusterSpecFactory:   controlplane.PopulateClusterSpec,
 		PrepareCloudResourcesFactory: controlplane.PrepareCloudResources,

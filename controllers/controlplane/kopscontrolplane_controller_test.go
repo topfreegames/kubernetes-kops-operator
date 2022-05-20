@@ -493,7 +493,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				PrepareCloudResourcesFactory: func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error) {
 					return "", nil
 				},
-				ApplyTerraformFactory: func(ctx context.Context, terraformDir string) error {
+				ApplyTerraformFactory: func(ctx context.Context, terraformDir, tfExecPath string) error {
 					return nil
 				},
 				GetClusterStatusFactory: func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
@@ -578,7 +578,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 		{
 			"description":             "should mark false for condition TerraformApplyReadyCondition",
 			"expectedReconcilerError": true,
-			"expectedErrorApplyTerraform": func(ctx context.Context, terraformDir string) error {
+			"expectedErrorApplyTerraform": func(ctx context.Context, terraformDir, tfExecPath string) error {
 				return errors.New("")
 			},
 			"conditionsToAssert": []*clusterv1.Condition{
@@ -707,11 +707,11 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				}
 			}
 
-			var applyTerraform func(ctx context.Context, terraformDir string) error
+			var applyTerraform func(ctx context.Context, terraformDir, tfExecPath string) error
 			if _, ok := tc["expectedErrorApplyTerraform"]; ok {
-				applyTerraform = tc["expectedErrorApplyTerraform"].(func(ctx context.Context, terraformDir string) error)
+				applyTerraform = tc["expectedErrorApplyTerraform"].(func(ctx context.Context, terraformDir, tfExecPath string) error)
 			} else {
-				applyTerraform = func(ctx context.Context, terraformDir string) error {
+				applyTerraform = func(ctx context.Context, terraformDir, tfExecPath string) error {
 					return nil
 				}
 			}

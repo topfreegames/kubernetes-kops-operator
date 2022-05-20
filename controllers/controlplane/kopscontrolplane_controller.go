@@ -62,16 +62,17 @@ type KopsControlPlaneReconciler struct {
 	kopsClientset                simple.Clientset
 	log                          logr.Logger
 	Recorder                     record.EventRecorder
+	TfExecPath                   string
 	BuildCloudFactory            func(*kopsapi.Cluster) (fi.Cloud, error)
 	PopulateClusterSpecFactory   func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
 	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error)
-	ApplyTerraformFactory        func(ctx context.Context, terraformDir string) error
+	ApplyTerraformFactory        func(ctx context.Context, terraformDir, tfExecPath string) error
 	ValidateKopsClusterFactory   func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
 }
 
-func ApplyTerraform(ctx context.Context, terraformDir string) error {
-	err := utils.ApplyTerraform(ctx, terraformDir)
+func ApplyTerraform(ctx context.Context, terraformDir, tfExecPath string) error {
+	err := utils.ApplyTerraform(ctx, terraformDir, tfExecPath)
 	if err != nil {
 		return err
 	}
@@ -401,7 +402,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition)
 
-	err = r.ApplyTerraformFactory(ctx, terraformOutputDir)
+	err = r.ApplyTerraformFactory(ctx, terraformOutputDir, r.TfExecPath)
 	if err != nil {
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition, controlplanev1alpha1.TerraformApplyReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		r.log.Error(err, fmt.Sprintf("failed to apply terraform: %v", err))
