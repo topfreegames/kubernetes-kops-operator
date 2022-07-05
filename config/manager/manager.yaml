@@ -32,16 +32,30 @@ spec:
         image: manager:latest
         name: manager
         env:
+        - name: SPOTINST_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: spotinst-credentials
+              key: token
+              optional: true
+        - name: SPOTINST_ACCOUNT
+          valueFrom:
+            secretKeyRef:
+              name: spotinst-credentials
+              key: account
+              optional: true
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
               name: aws-credentials
               key: access-key-id
+              optional: false
         - name: AWS_SECRET_ACCESS_KEY
           valueFrom:
             secretKeyRef:
               name: aws-credentials
               key: secret-access-key
+              optional: false
         - name: AWS_REGION
           value: us-east-1
         securityContext:

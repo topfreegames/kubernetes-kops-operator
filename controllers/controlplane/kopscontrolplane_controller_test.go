@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"k8s.io/kops/pkg/featureflag"
 	"strings"
 	"testing"
 	"time"
@@ -34,6 +35,68 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+func TestParseSpotinstFeatureflags(t *testing.T) {
+	testCases := []struct {
+		description    string
+		input          *controlplanev1alpha1.KopsControlPlane
+		expectedResult map[string]bool
+	}{
+		{
+			description: "should enable Spotinst, SpotinstOcean and SpotinstHybrid",
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					SpotInst: controlplanev1alpha1.SpotInstSpec{
+						Enabled:      true,
+						FeatureFlags: "+SpotinstOcean,SpotinstHybrid",
+					},
+				},
+			},
+			expectedResult: map[string]bool{
+				"Spotinst":       true,
+				"SpotinstOcean":  true,
+				"SpotinstHybrid": true,
+			},
+		},
+		{
+			description: "should enable Spotinst",
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					SpotInst: controlplanev1alpha1.SpotInstSpec{
+						Enabled: true,
+					},
+				},
+			},
+			expectedResult: map[string]bool{
+				"Spotinst":       true,
+				"SpotinstOcean":  false,
+				"SpotinstHybrid": false,
+			},
+		},
+
+		{
+			description: "should not enable any feature flag",
+			input:       newKopsControlPlane("testKopsControlPlane", metav1.NamespaceDefault),
+			expectedResult: map[string]bool{
+				"Spotinst":       false,
+				"SpotinstOcean":  false,
+				"SpotinstHybrid": false,
+			},
+		},
+	}
+
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			parseSpotinstFeatureflags(tc.input)
+			g.Expect(featureflag.Spotinst.Enabled()).To(BeEquivalentTo(tc.expectedResult["Spotinst"]))
+			g.Expect(featureflag.SpotinstOcean.Enabled()).To(BeEquivalentTo(tc.expectedResult["SpotinstOcean"]))
+			g.Expect(featureflag.SpotinstHybrid.Enabled()).To(BeEquivalentTo(tc.expectedResult["SpotinstHybrid"]))
+		})
+	}
+}
 
 func TestEvaluateKopsValidationResult(t *testing.T) {
 	testCases := []map[string]interface{}{
@@ -490,8 +553,8 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				PopulateClusterSpecFactory: func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error) {
 					return kopsCluster, nil
 				},
-				PrepareCloudResourcesFactory: func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error) {
-					return "", nil
+				PrepareCloudResourcesFactory: func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error {
+					return nil
 				},
 				ApplyTerraformFactory: func(ctx context.Context, terraformDir, tfExecPath string) error {
 					return nil
@@ -568,8 +631,8 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 		{
 			"description":             "should mark false for condition KopsTerraformGenerationReadyCondition",
 			"expectedReconcilerError": true,
-			"expectedErrorPrepareCloudResources": func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error) {
-				return "", errors.New("")
+			"expectedErrorPrepareCloudResources": func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error {
+				return errors.New("")
 			},
 			"conditionsToAssert": []*clusterv1.Condition{
 				conditions.FalseCondition(controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
@@ -698,12 +761,12 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				}
 			}
 
-			var prepareCloudResources func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error)
+			var prepareCloudResources func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error
 			if _, ok := tc["expectedErrorPrepareCloudResources"]; ok {
-				prepareCloudResources = tc["expectedErrorPrepareCloudResources"].(func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error))
+				prepareCloudResources = tc["expectedErrorPrepareCloudResources"].(func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error)
 			} else {
-				prepareCloudResources = func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error) {
-					return "", nil
+				prepareCloudResources = func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error {
+					return nil
 				}
 			}
 

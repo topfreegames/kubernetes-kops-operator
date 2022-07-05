@@ -55,6 +55,13 @@ const (
 	TerraformApplyReconciliationFailedReason = "TerraformApplyReconciliationFailed"
 )
 
+type SpotInstSpec struct {
+	// Enabled specifies whether Spot.io should be enabled
+	Enabled bool `json:"enabled"`
+	// Feature flags used by Kops to enable Spot features
+	FeatureFlags string `json:"featureFlags"`
+}
+
 // KopsControlPlaneSpec defines the desired state of KopsControlPlane
 type KopsControlPlaneSpec struct {
 	// SSHPublicKey is the SSH public key added in the nodes; required on AWS
@@ -64,6 +71,9 @@ type KopsControlPlaneSpec struct {
 	// KopsSecret is a reference to the Kubernetes Secret that holds a list of Kops Secrets
 	// +optional
 	KopsSecret *corev1.ObjectReference `json:"kopsSecret,omitempty"`
+	// SpotInst enables Spot and define their feature flags
+	// +optional
+	SpotInst SpotInstSpec `json:"spotInst,omitempty"`
 }
 
 // KopsControlPlaneStatus defines the observed state of KopsControlPlane

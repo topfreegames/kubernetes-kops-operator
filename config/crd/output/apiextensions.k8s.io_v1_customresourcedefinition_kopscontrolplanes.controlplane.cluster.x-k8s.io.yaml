@@ -5489,6 +5489,19 @@ spec:
                     description: 'UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids'
                     type: string
                 type: object
+              spotInst:
+                description: SpotInst enables Spot and define their feature flags
+                properties:
+                  enabled:
+                    description: Enabled specifies whether Spot.io should be enabled
+                    type: boolean
+                  featureFlags:
+                    description: Feature flags used by Kops to enable Spot features
+                    type: string
+                required:
+                - enabled
+                - featureFlags
+                type: object
             required:
             - SSHPublicKey
             - kopsClusterSpec
