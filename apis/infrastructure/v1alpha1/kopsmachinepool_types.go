@@ -49,6 +49,9 @@ type KopsMachinePoolSpec struct {
 
 	// KopsInstanceGroupSpec declare a desired InstanceGroup Kops resource: https://kops.sigs.k8s.io/instance_groups/
 	KopsInstanceGroupSpec kops.InstanceGroupSpec `json:"kopsInstanceGroupSpec"`
+
+	// Spot.io metadata labels: https://kops.sigs.k8s.io/getting_started/spot-ocean/
+	SpotInstOptions map[string]string `json:"spotInstOptions,omitempty"`
 }
 
 // KopsMachinePoolStatus defines the observed state of KopsMachinePool

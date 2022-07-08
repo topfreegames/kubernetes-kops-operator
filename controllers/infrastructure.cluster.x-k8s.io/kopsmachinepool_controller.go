@@ -19,6 +19,7 @@ package infrastructureclusterxk8sio
 import (
 	"context"
 	"fmt"
+
 	"github.com/aws/aws-sdk-go/aws"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -57,7 +58,7 @@ type KopsMachinePoolReconciler struct {
 	GetASGByTagFactory         func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsClient *session.Session) (*autoscaling.Group, error)
 }
 
-// getKopsControlPlaneByName returns kopsControlPLane by its name
+// getKopsControlPlaneByName returns kopsControlPlane by its name
 func (r *KopsMachinePoolReconciler) getKopsControlPlaneByName(ctx context.Context, namespace, name string) (*controlplanev1alpha1.KopsControlPlane, error) {
 	kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{}
 	key := client.ObjectKey{
@@ -153,6 +154,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      igName,
 			Namespace: kopsMachinePool.ObjectMeta.Namespace,
+			Labels:    kopsMachinePool.Spec.SpotInstOptions,
 		},
 		Spec: kopsMachinePool.Spec.KopsInstanceGroupSpec,
 	}
@@ -170,12 +172,14 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		}
 	}
 
-	kopsClientset, err := utils.GetKopsClientset(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
+	if r.kopsClientset == nil {
+		kopsClientset, err := utils.GetKopsClientset(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 
-	r.kopsClientset = kopsClientset
+		r.kopsClientset = kopsClientset
+	}
 
 	kopsCluster := &kopsapi.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -190,29 +194,33 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 	conditions.MarkTrue(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition)
 
-	region, err := regionBySubnet(kopsControlPlane)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
+	if len(kopsMachinePool.Spec.SpotInstOptions) == 0 {
 
-	awsClient, err := session.NewSession(&aws.Config{Region: &region})
-	if err != nil {
-		return ctrl.Result{}, err
-	}
+		region, err := regionBySubnet(kopsControlPlane)
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 
-	asg, err := r.GetASGByTagFactory(kopsMachinePool, awsClient)
-	if err != nil {
-		r.log.Error(err, fmt.Sprintf("failed retriving ASG: %v", err))
-		return ctrl.Result{}, err
-	}
+		awsClient, err := session.NewSession(&aws.Config{Region: &region})
+		if err != nil {
+			return ctrl.Result{}, err
+		}
 
-	providerIDList := make([]string, len(asg.Instances))
-	for i, instance := range asg.Instances {
-		providerIDList[i] = fmt.Sprintf("aws:///%s/%s", *instance.AvailabilityZone, *instance.InstanceId)
-	}
+		asg, err := r.GetASGByTagFactory(kopsMachinePool, awsClient)
+		if err != nil {
+			r.log.Error(err, fmt.Sprintf("failed retriving ASG: %v", err))
+			return ctrl.Result{}, err
+		}
 
-	kopsMachinePool.Spec.ProviderIDList = providerIDList
-	kopsMachinePool.Status.Replicas = int32(len(providerIDList))
+		providerIDList := make([]string, len(asg.Instances))
+		for i, instance := range asg.Instances {
+			providerIDList[i] = fmt.Sprintf("aws:///%s/%s", *instance.AvailabilityZone, *instance.InstanceId)
+		}
+
+		kopsMachinePool.Spec.ProviderIDList = providerIDList
+		kopsMachinePool.Status.Replicas = int32(len(providerIDList))
+
+	}
 
 	igList := &kopsapi.InstanceGroupList{
 		Items: []kopsapi.InstanceGroup{

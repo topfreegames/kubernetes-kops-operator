@@ -316,7 +316,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 		t.Run(tc["description"].(string), func(t *testing.T) {
 			vfs.Context.ResetMemfsContext(true)
 			cluster := newCluster("test-cluster", "test-kops-control-plane", "default")
-			kopsMachinePool := newKopsMachinePool("test-cluster-test-kops-machine-pool", "test-cluster", "default")
+			kopsMachinePool := newKopsMachinePool("test-kops-machine-pool", "test-cluster", "default")
 			if tc["kopsMachinePoolFunction"] != nil {
 				kopsMachinePoolFunction := tc["kopsMachinePoolFunction"].(func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) *infrastructurev1alpha1.KopsMachinePool)
 				kopsMachinePool = kopsMachinePoolFunction(kopsMachinePool, nil)
@@ -352,7 +352,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: client.ObjectKey{
 					Namespace: "default",
-					Name:      "test-cluster-test-kops-machine-pool",
+					Name:      "test-cluster.k8s.cluster-test-kops-machine-pool",
 				},
 			})
 			if !tc["expectedError"].(bool) {
@@ -367,6 +367,149 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(kmp.Spec.ProviderIDList).To(Equal(tc["providerIDList"].([]string)))
 			}
+		})
+	}
+}
+
+func TestKopsMachinePoolReconcilerSpotinst(t *testing.T) {
+	testCases := []struct {
+		description string
+		spotOptions map[string]string
+		kopsIG      *kopsapi.InstanceGroup
+	}{
+		{
+			description: "should add spotinst metadata labels to Kops Instance Group",
+			spotOptions: map[string]string{
+				"spotinst.io/hybrid":                               "true",
+				"spotinst.io/autoscaler-headroom-cpu-per-unit":     "560",
+				"spotinst.io/autoscaler-headroom-mem-per-unit":     "601",
+				"spotinst.io/autoscaler-headroom-num-of-units":     "20",
+				"spotinst.io/autoscaler-scale-down-max-percentage": "100",
+				"spotinst.io/utilize-reserved-instances":           "false",
+				"spotinst.io/ocean-instance-types":                 "c3.4xlarge",
+			},
+		},
+		{
+			description: "should remove some spotinst metadata labels to Kops Instance Group",
+			spotOptions: map[string]string{
+				"spotinst.io/hybrid":                           "true",
+				"spotinst.io/autoscaler-headroom-cpu-per-unit": "560",
+				"spotinst.io/autoscaler-headroom-mem-per-unit": "601",
+				"spotinst.io/autoscaler-headroom-num-of-units": "20",
+			},
+			kopsIG: &kopsapi.InstanceGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kops-machine-pool",
+					Namespace: metav1.NamespaceDefault,
+					Labels: map[string]string{
+						"spotinst.io/hybrid":                               "true",
+						"spotinst.io/autoscaler-headroom-cpu-per-unit":     "560",
+						"spotinst.io/autoscaler-headroom-mem-per-unit":     "601",
+						"spotinst.io/autoscaler-headroom-num-of-units":     "20",
+						"spotinst.io/autoscaler-scale-down-max-percentage": "100",
+						"spotinst.io/utilize-reserved-instances":           "false",
+						"spotinst.io/ocean-instance-types":                 "c3.4xlarge",
+						"kops.k8s.io/cluster":                              "test-cluster.k8s.cluster",
+					},
+				},
+				Spec: kopsapi.InstanceGroupSpec{
+					Role: "Node",
+				},
+			},
+		},
+		{
+			description: "should add some spotinst metadata labels to Kops Instance Group",
+			spotOptions: map[string]string{
+				"spotinst.io/hybrid":                               "true",
+				"spotinst.io/autoscaler-headroom-cpu-per-unit":     "560",
+				"spotinst.io/autoscaler-headroom-mem-per-unit":     "601",
+				"spotinst.io/autoscaler-headroom-num-of-units":     "20",
+				"spotinst.io/autoscaler-scale-down-max-percentage": "100",
+				"spotinst.io/utilize-reserved-instances":           "false",
+				"spotinst.io/ocean-instance-types":                 "c3.4xlarge",
+				"kops.k8s.io/cluster":                              "test-cluster.k8s.cluster",
+			},
+			kopsIG: &kopsapi.InstanceGroup{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kops-machine-pool",
+					Namespace: metav1.NamespaceDefault,
+					Labels: map[string]string{
+						"spotinst.io/hybrid":                           "true",
+						"spotinst.io/autoscaler-headroom-cpu-per-unit": "560",
+						"spotinst.io/autoscaler-headroom-mem-per-unit": "601",
+						"spotinst.io/autoscaler-headroom-num-of-units": "20",
+						"kops.k8s.io/cluster":                          "test-cluster.k8s.cluster",
+					},
+				},
+				Spec: kopsapi.InstanceGroupSpec{
+					Role: "Node",
+				},
+			},
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+	ctx := context.TODO()
+	err := clusterv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = infrastructurev1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = controlplanev1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			vfs.Context.ResetMemfsContext(true)
+			fakeKopsClientset := newFakeKopsClientset()
+			kopsCluster := newKopsCluster("test-cluster")
+			_, err = fakeKopsClientset.CreateCluster(ctx, kopsCluster)
+			if tc.kopsIG != nil {
+				ig, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Create(ctx, tc.kopsIG, metav1.CreateOptions{})
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(ig).NotTo(BeNil())
+			}
+			cluster := newCluster("test-cluster", "test-kops-control-plane", "default")
+			kopsMachinePool := newKopsMachinePool("test-kops-machine-pool", "test-cluster", "default")
+			kopsMachinePool.Spec.SpotInstOptions = tc.spotOptions
+			kopsControlPlane := newKopsControlPlane("test-kops-control-plane", "default")
+
+			fakeClient := fake.NewClientBuilder().WithObjects(kopsMachinePool, kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
+
+			reconciler := KopsMachinePoolReconciler{
+				Client:        fakeClient,
+				kopsClientset: fakeKopsClientset,
+				Recorder:      record.NewFakeRecorder(5),
+				ValidateKopsClusterFactory: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+					return &validation.ValidationCluster{}, nil
+				},
+				GetASGByTagFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
+					return &autoscaling.Group{
+						Instances: []*autoscaling.Instance{
+							{
+								AvailabilityZone: aws.String("us-east-1"),
+								InstanceId:       aws.String("<teste>"),
+							},
+						},
+					}, nil
+				},
+			}
+
+			result, err := reconciler.Reconcile(ctx, ctrl.Request{
+				NamespacedName: client.ObjectKey{
+					Namespace: "default",
+					Name:      fmt.Sprintf("%s.k8s.cluster-%s", "test-cluster", "test-kops-machine-pool"),
+				},
+			})
+			g.Expect(result).ToNot(BeNil())
+			g.Expect(err).To(BeNil())
+
+			tc.spotOptions["kops.k8s.io/cluster"] = "test-cluster.k8s.cluster"
+			ig, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Get(ctx, "test-kops-machine-pool", metav1.GetOptions{})
+			g.Expect(ig).ToNot(BeNil())
+			g.Expect(err).ToNot(HaveOccurred())
+			g.Expect(ig.Labels).To(BeEquivalentTo(tc.spotOptions))
 		})
 	}
 }
@@ -454,14 +597,14 @@ func TestMachinePoolStatus(t *testing.T) {
 				kopsMachinePool = &infrastructurev1alpha1.KopsMachinePool{
 					ObjectMeta: metav1.ObjectMeta{
 						Namespace: "default",
-						Name:      "test-cluster-test-kops-machine-pool",
+						Name:      "test-cluster.k8s.cluster-test-kops-machine-pool",
 					},
 					Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 						ClusterName: fmt.Sprintf("%s.k8s.cluster", "test-cluster"),
 					},
 				}
 			} else {
-				kopsMachinePool = newKopsMachinePool("test-cluster-test-kops-machine-pool", "test-cluster", "default")
+				kopsMachinePool = newKopsMachinePool("test-kops-machine-pool", "test-cluster", "default")
 			}
 			kopsControlPlane := newKopsControlPlane("test-kops-control-plane", "default")
 			fakeClient := fake.NewClientBuilder().WithObjects(kopsMachinePool, kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
@@ -493,7 +636,7 @@ func TestMachinePoolStatus(t *testing.T) {
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: client.ObjectKey{
 					Namespace: "default",
-					Name:      "test-cluster-test-kops-machine-pool",
+					Name:      "test-cluster.k8s.cluster-test-kops-machine-pool",
 				},
 			})
 			if !tc["expectedReconcilerError"].(bool) {
@@ -652,7 +795,7 @@ func newKopsMachinePool(name, clusterName, namespace string) *infrastructurev1al
 	return &infrastructurev1alpha1.KopsMachinePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
-			Name:      name,
+			Name:      fmt.Sprintf("%s.k8s.cluster-%s", clusterName, name),
 		},
 		Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 			ClusterName: fmt.Sprintf("%s.k8s.cluster", clusterName),
