@@ -3,19 +3,130 @@ package utils
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/client/simple/vfsclientset"
+	"k8s.io/kops/pkg/featureflag"
 	"k8s.io/kops/upup/pkg/fi"
+	"os"
 	"strings"
 	"testing"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
 
 	"github.com/stretchr/testify/assert"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 
 	"k8s.io/kops/util/pkg/vfs"
 )
+
+func TestParseSpotinstFeatureflags(t *testing.T) {
+	testCases := []struct {
+		description          string
+		input                *controlplanev1alpha1.KopsControlPlane
+		environmentVariables map[string]string
+		expectedError        bool
+		expectedResult       map[string]bool
+	}{
+		{
+			description: "should enable Spotinst, SpotinstOcean and SpotinstHybrid",
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					SpotInst: controlplanev1alpha1.SpotInstSpec{
+						Enabled:      true,
+						FeatureFlags: "+SpotinstOcean,SpotinstHybrid",
+					},
+				},
+			},
+			environmentVariables: map[string]string{
+				"SPOTINST_TOKEN":   "token",
+				"SPOTINST_ACCOUNT": "account",
+			},
+			expectedResult: map[string]bool{
+				"Spotinst":       true,
+				"SpotinstOcean":  true,
+				"SpotinstHybrid": true,
+			},
+		},
+		{
+			description: "should enable Spotinst",
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					SpotInst: controlplanev1alpha1.SpotInstSpec{
+						Enabled: true,
+					},
+				},
+			},
+			environmentVariables: map[string]string{
+				"SPOTINST_TOKEN":   "token",
+				"SPOTINST_ACCOUNT": "account",
+			},
+			expectedResult: map[string]bool{
+				"Spotinst":       true,
+				"SpotinstOcean":  false,
+				"SpotinstHybrid": false,
+			},
+		},
+
+		{
+			description: "should not enable any feature flag",
+			input:       newKopsControlPlane("testKopsControlPlane", metav1.NamespaceDefault),
+			environmentVariables: map[string]string{
+				"SPOTINST_TOKEN":   "token",
+				"SPOTINST_ACCOUNT": "account",
+			},
+			expectedResult: map[string]bool{
+				"Spotinst":       false,
+				"SpotinstOcean":  false,
+				"SpotinstHybrid": false,
+			},
+		},
+		{
+			description: "should return error if credentials environment variables aren't defined",
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					SpotInst: controlplanev1alpha1.SpotInstSpec{
+						Enabled:      true,
+						FeatureFlags: "+SpotinstOcean,SpotinstHybrid",
+					},
+				},
+			},
+			expectedError: true,
+			expectedResult: map[string]bool{
+				"Spotinst":       false,
+				"SpotinstOcean":  false,
+				"SpotinstHybrid": false,
+			},
+		},
+	}
+
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			os.Unsetenv("SPOTINST_TOKEN")
+			os.Unsetenv("SPOTINST_ACCOUNT")
+			for key, value := range tc.environmentVariables {
+				os.Setenv(key, value)
+			}
+
+			err := ParseSpotinstFeatureflags(tc.input)
+			if tc.expectedError {
+				g.Expect(err).ToNot(BeNil())
+			} else {
+				g.Expect(err).To(BeNil())
+			}
+			g.Expect(featureflag.Spotinst.Enabled()).To(BeEquivalentTo(tc.expectedResult["Spotinst"]))
+			g.Expect(featureflag.SpotinstOcean.Enabled()).To(BeEquivalentTo(tc.expectedResult["SpotinstOcean"]))
+			g.Expect(featureflag.SpotinstHybrid.Enabled()).To(BeEquivalentTo(tc.expectedResult["SpotinstHybrid"]))
+		})
+	}
+}
 
 func Test_GetBucketName(t *testing.T) {
 
@@ -339,4 +450,66 @@ func newFakeKopsClientset() simple.Clientset {
 	memfspath := vfs.NewMemFSPath(memFSContext, "memfs://tests")
 
 	return vfsclientset.NewVFSClientset(memfspath)
+}
+
+func newKopsControlPlane(name, namespace string) *controlplanev1alpha1.KopsControlPlane {
+	return &controlplanev1alpha1.KopsControlPlane{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: namespace,
+			Name:      getFQDN(name),
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "cluster.x-k8s.io/v1beta1",
+					Kind:       "Cluster",
+					Name:       getFQDN("testCluster"),
+				},
+			},
+		},
+		Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+			SSHPublicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCu7OR4k/qpc6VFqQsMGk7wQcnGzDA/hKABnj3qN85tgIDVsbnOIVgXl4FV1gO+gBjblCLkAmbZYlwhhkosL4xpEc8uk8QWJIzRqalvnLEofdIjClngGqzC40Yu6oVPiqImDazlVNvJ7UdzX02mmYJMe4eRzS1w1dA2hm9uTsaq6CNZuJF2/joV+SKLW88IEXWnb7PdOPZWFy0iN/9JcQKqON7zmR0j1zb4Ydj6Pt9MMIOTRiJpyeTqw0Gy4RWgkKJpwuRhOTnhZ1I8zigXgu4+keMYBgtLLP90Wx6/SI6vt+sG/Zrx5+s0av6vHFH/fDzqX4BSsxY83cOMH6ILLQ1C0hE9ykXx/EAKoou+DT8Doe0wabVxZNMRDOAb0ZnLF1HwUItW+MvgIjtCVpap/jBGmSSqZ5B9cvib7UV+JfLHty7n3AP2SKf52+E3Fp1fP4UiXQ/YUXZksopHLXLtwMdam/qijq5tjk0lVh7j8GGNuejt17+tSOCaP2kNKFyc1u8=",
+			KopsClusterSpec: kopsapi.ClusterSpec{
+				KubernetesVersion: "1.20.1",
+				CloudProvider:     "aws",
+				Channel:           "none",
+				ConfigBase:        fmt.Sprintf("memfs://tests/%s.test.k8s.cluster", name),
+				NonMasqueradeCIDR: "10.0.1.0/21",
+				NetworkCIDR:       "10.0.1.0/21",
+				Subnets: []kopsapi.ClusterSubnetSpec{
+					{
+						Name: "test-subnet",
+						CIDR: "10.0.1.0/24",
+						Type: kopsapi.SubnetTypePrivate,
+						Zone: "us-east-1",
+					},
+				},
+				EtcdClusters: []kopsapi.EtcdClusterSpec{
+					{
+						Name:     "main",
+						Provider: kopsapi.EtcdProviderTypeManager,
+						Members: []kopsapi.EtcdMemberSpec{
+							{
+								Name:          "a",
+								InstanceGroup: fi.String("eu-central-1a"),
+							},
+							{
+								Name:          "b",
+								InstanceGroup: fi.String("eu-central-1b"),
+							},
+							{
+								Name:          "c",
+								InstanceGroup: fi.String("eu-central-1c"),
+							},
+						},
+					},
+				},
+				IAM: &kopsapi.IAMSpec{
+					Legacy: false,
+				},
+			},
+		},
+	}
+}
+
+func getFQDN(name string) string {
+	return strings.ToLower(fmt.Sprintf("%s.test.k8s.cluster", name))
 }

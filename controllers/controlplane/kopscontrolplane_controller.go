@@ -19,7 +19,6 @@ package controlplane
 import (
 	"context"
 	"fmt"
-
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
@@ -38,7 +37,6 @@ import (
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/assets"
 	"k8s.io/kops/pkg/client/simple"
-	"k8s.io/kops/pkg/featureflag"
 	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
@@ -53,12 +51,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
-	"strings"
-	"sync"
-)
-
-var (
-	mutex sync.Mutex
 )
 
 // KopsControlPlaneReconciler reconciles a KopsControlPlane object
@@ -96,9 +88,6 @@ func GetClusterStatus(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.Cl
 // PrepareCloudResources renders the terraform files and effectively apply them in the cloud provider
 func PrepareCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error {
 
-	mutex.Lock()
-	defer mutex.Unlock()
-
 	s3Bucket, err := utils.GetBucketName(configBase)
 	if err != nil {
 		return err
@@ -118,8 +107,6 @@ func PrepareCloudResources(kopsClientset simple.Clientset, ctx context.Context, 
 	if err != nil {
 		return err
 	}
-
-	parseSpotinstFeatureflags(kopsControlPlane)
 
 	if err := applyCmd.Run(ctx); err != nil {
 		return err
@@ -297,22 +284,6 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ko
 	return nil
 }
 
-func parseSpotinstFeatureflags(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) {
-	featureflag.ParseFlags("-Spotinst,-SpotinstOcean,-SpotinstHybrid,-SpotinstController")
-	if kopsControlPlane.Spec.SpotInst.Enabled {
-		featureflag.ParseFlags("Spotinst")
-		if len(kopsControlPlane.Spec.SpotInst.FeatureFlags) > 0 {
-			for _, featureFlag := range strings.Split(kopsControlPlane.Spec.SpotInst.FeatureFlags, ",") {
-				if !strings.Contains(featureFlag, "Spotinst") {
-					continue
-				}
-				featureflag.ParseFlags(featureFlag)
-
-			}
-		}
-	}
-}
-
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/finalizers,verbs=update
@@ -384,6 +355,10 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
+	err = utils.ParseSpotinstFeatureflags(kopsControlPlane)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	cloud, err := r.BuildCloudFactory(kopsCluster)
 	if err != nil {
 		r.log.Error(rerr, "failed to build cloud")
@@ -469,7 +444,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 	kopsControlPlane.Status.Ready = statusReady
-
 	return ctrl.Result{}, nil
 }
 

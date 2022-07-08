@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"k8s.io/kops/pkg/featureflag"
 	"strings"
 	"testing"
 	"time"
@@ -35,68 +34,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
-
-func TestParseSpotinstFeatureflags(t *testing.T) {
-	testCases := []struct {
-		description    string
-		input          *controlplanev1alpha1.KopsControlPlane
-		expectedResult map[string]bool
-	}{
-		{
-			description: "should enable Spotinst, SpotinstOcean and SpotinstHybrid",
-			input: &controlplanev1alpha1.KopsControlPlane{
-				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
-					SpotInst: controlplanev1alpha1.SpotInstSpec{
-						Enabled:      true,
-						FeatureFlags: "+SpotinstOcean,SpotinstHybrid",
-					},
-				},
-			},
-			expectedResult: map[string]bool{
-				"Spotinst":       true,
-				"SpotinstOcean":  true,
-				"SpotinstHybrid": true,
-			},
-		},
-		{
-			description: "should enable Spotinst",
-			input: &controlplanev1alpha1.KopsControlPlane{
-				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
-					SpotInst: controlplanev1alpha1.SpotInstSpec{
-						Enabled: true,
-					},
-				},
-			},
-			expectedResult: map[string]bool{
-				"Spotinst":       true,
-				"SpotinstOcean":  false,
-				"SpotinstHybrid": false,
-			},
-		},
-
-		{
-			description: "should not enable any feature flag",
-			input:       newKopsControlPlane("testKopsControlPlane", metav1.NamespaceDefault),
-			expectedResult: map[string]bool{
-				"Spotinst":       false,
-				"SpotinstOcean":  false,
-				"SpotinstHybrid": false,
-			},
-		},
-	}
-
-	RegisterFailHandler(Fail)
-	g := NewWithT(t)
-
-	for _, tc := range testCases {
-		t.Run(tc.description, func(t *testing.T) {
-			parseSpotinstFeatureflags(tc.input)
-			g.Expect(featureflag.Spotinst.Enabled()).To(BeEquivalentTo(tc.expectedResult["Spotinst"]))
-			g.Expect(featureflag.SpotinstOcean.Enabled()).To(BeEquivalentTo(tc.expectedResult["SpotinstOcean"]))
-			g.Expect(featureflag.SpotinstHybrid.Enabled()).To(BeEquivalentTo(tc.expectedResult["SpotinstHybrid"]))
-		})
-	}
-}
 
 func TestEvaluateKopsValidationResult(t *testing.T) {
 	testCases := []map[string]interface{}{

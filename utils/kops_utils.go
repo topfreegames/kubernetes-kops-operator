@@ -6,11 +6,9 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
-	"github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
-	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
-
 	"github.com/go-logr/logr"
+	"github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -19,12 +17,16 @@ import (
 	"k8s.io/kops/cmd/kops/util"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
+	"k8s.io/kops/pkg/featureflag"
 	"k8s.io/kops/pkg/kubeconfig"
 	"k8s.io/kops/pkg/pki"
 	"k8s.io/kops/pkg/rbac"
 	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
+	"os"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+	"strings"
 )
 
 func GetBucketName(configBase string) (string, error) {
@@ -78,7 +80,35 @@ func ValidateKopsCluster(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cl
 	return result, nil
 }
 
-func BuildCloud(kopscluster *kopsapi.Cluster) (fi.Cloud, error) {
+func ParseSpotinstFeatureflags(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) error {
+	featureflag.ParseFlags("-Spotinst,-SpotinstOcean,-SpotinstHybrid,-SpotinstController")
+	if kopsControlPlane.Spec.SpotInst.Enabled {
+		if _, ok := os.LookupEnv("SPOTINST_TOKEN"); !ok {
+			return fmt.Errorf("missing SPOINST_TOKEN environment variable")
+		}
+		if _, ok := os.LookupEnv("SPOTINST_ACCOUNT"); !ok {
+			return fmt.Errorf("missing SPOTINST_ACCOUNT environment variable")
+		}
+		featureflag.ParseFlags("Spotinst")
+		if len(kopsControlPlane.Spec.SpotInst.FeatureFlags) > 0 {
+			for _, featureFlag := range strings.Split(kopsControlPlane.Spec.SpotInst.FeatureFlags, ",") {
+				if !strings.Contains(featureFlag, "Spotinst") {
+					continue
+				}
+				featureflag.ParseFlags(featureFlag)
+
+			}
+		}
+	}
+	return nil
+}
+
+func BuildCloud(kopscluster *kopsapi.Cluster) (_ fi.Cloud, rerr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			rerr = fmt.Errorf(fmt.Sprintf("failed to instantiate cloud for %s", kopscluster.ObjectMeta.GetName()))
+		}
+	}()
 	cloud, err := cloudup.BuildCloud(kopscluster)
 	if err != nil {
 		return nil, err
