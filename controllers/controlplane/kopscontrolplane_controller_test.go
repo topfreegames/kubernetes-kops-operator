@@ -490,8 +490,8 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				PopulateClusterSpecFactory: func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error) {
 					return kopsCluster, nil
 				},
-				PrepareCloudResourcesFactory: func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error) {
-					return "", nil
+				PrepareCloudResourcesFactory: func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error {
+					return nil
 				},
 				ApplyTerraformFactory: func(ctx context.Context, terraformDir, tfExecPath string) error {
 					return nil
@@ -568,8 +568,8 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 		{
 			"description":             "should mark false for condition KopsTerraformGenerationReadyCondition",
 			"expectedReconcilerError": true,
-			"expectedErrorPrepareCloudResources": func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error) {
-				return "", errors.New("")
+			"expectedErrorPrepareCloudResources": func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error {
+				return errors.New("")
 			},
 			"conditionsToAssert": []*clusterv1.Condition{
 				conditions.FalseCondition(controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
@@ -698,12 +698,12 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				}
 			}
 
-			var prepareCloudResources func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error)
+			var prepareCloudResources func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error
 			if _, ok := tc["expectedErrorPrepareCloudResources"]; ok {
-				prepareCloudResources = tc["expectedErrorPrepareCloudResources"].(func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error))
+				prepareCloudResources = tc["expectedErrorPrepareCloudResources"].(func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error)
 			} else {
-				prepareCloudResources = func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error) {
-					return "", nil
+				prepareCloudResources = func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error {
+					return nil
 				}
 			}
 

@@ -5552,6 +5552,19 @@ spec:
                     description: 'UID of the referent. More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/names/#uids'
                     type: string
                 type: object
+              spotInst:
+                description: SpotInst enables Spot and define their feature flags
+                properties:
+                  enabled:
+                    description: Enabled specifies whether Spot.io should be enabled
+                    type: boolean
+                  featureFlags:
+                    description: Feature flags used by Kops to enable Spot features
+                    type: string
+                required:
+                - enabled
+                - featureFlags
+                type: object
             required:
             - SSHPublicKey
             - kopsClusterSpec
@@ -6602,6 +6615,11 @@ spec:
                 items:
                   type: string
                 type: array
+              spotInstOptions:
+                additionalProperties:
+                  type: string
+                description: 'Spot.io metadata labels: https://kops.sigs.k8s.io/getting_started/spot-ocean/'
+                type: object
             required:
             - clusterName
             - kopsInstanceGroupSpec
@@ -6965,16 +6983,30 @@ spec:
         command:
         - /manager
         env:
+        - name: SPOTINST_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: token
+              name: spotinst-credentials
+              optional: true
+        - name: SPOTINST_ACCOUNT
+          valueFrom:
+            secretKeyRef:
+              key: account
+              name: spotinst-credentials
+              optional: true
         - name: AWS_ACCESS_KEY_ID
           valueFrom:
             secretKeyRef:
               key: access-key-id
               name: aws-credentials
+              optional: false
         - name: AWS_SECRET_ACCESS_KEY
           valueFrom:
             secretKeyRef:
               key: secret-access-key
               name: aws-credentials
+              optional: false
         - name: AWS_REGION
           value: us-east-1
         image: tfgco/kubernetes-kops-operator:v0.0.7-alpha

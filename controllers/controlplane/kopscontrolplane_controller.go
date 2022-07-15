@@ -19,13 +19,13 @@ package controlplane
 import (
 	"context"
 	"fmt"
-
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/util"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -36,14 +36,12 @@ import (
 	"k8s.io/client-go/tools/record"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/assets"
-	"k8s.io/kops/pkg/validation"
-	"sigs.k8s.io/cluster-api/controllers/external"
-
-	corev1 "k8s.io/api/core/v1"
 	"k8s.io/kops/pkg/client/simple"
+	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/kubeconfig"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -65,7 +63,7 @@ type KopsControlPlaneReconciler struct {
 	TfExecPath                   string
 	BuildCloudFactory            func(*kopsapi.Cluster) (fi.Cloud, error)
 	PopulateClusterSpecFactory   func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
-	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error)
+	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error
 	ApplyTerraformFactory        func(ctx context.Context, terraformDir, tfExecPath string) error
 	ValidateKopsClusterFactory   func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
@@ -88,13 +86,12 @@ func GetClusterStatus(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.Cl
 }
 
 // PrepareCloudResources renders the terraform files and effectively apply them in the cloud provider
-func PrepareCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, configBase string, cloud fi.Cloud) (string, error) {
+func PrepareCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error {
+
 	s3Bucket, err := utils.GetBucketName(configBase)
 	if err != nil {
-		return "", err
+		return err
 	}
-
-	terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
 
 	applyCmd := &cloudup.ApplyClusterCmd{
 		Cloud:              cloud,
@@ -108,14 +105,14 @@ func PrepareCloudResources(kopsClientset simple.Clientset, ctx context.Context, 
 
 	err = utils.CreateTerraformBackendFile(s3Bucket, kopsCluster.Name, terraformOutputDir)
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	if err := applyCmd.Run(ctx); err != nil {
-		return "", err
+		return err
 	}
 
-	return terraformOutputDir, nil
+	return nil
 
 }
 
@@ -358,6 +355,10 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
+	err = utils.ParseSpotinstFeatureflags(kopsControlPlane)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 	cloud, err := r.BuildCloudFactory(kopsCluster)
 	if err != nil {
 		r.log.Error(rerr, "failed to build cloud")
@@ -394,7 +395,9 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneSecretsReadyCondition)
 	}
 
-	terraformOutputDir, err := r.PrepareCloudResourcesFactory(r.kopsClientset, ctx, kopsCluster, fullCluster.Spec.ConfigBase, cloud)
+	terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
+
+	err = r.PrepareCloudResourcesFactory(r.kopsClientset, ctx, kopsCluster, kopsControlPlane, fullCluster.Spec.ConfigBase, terraformOutputDir, cloud)
 	if err != nil {
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		r.log.Error(err, fmt.Sprintf("failed to prepare cloud resources: %v", err))
@@ -441,7 +444,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 	kopsControlPlane.Status.Ready = statusReady
-
 	return ctrl.Result{}, nil
 }
 

@@ -969,6 +969,11 @@ spec:
                 items:
                   type: string
                 type: array
+              spotInstOptions:
+                additionalProperties:
+                  type: string
+                description: 'Spot.io metadata labels: https://kops.sigs.k8s.io/getting_started/spot-ocean/'
+                type: object
             required:
             - clusterName
             - kopsInstanceGroupSpec
