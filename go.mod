@@ -15,7 +15,7 @@ require (
 	k8s.io/api v0.23.6
 	k8s.io/apimachinery v0.23.6
 	k8s.io/client-go v0.23.6
-	k8s.io/kops v1.23.1
+	k8s.io/kops v1.23.2
 	k8s.io/kubectl v0.23.6
 	sigs.k8s.io/cluster-api v1.1.3
 	sigs.k8s.io/controller-runtime v0.11.2
