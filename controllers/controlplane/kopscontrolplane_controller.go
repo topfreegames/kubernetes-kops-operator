@@ -275,8 +275,8 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ko
 			return errors.Wrap(err, "failed creating kubeconfig secret")
 		}
 	} else {
-		updateErr := r.Client.Update(ctx, kubeconfigSecret)
-		if updateErr != nil {
+		err := r.Client.Update(ctx, kubeconfigSecret)
+		if err != nil {
 			return errors.Wrap(err, "failed updating kubeconfig secret")
 		}
 	}
@@ -291,7 +291,7 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ko
 //+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters/finalizers,verbs=update
 //+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;patch
-//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create
+//+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update
 
 func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	r.log = ctrl.LoggerFrom(ctx)

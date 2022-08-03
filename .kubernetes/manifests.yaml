@@ -6766,6 +6766,7 @@ rules:
   - create
   - get
   - list
+  - update
   - watch
 - apiGroups:
   - cluster.x-k8s.io
