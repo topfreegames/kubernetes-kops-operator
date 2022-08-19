@@ -2,12 +2,12 @@ package kops
 
 import (
 	"context"
-	"k8s.io/apimachinery/pkg/runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
+
 	crossec2v1beta1 "github.com/crossplane/provider-aws/apis/ec2/v1beta1"
-	securitygroupv1alpha1 "github.com/topfreegames/provider-crossplane/apis/securitygroup/v1alpha1"
 	"k8s.io/client-go/kubernetes/scheme"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -196,9 +196,6 @@ func TestGetKopsMachinePoolsWithLabel(t *testing.T) {
 		Expect(err).NotTo(HaveOccurred())
 
 		err = crossec2v1beta1.SchemeBuilder.AddToScheme(sc)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = securitygroupv1alpha1.AddToScheme(sc)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = kinfrastructurev1alpha1.AddToScheme(sc)
