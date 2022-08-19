@@ -249,8 +249,7 @@ func TestGetKopsMachinePoolsWithLabel(t *testing.T) {
 			expected:        []kinfrastructurev1alpha1.KopsMachinePool{},
 			isErrorExpected: true,
 			registerFn: func(sc *runtime.Scheme, clientBuilder *fake.ClientBuilder) *fake.ClientBuilder {
-				sc = runtime.NewScheme()
-				clientBuilder.WithScheme(sc)
+				clientBuilder.WithScheme(runtime.NewScheme()) // reset scheme
 				return clientBuilder
 			},
 		},
