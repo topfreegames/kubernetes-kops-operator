@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/session"
@@ -168,6 +169,11 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		Spec: kopsMachinePool.Spec.KopsInstanceGroupSpec,
 	}
 
+	err = controllerutil.SetOwnerReference(kopsMachinePool, kopsInstanceGroup, r.Scheme)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
 	cluster, err := util.GetClusterByName(ctx, r.Client, kopsInstanceGroup.ObjectMeta.Namespace, kopsMachinePool.Spec.ClusterName)
 	if err != nil {
 		return resultError, err
@@ -196,6 +202,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		},
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
+
 	err = r.updateInstanceGroup(ctx, kopsCluster, kopsInstanceGroup)
 	if err != nil {
 		conditions.MarkFalse(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition, infrastructurev1alpha1.KopsMachinePoolStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
@@ -241,7 +248,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		},
 	}
 
-	validation, err := r.ValidateKopsClusterFactory(r.kopsClientset, kopsCluster, igList)
+	val, err := r.ValidateKopsClusterFactory(r.kopsClientset, kopsCluster, igList)
 
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed trying to validate Kubernetes cluster: %v", err))
@@ -249,7 +256,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return resultError, err
 	}
 
-	statusReady, err := utils.KopsClusterValidation(kopsMachinePool, r.Recorder, r.log, validation)
+	statusReady, err := utils.KopsClusterValidation(kopsMachinePool, r.Recorder, r.log, val)
 	if err != nil {
 		return resultError, err
 	}

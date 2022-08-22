@@ -23,7 +23,7 @@ import (
 )
 
 const (
-	// KopsMachinePoolStateReady reports on the successful management of the Kops state.
+	// KopsMachinePoolStateReadyCondition reports on the successful management of the Kops state.
 	KopsMachinePoolStateReadyCondition clusterv1.ConditionType = "KopsMachinePoolStateReady"
 )
 

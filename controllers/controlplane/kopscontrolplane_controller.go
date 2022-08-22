@@ -439,7 +439,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	validation, err := r.ValidateKopsClusterFactory(r.kopsClientset, kopsCluster, masterIGs)
+	val, err := r.ValidateKopsClusterFactory(r.kopsClientset, kopsCluster, masterIGs)
 
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed trying to validate Kubernetes cluster: %v", err))
@@ -447,7 +447,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	statusReady, err := utils.KopsClusterValidation(kopsControlPlane, r.Recorder, r.log, validation)
+	statusReady, err := utils.KopsClusterValidation(kopsControlPlane, r.Recorder, r.log, val)
 	if err != nil {
 		return resultError, err
 	}
