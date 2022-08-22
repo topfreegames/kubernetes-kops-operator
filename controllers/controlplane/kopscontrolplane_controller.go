@@ -19,6 +19,7 @@ package controlplane
 import (
 	"context"
 	"fmt"
+
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
@@ -431,7 +432,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	validation, err := r.ValidateKopsClusterFactory(r.kopsClientset, kopsCluster, masterIGs)
+	val, err := r.ValidateKopsClusterFactory(r.kopsClientset, kopsCluster, masterIGs)
 
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed trying to validate Kubernetes cluster: %v", err))
@@ -439,7 +440,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return ctrl.Result{}, err
 	}
 
-	statusReady, err := utils.KopsClusterValidation(kopsControlPlane, r.Recorder, r.log, validation)
+	statusReady, err := utils.KopsClusterValidation(kopsControlPlane, r.Recorder, r.log, val)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
