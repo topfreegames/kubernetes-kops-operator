@@ -347,6 +347,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 					return &validation.ValidationCluster{}, nil
 				},
 				GetASGByTagFactory: getASGByTag,
+				Scheme:             scheme.Scheme,
 			}
 
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
@@ -478,6 +479,7 @@ func TestKopsMachinePoolReconcilerSpotinst(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().WithObjects(kopsMachinePool, kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
 
 			reconciler := KopsMachinePoolReconciler{
+				Scheme:        scheme.Scheme,
 				Client:        fakeClient,
 				kopsClientset: fakeKopsClientset,
 				Recorder:      record.NewFakeRecorder(5),
@@ -619,6 +621,7 @@ func TestMachinePoolStatus(t *testing.T) {
 			}
 
 			reconciler := KopsMachinePoolReconciler{
+				Scheme:                     scheme.Scheme,
 				Client:                     fakeClient,
 				Recorder:                   recorder,
 				ValidateKopsClusterFactory: validateKopsCluster,
