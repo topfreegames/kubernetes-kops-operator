@@ -47,7 +47,6 @@ import (
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 )
 
 var (
@@ -167,11 +166,6 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			Labels:    kopsMachinePool.Spec.SpotInstOptions,
 		},
 		Spec: kopsMachinePool.Spec.KopsInstanceGroupSpec,
-	}
-
-	err = controllerutil.SetOwnerReference(kopsMachinePool, kopsInstanceGroup, r.Scheme)
-	if err != nil {
-		return ctrl.Result{}, err
 	}
 
 	cluster, err := util.GetClusterByName(ctx, r.Client, kopsInstanceGroup.ObjectMeta.Namespace, kopsMachinePool.Spec.ClusterName)
