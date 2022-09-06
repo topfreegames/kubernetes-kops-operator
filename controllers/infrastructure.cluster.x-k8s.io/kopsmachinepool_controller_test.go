@@ -15,7 +15,9 @@ import (
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
@@ -274,6 +276,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			"description":             "Should trigger a reconcile with KopsMachinePool object",
 			"kopsMachinePoolFunction": nil,
 			"expectedError":           false,
+			"asgNotFound":             false,
 		},
 		{
 			"description": "Should fail if kopsMachinePool don't have clusterName defined",
@@ -282,19 +285,31 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 				return kmp
 			},
 			"expectedError": true,
+			"asgNotFound":   false,
 		},
 		{
-			"description":             "Should fail if couldn't retrieve ASG",
+			"description":             "Should requeue if couldn't retrieve ASG",
 			"kopsMachinePoolFunction": nil,
 			"getASGByTagFunction": func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
-				return nil, errors.New("fail to retrieve ASG")
+				return nil, apierrors.NewNotFound(schema.GroupResource{}, "ASG not ready")
+			},
+			"expectedError": false,
+			"asgNotFound":   true,
+		},
+		{
+			"description":             "Should failt if couldn't retrieve ASG and it's not a NotFound error",
+			"kopsMachinePoolFunction": nil,
+			"getASGByTagFunction": func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
+				return nil, errors.New("error")
 			},
 			"expectedError": true,
+			"asgNotFound":   false,
 		},
 		{
 			"description":             "Should have sucessfull populate the providerID",
 			"kopsMachinePoolFunction": nil,
 			"expectedError":           false,
+			"asgNotFound":             false,
 			"providerIDList": []string{
 				"aws:///us-east-1/<teste>",
 			},
@@ -358,6 +373,9 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			if !tc["expectedError"].(bool) {
 				g.Expect(result).ToNot(BeNil())
 				g.Expect(err).To(BeNil())
+			} else if tc["asgNotFound"].(bool) {
+				g.Expect(err).To(BeNil())
+				g.Expect(result.RequeueAfter).To(Equal(time.Duration(1 * time.Minute)))
 			} else {
 				g.Expect(err).NotTo(BeNil())
 			}
@@ -642,9 +660,10 @@ func TestMachinePoolStatus(t *testing.T) {
 			if !tc["expectedReconcilerError"].(bool) {
 				g.Expect(err).ToNot(HaveOccurred())
 				g.Expect(result.Requeue).To(BeFalse())
-				g.Expect(result.RequeueAfter).To(Equal(time.Duration(0)))
+				g.Expect(result.RequeueAfter).To(Equal(time.Duration(1 * time.Hour)))
 			} else {
 				g.Expect(err).To(HaveOccurred())
+				g.Expect(result.RequeueAfter).To(Equal(time.Duration(30 * time.Minute)))
 			}
 			if _, ok := tc["conditionsToAssert"]; ok {
 				kmp := &infrastructurev1alpha1.KopsMachinePool{}

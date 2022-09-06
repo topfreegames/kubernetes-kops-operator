@@ -80,8 +80,6 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	syncPeriod := 5 * time.Minute
-
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		MetricsBindAddress:     metricsAddr,
@@ -89,7 +87,6 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "a7b2d45c.cluster.x-k8s.io",
-		SyncPeriod:             &syncPeriod,
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
