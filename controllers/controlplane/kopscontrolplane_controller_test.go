@@ -512,13 +512,14 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			if !tc["expectedError"].(bool) {
 				g.Expect(err).ToNot(HaveOccurred())
 				g.Expect(result.Requeue).To(BeFalse())
-				g.Expect(result.RequeueAfter).To(Equal(time.Duration(0)))
+				g.Expect(result.RequeueAfter).To(Equal(time.Duration(1 * time.Hour)))
 
 				kopsCluster, err := fakeKopsClientset.GetCluster(ctx, cluster.GetObjectMeta().GetName())
 				g.Expect(kopsCluster).ToNot(BeNil())
 				g.Expect(err).ToNot(HaveOccurred())
 			} else {
 				g.Expect(err).To(HaveOccurred())
+				g.Expect(result.RequeueAfter).To(Equal(time.Duration(30 * time.Minute)))
 			}
 			if _, ok := tc["createKubeconfigSecret"]; ok {
 				secretKubeconfig := corev1.Secret{
@@ -751,9 +752,10 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			if !tc["expectedReconcilerError"].(bool) {
 				g.Expect(err).ToNot(HaveOccurred())
 				g.Expect(result.Requeue).To(BeFalse())
-				g.Expect(result.RequeueAfter).To(Equal(time.Duration(0)))
+				g.Expect(result.RequeueAfter).To(Equal(time.Duration(1 * time.Hour)))
 			} else {
 				g.Expect(err).To(HaveOccurred())
+				g.Expect(result.RequeueAfter).To(Equal(time.Duration(30 * time.Minute)))
 			}
 
 			if _, ok := tc["conditionsToAssert"]; ok {

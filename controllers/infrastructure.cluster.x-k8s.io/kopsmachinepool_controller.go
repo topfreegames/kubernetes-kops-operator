@@ -33,8 +33,10 @@ import (
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/util"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
@@ -48,6 +50,7 @@ import (
 )
 
 var (
+	requeue1min   = ctrl.Result{RequeueAfter: 1 * time.Minute}
 	resultDefault = ctrl.Result{RequeueAfter: 1 * time.Hour}
 	resultError   = ctrl.Result{RequeueAfter: 30 * time.Minute}
 )
@@ -214,6 +217,10 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 		asg, err := r.GetASGByTagFactory(kopsMachinePool, awsClient)
 		if err != nil {
+			if apierrors.IsNotFound(err) {
+				r.log.Info("ASG not created yet, requeue after 1 minute")
+				return requeue1min, nil
+			}
 			r.log.Error(err, fmt.Sprintf("failed retriving ASG: %v", err))
 			return resultError, err
 		}
@@ -309,7 +316,7 @@ func GetASGByTag(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsCli
 	if len(out.AutoScalingGroups) > 0 {
 		return out.AutoScalingGroups[0], nil
 	}
-	return nil, errors.New("fail to retrieve ASG")
+	return nil, apierrors.NewNotFound(schema.GroupResource{}, "ASG not ready")
 }
 
 func (r *KopsMachinePoolReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
