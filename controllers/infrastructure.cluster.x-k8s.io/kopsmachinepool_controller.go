@@ -19,6 +19,7 @@ package infrastructureclusterxk8sio
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 
@@ -44,6 +45,11 @@ import (
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+)
+
+var (
+	resultDefault = ctrl.Result{RequeueAfter: 1 * time.Hour}
+	resultError   = ctrl.Result{RequeueAfter: 30 * time.Minute}
 )
 
 // KopsMachinePoolReconciler reconciles a KopsMachinePool object
@@ -124,18 +130,18 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	kopsMachinePool := &infrastructurev1alpha1.KopsMachinePool{}
 	err := r.Get(ctx, req.NamespacedName, kopsMachinePool)
 	if err != nil {
-		return ctrl.Result{}, err
+		return resultError, err
 	}
 	igName, err := getInstanceGroupNameFromKopsMachinePool(kopsMachinePool)
 	if err != nil {
-		return ctrl.Result{}, err
+		return resultError, err
 	}
 
 	// Initialize the patch helper.
 	patchHelper, err := patch.NewHelper(kopsMachinePool, r.Client)
 	if err != nil {
 		r.log.Error(err, "failed to initialize patch helper")
-		return ctrl.Result{}, err
+		return resultError, err
 	}
 	// Attempt to Patch the KopsMachinePool object and status after each reconciliation if no error occurs.
 	defer func() {
@@ -161,21 +167,21 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	cluster, err := util.GetClusterByName(ctx, r.Client, kopsInstanceGroup.ObjectMeta.Namespace, kopsMachinePool.Spec.ClusterName)
 	if err != nil {
-		return ctrl.Result{}, err
+		return resultError, err
 	}
 
 	kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{}
 	if cluster.Spec.ControlPlaneRef != nil && cluster.Spec.ControlPlaneRef.Kind == "KopsControlPlane" {
 		kopsControlPlane, err = r.getKopsControlPlaneByName(ctx, kopsInstanceGroup.ObjectMeta.Namespace, cluster.Spec.ControlPlaneRef.Name)
 		if err != nil {
-			return ctrl.Result{}, err
+			return resultError, err
 		}
 	}
 
 	if r.kopsClientset == nil {
 		kopsClientset, err := utils.GetKopsClientset(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
 		if err != nil {
-			return ctrl.Result{}, err
+			return resultError, err
 		}
 
 		r.kopsClientset = kopsClientset
@@ -190,7 +196,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	err = r.updateInstanceGroup(ctx, kopsCluster, kopsInstanceGroup)
 	if err != nil {
 		conditions.MarkFalse(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition, infrastructurev1alpha1.KopsMachinePoolStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
-		return ctrl.Result{}, err
+		return resultError, err
 	}
 	conditions.MarkTrue(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition)
 
@@ -198,18 +204,18 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 		region, err := regionBySubnet(kopsControlPlane)
 		if err != nil {
-			return ctrl.Result{}, err
+			return resultError, err
 		}
 
 		awsClient, err := session.NewSession(&aws.Config{Region: &region})
 		if err != nil {
-			return ctrl.Result{}, err
+			return resultError, err
 		}
 
 		asg, err := r.GetASGByTagFactory(kopsMachinePool, awsClient)
 		if err != nil {
 			r.log.Error(err, fmt.Sprintf("failed retriving ASG: %v", err))
-			return ctrl.Result{}, err
+			return resultError, err
 		}
 
 		providerIDList := make([]string, len(asg.Instances))
@@ -233,16 +239,16 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed trying to validate Kubernetes cluster: %v", err))
 		r.Recorder.Eventf(kopsMachinePool, corev1.EventTypeWarning, "KubernetesClusterValidationFailed", err.Error())
-		return ctrl.Result{}, err
+		return resultError, err
 	}
 
 	statusReady, err := utils.KopsClusterValidation(kopsMachinePool, r.Recorder, r.log, validation)
 	if err != nil {
-		return ctrl.Result{}, err
+		return resultError, err
 	}
 	kopsMachinePool.Status.Ready = statusReady
 
-	return ctrl.Result{}, nil
+	return resultDefault, nil
 }
 
 func regionBySubnet(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) (string, error) {
