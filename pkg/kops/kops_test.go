@@ -251,8 +251,21 @@ func TestGetKopsMachinePoolsWithLabel(t *testing.T) {
 
 	testCases := []testCase{
 		{
-			description:     "should return the correct machinepool set",
-			k8sObjects:      []client.Object{&kmp},
+			description: "should return the correct machinepool set",
+			k8sObjects: []client.Object{
+				&kmp,
+				&kinfrastructurev1alpha1.KopsMachinePool{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: metav1.NamespaceDefault,
+						Name:      "test-kops-machine-pool-b",
+						Labels: map[string]string{
+							"cluster.x-k8s.io/cluster-name": "test-cluster-b",
+						},
+					},
+					Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
+						ClusterName: "test-cluster-b",
+					},
+				}},
 			input:           []string{"cluster.x-k8s.io/cluster-name", "test-cluster"},
 			expected:        []kinfrastructurev1alpha1.KopsMachinePool{kmp},
 			isErrorExpected: false,
@@ -299,7 +312,7 @@ func TestGetKopsMachinePoolsWithLabel(t *testing.T) {
 			kmps, err := GetKopsMachinePoolsWithLabel(ctx, fakeClient, input[0], input[1])
 			if !tc.isErrorExpected { // no error expected
 				g.Expect(err).To(BeNil())
-				g.Expect(len(kmps)).To(Equal(len(tc.expected)))
+				g.Expect(len(tc.expected)).To(Equal(len(kmps)))
 			} else {
 				g.Expect(err).ToNot(BeNil())
 				g.Expect(len(kmps)).To(Equal(0))

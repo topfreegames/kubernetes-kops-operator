@@ -3,7 +3,6 @@ package kops
 import (
 	"context"
 	"fmt"
-
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -52,20 +51,19 @@ func GetKopsMachinePoolsWithLabel(ctx context.Context, c client.Client, key, val
 		return kmps, ErrLabelValueEmpty
 	}
 
+	selectors := []client.ListOption{
+		client.MatchingLabels{
+			key: value,
+		},
+	}
+
 	kmpsList := &kinfrastructurev1alpha1.KopsMachinePoolList{}
-	err := c.List(ctx, kmpsList)
+	err := c.List(ctx, kmpsList, selectors...)
 	if err != nil {
 		return kmps, fmt.Errorf("error while trying to retrieve KopsMachinePool list: %w", err)
 	}
 
-	// Todo: use label selector to avoid iterate over the items
-	for _, kmp := range kmpsList.Items {
-		if _, ok := kmp.Labels[key]; ok {
-			kmps = append(kmps, kmp)
-		}
-	}
-
-	return kmps, nil
+	return kmpsList.Items, nil
 }
 
 func GetAutoScalingGroupNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.KopsMachinePool) (*string, error) {
