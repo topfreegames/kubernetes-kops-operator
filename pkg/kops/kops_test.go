@@ -115,18 +115,35 @@ func TestGetRegionFromKopsSubnet(t *testing.T) {
 func TestGetAutoScalingGroupNameFromKopsMachinePool(t *testing.T) {
 	testCases := []map[string]interface{}{
 		{
-			"description": "should return the correct asgName",
+			"description": "should return the correct node asgName",
 			"input": kinfrastructurev1alpha1.KopsMachinePool{
 				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
 					ClusterName: "test-cluster",
 					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
 						NodeLabels: map[string]string{
 							"kops.k8s.io/instance-group-name": "nodes-a",
+							"kops.k8s.io/instance-group-role": "Node",
 						},
 					},
 				},
 			},
 			"expected":        "nodes-a.test-cluster",
+			"isErrorExpected": false,
+		},
+		{
+			"description": "should return the correct master asgName",
+			"input": kinfrastructurev1alpha1.KopsMachinePool{
+				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: "test-cluster",
+					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
+						NodeLabels: map[string]string{
+							"kops.k8s.io/instance-group-name": "master-1a",
+							"kops.k8s.io/instance-group-role": "Master",
+						},
+					},
+				},
+			},
+			"expected":        "master-1a.masters.test-cluster",
 			"isErrorExpected": false,
 		},
 		{
@@ -139,7 +156,6 @@ func TestGetAutoScalingGroupNameFromKopsMachinePool(t *testing.T) {
 					},
 				},
 			},
-			"expected":             "nodes-a.test-cluster",
 			"isErrorExpected":      true,
 			"expectedErrorMessage": "failed to retrieve igName",
 		},
@@ -150,13 +166,28 @@ func TestGetAutoScalingGroupNameFromKopsMachinePool(t *testing.T) {
 					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
 						NodeLabels: map[string]string{
 							"kops.k8s.io/instance-group-name": "nodes-a",
+							"kops.k8s.io/instance-group-role": "Node",
 						},
 					},
 				},
 			},
-			"expected":             "nodes-a.test-cluster",
 			"isErrorExpected":      true,
 			"expectedErrorMessage": "failed to retrieve clusterName",
+		},
+		{
+			"description": "should fail when missing role",
+			"input": kinfrastructurev1alpha1.KopsMachinePool{
+				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: "test-cluster",
+					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
+						NodeLabels: map[string]string{
+							"kops.k8s.io/instance-group-name": "nodes-a",
+						},
+					},
+				},
+			},
+			"isErrorExpected":      true,
+			"expectedErrorMessage": "failed to retrieve role from",
 		},
 	}
 	RegisterFailHandler(Fail)
