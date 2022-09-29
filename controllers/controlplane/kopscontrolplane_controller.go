@@ -19,6 +19,7 @@ package controlplane
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -102,6 +103,28 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 		return err
 	}
 
+	err = os.MkdirAll(terraformOutputDir, 0755)
+	if err != nil {
+		return err
+	}
+
+	template := utils.Template{
+		TemplatePath: "controllers/controlplane/templates/backend.tf.tpl",
+		Filename:     fmt.Sprintf("%s/backend.tf", terraformOutputDir),
+		Data: struct {
+			Bucket      string
+			ClusterName string
+		}{
+			s3Bucket,
+			kopsCluster.Name,
+		},
+	}
+
+	err = utils.CreateAdditionalTerraformFiles(template)
+	if err != nil {
+		return err
+	}
+
 	if shouldIgnoreSG {
 		kmps, err := kopsutils.GetKopsMachinePoolsWithLabel(ctx, kubeClient, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
 		if err != nil {
@@ -136,11 +159,6 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 		AllowKopsDowngrade: false,
 		OutDir:             terraformOutputDir,
 		TargetName:         "terraform",
-	}
-
-	err = utils.CreateTerraformBackendFile(s3Bucket, kopsCluster.Name, terraformOutputDir)
-	if err != nil {
-		return err
 	}
 
 	if err := applyCmd.Run(ctx); err != nil {
