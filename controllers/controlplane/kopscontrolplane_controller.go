@@ -21,11 +21,11 @@ import (
 	"fmt"
 	"time"
 
-
 	"github.com/go-logr/logr"
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
+	kopsutils "github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/util"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	corev1 "k8s.io/api/core/v1"
@@ -72,7 +72,7 @@ type KopsControlPlaneReconciler struct {
 	TfExecPath                   string
 	BuildCloudFactory            func(*kopsapi.Cluster) (fi.Cloud, error)
 	PopulateClusterSpecFactory   func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
-	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error
+	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool) error
 	ApplyTerraformFactory        func(ctx context.Context, terraformDir, tfExecPath string) error
 	ValidateKopsClusterFactory   func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
@@ -95,11 +95,37 @@ func GetClusterStatus(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.Cl
 }
 
 // PrepareCloudResources renders the terraform files and effectively apply them in the cloud provider
-func PrepareCloudResources(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error {
+func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool) error {
 
 	s3Bucket, err := utils.GetBucketName(configBase)
 	if err != nil {
 		return err
+	}
+
+	if shouldIgnoreSG {
+		kmps, err := kopsutils.GetKopsMachinePoolsWithLabel(ctx, kubeClient, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
+		if err != nil {
+			return err
+		}
+		asgNames := []*string{}
+		for _, kmp := range kmps {
+			asgName, err := kopsutils.GetAutoScalingGroupNameFromKopsMachinePool(kmp)
+			if err != nil {
+				return err
+			}
+			asgNames = append(asgNames, asgName)
+		}
+
+		template := utils.Template{
+			TemplatePath: "controllers/controlplane/templates/launch_template_override.tf.tpl",
+			Filename:     fmt.Sprintf("%s/launch_template_override.tf", terraformOutputDir),
+			Data:         asgNames,
+		}
+
+		err = utils.CreateAdditionalTerraformFiles(template)
+		if err != nil {
+			return err
+		}
 	}
 
 	applyCmd := &cloudup.ApplyClusterCmd{
@@ -406,7 +432,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
 
-	err = r.PrepareCloudResourcesFactory(r.kopsClientset, ctx, kopsCluster, kopsControlPlane, fullCluster.Spec.ConfigBase, terraformOutputDir, cloud)
+	var shouldIgnoreSG bool
+	if _, ok := owner.GetAnnotations()["clustermesh.infrastructure.wildlife.io"]; ok {
+		shouldIgnoreSG = true
+	}
+
+	err = r.PrepareCloudResourcesFactory(r.kopsClientset, r.Client, ctx, kopsCluster, kopsControlPlane, fullCluster.Spec.ConfigBase, terraformOutputDir, cloud, shouldIgnoreSG)
 	if err != nil {
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		r.log.Error(err, fmt.Sprintf("failed to prepare cloud resources: %v", err))

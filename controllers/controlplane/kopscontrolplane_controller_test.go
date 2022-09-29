@@ -326,17 +326,23 @@ func TestAddSSHCredential(t *testing.T) {
 }
 
 func TestUpdateKopsState(t *testing.T) {
-	testCases := []map[string]interface{}{
+	testCases := []struct {
+		description         string
+		expectedError       bool
+		kopsClusterFunction func(kopsCluster *kopsapi.Cluster) *kopsapi.Cluster
+		updateCluster       bool
+	}{
 		{
-			"description":         "Should successfully create Kops Cluster",
-			"expectedError":       false,
-			"kopsClusterFunction": nil,
-			"updateCluster":       false,
+			description: "Should successfully create Kops Cluster",
 		},
 		{
-			"description":   "Should fail validation without required Kops Cluster fields",
-			"expectedError": true,
-			"kopsClusterFunction": func(kopsCluster *kopsapi.Cluster) *kopsapi.Cluster {
+			description:   "Should successfully update Kops Cluster",
+			updateCluster: true,
+		},
+		{
+			description:   "Should fail validation without required Kops Cluster fields",
+			expectedError: true,
+			kopsClusterFunction: func(kopsCluster *kopsapi.Cluster) *kopsapi.Cluster {
 				return &kopsapi.Cluster{
 					ObjectMeta: metav1.ObjectMeta{
 						Name: "test-cluster",
@@ -344,7 +350,6 @@ func TestUpdateKopsState(t *testing.T) {
 					Spec: kopsapi.ClusterSpec{},
 				}
 			},
-			"updateCluster": false,
 		},
 	}
 	RegisterFailHandler(Fail)
@@ -353,15 +358,15 @@ func TestUpdateKopsState(t *testing.T) {
 	ctx := context.TODO()
 	dummySSHPublicKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCu7OR4k/qpc6VFqQsMGk7wQcnGzDA/hKABnj3qN85tgIDVsbnOIVgXl4FV1gO+gBjblCLkAmbZYlwhhkosL4xpEc8uk8QWJIzRqalvnLEofdIjClngGqzC40Yu6oVPiqImDazlVNvJ7UdzX02mmYJMe4eRzS1w1dA2hm9uTsaq6CNZuJF2/joV+SKLW88IEXWnb7PdOPZWFy0iN/9JcQKqON7zmR0j1zb4Ydj6Pt9MMIOTRiJpyeTqw0Gy4RWgkKJpwuRhOTnhZ1I8zigXgu4+keMYBgtLLP90Wx6/SI6vt+sG/Zrx5+s0av6vHFH/fDzqX4BSsxY83cOMH6ILLQ1C0hE9ykXx/EAKoou+DT8Doe0wabVxZNMRDOAb0ZnLF1HwUItW+MvgIjtCVpap/jBGmSSqZ5B9cvib7UV+JfLHty7n3AP2SKf52+E3Fp1fP4UiXQ/YUXZksopHLXLtwMdam/qijq5tjk0lVh7j8GGNuejt17+tSOCaP2kNKFyc1u8="
 	for _, tc := range testCases {
-		t.Run(tc["description"].(string), func(t *testing.T) {
+		t.Run(tc.description, func(t *testing.T) {
 			bareKopsCluster := newKopsCluster("test-cluster")
-			if tc["kopsClusterFunction"] != nil {
-				kopsClusterFunction := tc["kopsClusterFunction"].(func(kopsCluster *kopsapi.Cluster) *kopsapi.Cluster)
+			if tc.kopsClusterFunction != nil {
+				kopsClusterFunction := tc.kopsClusterFunction
 				bareKopsCluster = kopsClusterFunction(bareKopsCluster)
 			}
 			fakeKopsClientset := newFakeKopsClientset()
 
-			if tc["updateCluster"].(bool) == true {
+			if tc.updateCluster == true {
 				bareKopsCluster, err := fakeKopsClientset.CreateCluster(ctx, bareKopsCluster)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(bareKopsCluster).NotTo(BeNil())
@@ -376,12 +381,12 @@ func TestUpdateKopsState(t *testing.T) {
 			}
 
 			err := reconciler.updateKopsState(ctx, fakeKopsClientset, bareKopsCluster, dummySSHPublicKey, nil)
-			if !tc["expectedError"].(bool) {
+			if !tc.expectedError {
 				g.Expect(err).NotTo(HaveOccurred())
 				cluster, err := fakeKopsClientset.GetCluster(ctx, bareKopsCluster.Name)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(cluster).NotTo(BeNil())
-				if tc["updateCluster"].(bool) == true {
+				if tc.updateCluster == true {
 					g.Expect(cluster.Spec.KubernetesVersion).To(Equal("1.21.0"))
 				}
 			} else {
@@ -392,31 +397,53 @@ func TestUpdateKopsState(t *testing.T) {
 }
 
 func TestKopsControlPlaneReconciler(t *testing.T) {
-	testCases := []map[string]interface{}{
+	testCases := []struct {
+		description              string
+		expectedError            bool
+		kopsControlPlaneFunction func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane
+		clusterFunction          func(cluster *clusterv1.Cluster) *clusterv1.Cluster
+		createKubeconfigSecret   bool
+		updateKubeconfigSecret   bool
+	}{
 		{
-			"description":              "should successfully create Kops Cluster",
-			"expectedError":            false,
-			"kopsControlPlaneFunction": nil,
+			description: "should successfully create Kops Cluster",
 		},
 		{
-			"description":   "should fail to create Kops Cluster",
-			"expectedError": true,
-			"kopsControlPlaneFunction": func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane {
+			description: "should successfully create a Kops Cluster that belongs a mesh",
+			clusterFunction: func(cluster *clusterv1.Cluster) *clusterv1.Cluster {
+				cluster.Annotations = map[string]string{
+					"clustermesh.infrastructure.wildlife.io": "true",
+				}
+				return cluster
+			},
+		},
+		{
+			description: "should successfully create Kops Cluster with a custom Kops Secret",
+			kopsControlPlaneFunction: func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane {
+				kopsControlPlane.Spec.KopsSecret = &corev1.ObjectReference{
+					Namespace:  corev1.NamespaceDefault,
+					Kind:       "Secret",
+					APIVersion: "v1",
+					Name:       "customSecret",
+				}
+				return kopsControlPlane
+			},
+		},
+		{
+			description:   "should fail to create Kops Cluster",
+			expectedError: true,
+			kopsControlPlaneFunction: func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane {
 				kopsControlPlane.Spec.KopsClusterSpec.KubernetesVersion = ""
 				return kopsControlPlane
 			},
 		},
 		{
-			"description":              "should successfully create secret with Kubeconfig",
-			"expectedError":            false,
-			"kopsControlPlaneFunction": nil,
-			"createKubeconfigSecret":   "should create",
+			description:            "should successfully create secret with Kubeconfig",
+			createKubeconfigSecret: true,
 		},
 		{
-			"description":              "should successfully update Kubeconfig secret",
-			"expectedError":            false,
-			"kopsControlPlaneFunction": nil,
-			"updateKubeconfigSecret":   "should update",
+			description:            "should successfully update Kubeconfig secret",
+			updateKubeconfigSecret: true,
 		},
 	}
 	RegisterFailHandler(Fail)
@@ -429,10 +456,14 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	for _, tc := range testCases {
-		t.Run(tc["description"].(string), func(t *testing.T) {
+		t.Run(tc.description, func(t *testing.T) {
 			kopsControlPlane := newKopsControlPlane("testKopsControlPlane", metav1.NamespaceDefault)
 
 			cluster := newCluster("testCluster", getFQDN(kopsControlPlane.Name), metav1.NamespaceDefault)
+			if tc.clusterFunction != nil {
+				clusterFunction := tc.clusterFunction
+				cluster = clusterFunction(cluster)
+			}
 
 			fakeKopsClientset := newFakeKopsClientset()
 
@@ -447,14 +478,14 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			g.Expect(cluster).NotTo(BeNil())
 			g.Expect(err).NotTo(HaveOccurred())
 
-			if tc["kopsControlPlaneFunction"] != nil {
-				kopsControlPlaneFunction := tc["kopsControlPlaneFunction"].(func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane)
+			if tc.kopsControlPlaneFunction != nil {
+				kopsControlPlaneFunction := tc.kopsControlPlaneFunction
 				kopsControlPlane = kopsControlPlaneFunction(kopsControlPlane)
 			}
 
 			fakeClient := fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
 
-			if _, ok := tc["updateKubeconfigSecret"]; ok {
+			if tc.updateKubeconfigSecret {
 				secretKubeconfig := &corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf("%s-%s", cluster.GetName(), "kubeconfig"),
@@ -490,7 +521,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				PopulateClusterSpecFactory: func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error) {
 					return kopsCluster, nil
 				},
-				PrepareCloudResourcesFactory: func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error {
+				PrepareCloudResourcesFactory: func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool) error {
 					return nil
 				},
 				ApplyTerraformFactory: func(ctx context.Context, terraformDir, tfExecPath string) error {
@@ -509,7 +540,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 					Name:      getFQDN("testKopsControlPlane"),
 				},
 			})
-			if !tc["expectedError"].(bool) {
+			if !tc.expectedError {
 				g.Expect(err).ToNot(HaveOccurred())
 				g.Expect(result.Requeue).To(BeFalse())
 				g.Expect(result.RequeueAfter).To(Equal(time.Duration(1 * time.Hour)))
@@ -521,7 +552,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(result.RequeueAfter).To(Equal(time.Duration(30 * time.Minute)))
 			}
-			if _, ok := tc["createKubeconfigSecret"]; ok {
+			if tc.createKubeconfigSecret {
 				secretKubeconfig := corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      fmt.Sprintf("%s-%s", cluster.GetName(), "kubeconfig"),
@@ -537,7 +568,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				g.Expect(fakeSecret.Name).To(Equal(secretKubeconfig.Name))
 				g.Expect(fakeSecret.Data).NotTo(BeNil())
 			}
-			if _, ok := tc["updateKubeconfigSecret"]; ok {
+			if tc.updateKubeconfigSecret {
 				clusterRef := types.NamespacedName{
 					Namespace: cluster.GetNamespace(),
 					Name:      cluster.GetName(),
@@ -551,65 +582,72 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 }
 
 func TestKopsControlPlaneStatus(t *testing.T) {
-	testCases := []map[string]interface{}{
+
+	testCases := []struct {
+		description                          string
+		expectedReconcilerError              bool
+		conditionsToAssert                   []*clusterv1.Condition
+		eventsToAssert                       []string
+		expectedErrorGetClusterStatusFactory func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
+		expectedErrorPrepareCloudResources   func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool) error
+		expectedErrorApplyTerraform          func(ctx context.Context, terraformDir, tfExecPath string) error
+		expectedValidateKopsCluster          func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
+	}{
 		{
-			"description":             "should successfully patch KopsControlPlane",
-			"expectedReconcilerError": false,
+			description: "should successfully patch KopsControlPlane",
 		},
 		{
-			"description":             "should mark false for condition KopsControlPlaneStateReadyCondition",
-			"expectedReconcilerError": true,
-			"expectedErrorGetClusterStatusFactory": func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
+			description:             "should mark false for condition KopsControlPlaneStateReadyCondition",
+			expectedReconcilerError: true,
+			expectedErrorGetClusterStatusFactory: func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
 				return nil, errors.New("")
 			},
-			"conditionsToAssert": []*clusterv1.Condition{
+			conditionsToAssert: []*clusterv1.Condition{
 				conditions.FalseCondition(controlplanev1alpha1.KopsControlPlaneStateReadyCondition, controlplanev1alpha1.KopsControlPlaneStateReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
 			},
 		},
 		{
-			"description":             "should mark false for condition KopsTerraformGenerationReadyCondition",
-			"expectedReconcilerError": true,
-			"expectedErrorPrepareCloudResources": func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error {
+			description:             "should mark false for condition KopsTerraformGenerationReadyCondition",
+			expectedReconcilerError: true,
+			expectedErrorPrepareCloudResources: func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool) error {
 				return errors.New("")
 			},
-			"conditionsToAssert": []*clusterv1.Condition{
+			conditionsToAssert: []*clusterv1.Condition{
 				conditions.FalseCondition(controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
 			},
 		},
 		{
-			"description":             "should mark false for condition TerraformApplyReadyCondition",
-			"expectedReconcilerError": true,
-			"expectedErrorApplyTerraform": func(ctx context.Context, terraformDir, tfExecPath string) error {
+			description:             "should mark false for condition TerraformApplyReadyCondition",
+			expectedReconcilerError: true,
+			expectedErrorApplyTerraform: func(ctx context.Context, terraformDir, tfExecPath string) error {
 				return errors.New("")
 			},
-			"conditionsToAssert": []*clusterv1.Condition{
+			conditionsToAssert: []*clusterv1.Condition{
 				conditions.FalseCondition(controlplanev1alpha1.TerraformApplyReadyCondition, controlplanev1alpha1.TerraformApplyReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
 			},
 		},
 		{
-			"description":             "should have an event with the error from ValidateKopsCluster",
-			"expectedReconcilerError": true,
-			"eventsToAssert": []string{
+			description:             "should have an event with the error from ValidateKopsCluster",
+			expectedReconcilerError: true,
+			eventsToAssert: []string{
 				"dummy error message",
 			},
-			"expectedValidateKopsCluster": func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+			expectedValidateKopsCluster: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 				return nil, errors.New("dummy error message")
 			},
 		},
 		{
-			"description":             "should have an event when the validation succeeds",
-			"expectedReconcilerError": false,
-			"eventsToAssert": []string{
+			description: "should have an event when the validation succeeds",
+			eventsToAssert: []string{
 				"Kops validation succeed",
 			},
 		},
 		{
-			"description":             "should have an event with the failed validation",
-			"expectedReconcilerError": false,
-			"eventsToAssert": []string{
+			description: "should have an event with the failed validation",
+			eventsToAssert: []string{
 				"failed to validate this test case",
 			},
-			"expectedValidateKopsCluster": func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+			expectedValidateKopsCluster: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 				return &validation.ValidationCluster{
 					Failures: []*validation.ValidationError{
 						{
@@ -620,14 +658,14 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			},
 		},
 		{
-			"description":             "should have an event with the failed validations",
-			"expectedReconcilerError": false,
-			"eventsToAssert": []string{
+			description:             "should have an event with the failed validations",
+			expectedReconcilerError: false,
+			eventsToAssert: []string{
 				"test case A",
 				"test case B",
 				"node hostA condition is False",
 			},
-			"expectedValidateKopsCluster": func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+			expectedValidateKopsCluster: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 				return &validation.ValidationCluster{
 					Failures: []*validation.ValidationError{
 						{
@@ -657,7 +695,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 
 	for _, tc := range testCases {
-		t.Run(tc["description"].(string), func(t *testing.T) {
+		t.Run(tc.description, func(t *testing.T) {
 			kopsControlPlane := newKopsControlPlane("testKopsControlPlane", metav1.NamespaceDefault)
 			cluster := newCluster("testCluster", getFQDN(kopsControlPlane.Name), metav1.NamespaceDefault)
 
@@ -691,26 +729,26 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			g.Expect(err).NotTo(HaveOccurred())
 
 			var getClusterStatus func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
-			if _, ok := tc["expectedErrorGetClusterStatusFactory"]; ok {
-				getClusterStatus = tc["expectedErrorGetClusterStatusFactory"].(func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error))
+			if tc.expectedErrorGetClusterStatusFactory != nil {
+				getClusterStatus = tc.expectedErrorGetClusterStatusFactory
 			} else {
 				getClusterStatus = func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
 					return nil, nil
 				}
 			}
 
-			var prepareCloudResources func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error
-			if _, ok := tc["expectedErrorPrepareCloudResources"]; ok {
-				prepareCloudResources = tc["expectedErrorPrepareCloudResources"].(func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error)
+			var prepareCloudResources func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool) error
+			if tc.expectedErrorPrepareCloudResources != nil {
+				prepareCloudResources = tc.expectedErrorPrepareCloudResources
 			} else {
-				prepareCloudResources = func(kopsClientset simple.Clientset, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud) error {
+				prepareCloudResources = func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool) error {
 					return nil
 				}
 			}
 
 			var applyTerraform func(ctx context.Context, terraformDir, tfExecPath string) error
-			if _, ok := tc["expectedErrorApplyTerraform"]; ok {
-				applyTerraform = tc["expectedErrorApplyTerraform"].(func(ctx context.Context, terraformDir, tfExecPath string) error)
+			if tc.expectedErrorApplyTerraform != nil {
+				applyTerraform = tc.expectedErrorApplyTerraform
 			} else {
 				applyTerraform = func(ctx context.Context, terraformDir, tfExecPath string) error {
 					return nil
@@ -718,8 +756,8 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			}
 
 			var validateKopsCluster func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
-			if _, ok := tc["expectedValidateKopsCluster"]; ok {
-				validateKopsCluster = tc["expectedValidateKopsCluster"].(func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error))
+			if tc.expectedValidateKopsCluster != nil {
+				validateKopsCluster = tc.expectedValidateKopsCluster
 			} else {
 				validateKopsCluster = func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 					return &validation.ValidationCluster{}, nil
@@ -749,7 +787,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 					Name:      getFQDN("testKopsControlPlane"),
 				},
 			})
-			if !tc["expectedReconcilerError"].(bool) {
+			if !tc.expectedReconcilerError {
 				g.Expect(err).ToNot(HaveOccurred())
 				g.Expect(result.Requeue).To(BeFalse())
 				g.Expect(result.RequeueAfter).To(Equal(time.Duration(1 * time.Hour)))
@@ -758,17 +796,17 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				g.Expect(result.RequeueAfter).To(Equal(time.Duration(30 * time.Minute)))
 			}
 
-			if _, ok := tc["conditionsToAssert"]; ok {
+			if tc.conditionsToAssert != nil {
 				kcp := &controlplanev1alpha1.KopsControlPlane{}
 				err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsControlPlane), kcp)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(kcp.Status.Conditions).ToNot(BeNil())
-				conditionsToAssert := tc["conditionsToAssert"].([]*clusterv1.Condition)
+				conditionsToAssert := tc.conditionsToAssert
 				assertConditions(g, kcp, conditionsToAssert...)
 			}
 
-			if _, ok := tc["eventsToAssert"]; ok {
-				for _, eventMessage := range tc["eventsToAssert"].([]string) {
+			if tc.eventsToAssert != nil {
+				for _, eventMessage := range tc.eventsToAssert {
 					g.Expect(recorder.Events).Should(Receive(ContainSubstring(eventMessage)))
 				}
 			}
