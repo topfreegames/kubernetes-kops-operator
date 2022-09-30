@@ -6,6 +6,9 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
+	"os"
+	"strings"
+
 	"github.com/go-logr/logr"
 	"github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
@@ -24,9 +27,7 @@ import (
 	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
-	"os"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"strings"
 )
 
 func GetBucketName(configBase string) (string, error) {
