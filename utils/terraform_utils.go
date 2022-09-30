@@ -2,6 +2,7 @@ package utils
 
 import (
 	"context"
+	"embed"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,25 +12,26 @@ import (
 )
 
 type Template struct {
-	Filename     string
-	TemplatePath string
-	Data         any
+	TemplateFilename string
+	OutputFilename   string
+	EmbeddedFiles    embed.FS
+	Data             any
 }
 
 // CreateAdditionalTerraformFiles create files in the terraform state directory
 func CreateAdditionalTerraformFiles(tfFiles ...Template) error {
 	for _, tfFile := range tfFiles {
-		file, err := os.Create(tfFile.Filename)
+		file, err := os.Create(tfFile.OutputFilename)
 		if err != nil {
 			return err
 		}
 		defer file.Close()
 
-		t := template.New(filepath.Base(tfFile.TemplatePath)).Funcs(template.FuncMap{
+		t := template.New(filepath.Base(tfFile.TemplateFilename)).Funcs(template.FuncMap{
 			"stringReplace": strings.Replace,
 		})
 
-		t, err = t.ParseFiles(tfFile.TemplatePath)
+		t, err = t.ParseFS(tfFile.EmbeddedFiles, tfFile.TemplateFilename)
 		if err != nil {
 			return err
 		}

@@ -18,6 +18,7 @@ package controlplane
 
 import (
 	"context"
+	"embed"
 	"fmt"
 	"os"
 	"time"
@@ -58,6 +59,8 @@ import (
 )
 
 var (
+	//go:embed templates/*.tpl
+	templates     embed.FS
 	requeue1min   = ctrl.Result{RequeueAfter: 1 * time.Minute}
 	resultDefault = ctrl.Result{RequeueAfter: 1 * time.Hour}
 	resultError   = ctrl.Result{RequeueAfter: 30 * time.Minute}
@@ -109,8 +112,9 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 	}
 
 	template := utils.Template{
-		TemplatePath: "controllers/controlplane/templates/backend.tf.tpl",
-		Filename:     fmt.Sprintf("%s/backend.tf", terraformOutputDir),
+		TemplateFilename: "templates/backend.tf.tpl",
+		EmbeddedFiles:    templates,
+		OutputFilename:   fmt.Sprintf("%s/backend.tf", terraformOutputDir),
 		Data: struct {
 			Bucket      string
 			ClusterName string
@@ -140,9 +144,10 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 		}
 
 		template := utils.Template{
-			TemplatePath: "controllers/controlplane/templates/launch_template_override.tf.tpl",
-			Filename:     fmt.Sprintf("%s/launch_template_override.tf", terraformOutputDir),
-			Data:         asgNames,
+			TemplateFilename: "templates/launch_template_override.tf.tpl",
+			EmbeddedFiles:    templates,
+			OutputFilename:   fmt.Sprintf("%s/launch_template_override.tf", terraformOutputDir),
+			Data:             asgNames,
 		}
 
 		err = utils.CreateAdditionalTerraformFiles(template)
