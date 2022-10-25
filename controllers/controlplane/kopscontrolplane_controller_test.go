@@ -586,6 +586,8 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 	testCases := []struct {
 		description                          string
 		expectedReconcilerError              bool
+		clusterFunction                      func(cluster *clusterv1.Cluster) *clusterv1.Cluster
+		expectedStatus                       *controlplanev1alpha1.KopsControlPlaneStatus
 		conditionsToAssert                   []*clusterv1.Condition
 		eventsToAssert                       []string
 		expectedErrorGetClusterStatusFactory func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
@@ -595,6 +597,18 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 	}{
 		{
 			description: "should successfully patch KopsControlPlane",
+		},
+		{
+			description: "should mark the cluster as paused",
+			clusterFunction: func(cluster *clusterv1.Cluster) *clusterv1.Cluster {
+				cluster.Annotations = map[string]string{
+					"cluster.x-k8s.io/paused": "true",
+				}
+				return cluster
+			},
+			expectedStatus: &controlplanev1alpha1.KopsControlPlaneStatus{
+				Paused: true,
+			},
 		},
 		{
 			description:             "should mark false for condition KopsControlPlaneStateReadyCondition",
@@ -698,6 +712,10 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 		t.Run(tc.description, func(t *testing.T) {
 			kopsControlPlane := newKopsControlPlane("testKopsControlPlane", metav1.NamespaceDefault)
 			cluster := newCluster("testCluster", getFQDN(kopsControlPlane.Name), metav1.NamespaceDefault)
+			if tc.clusterFunction != nil {
+				clusterFunction := tc.clusterFunction
+				cluster = clusterFunction(cluster)
+			}
 
 			fakeClient := fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
 
@@ -794,6 +812,14 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			} else {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(result.RequeueAfter).To(Equal(time.Duration(30 * time.Minute)))
+			}
+
+			if tc.expectedStatus != nil {
+				kcp := &controlplanev1alpha1.KopsControlPlane{}
+				err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsControlPlane), kcp)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(*tc.expectedStatus).To(BeEquivalentTo(kcp.Status))
+
 			}
 
 			if tc.conditionsToAssert != nil {

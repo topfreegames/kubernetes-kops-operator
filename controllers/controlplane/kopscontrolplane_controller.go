@@ -21,6 +21,9 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"sigs.k8s.io/cluster-api/util/annotations"
+	"sigs.k8s.io/cluster-api/util/patch"
+	"sigs.k8s.io/cluster-api/util/predicates"
 	"time"
 
 	"github.com/go-logr/logr"
@@ -49,8 +52,6 @@ import (
 	"sigs.k8s.io/cluster-api/controllers/external"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/kubeconfig"
-	"sigs.k8s.io/cluster-api/util/patch"
-	"sigs.k8s.io/cluster-api/util/predicates"
 	"sigs.k8s.io/cluster-api/util/secret"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -350,6 +351,7 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ko
 //+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;patch
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update
+//+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
 
 func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	r.log = ctrl.LoggerFrom(ctx)
@@ -357,24 +359,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{}
 	if err := r.Get(ctx, req.NamespacedName, kopsControlPlane); err != nil {
 		return resultError, client.IgnoreNotFound(err)
-	}
-
-	r.log.Info(fmt.Sprintf("starting reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
-
-	// Look up the owner of this kopscontrolplane config if there is one
-	owner, err := r.getClusterOwnerRef(ctx, kopsControlPlane)
-	if err != nil || owner == nil {
-		if apierrors.IsNotFound(err) {
-			r.log.Info("Cluster does not exist yet, re-queueing until it is created")
-			return requeue1min, nil
-		}
-		if err == nil && owner == nil {
-			r.log.Info(fmt.Sprintf("kopscontrolplane/%s does not belong to a cluster yet, waiting until it's part of a cluster", kopsControlPlane.ObjectMeta.Name))
-
-			return requeue1min, nil
-		}
-		r.log.Error(err, "could not get cluster with metadata")
-		return resultError, err
 	}
 
 	// Initialize the patch helper.
@@ -396,6 +380,31 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 		r.log.Info(fmt.Sprintf("finished reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
 	}()
+
+	owner, err := r.getClusterOwnerRef(ctx, kopsControlPlane)
+	if err != nil || owner == nil {
+		if apierrors.IsNotFound(err) {
+			r.log.Info("cluster does not exist yet, re-queueing until it is created")
+			return requeue1min, nil
+		}
+		if err == nil && owner == nil {
+			r.log.Info(fmt.Sprintf("kopscontrolplane/%s does not belong to a cluster yet, waiting until it's part of a cluster", kopsControlPlane.ObjectMeta.Name))
+
+			return requeue1min, nil
+		}
+		r.log.Error(err, "could not get cluster with metadata")
+		return resultError, err
+	}
+
+	if annotations.HasPaused(owner) {
+		r.log.Info(fmt.Sprintf("reconciliation is paused for kcp %s since cluster %s is paused", kopsControlPlane.ObjectMeta.Name, owner.GetName()))
+		kopsControlPlane.Status.Paused = true
+		return resultDefault, nil
+	}
+
+	kopsControlPlane.Status.Paused = false
+
+	r.log.Info(fmt.Sprintf("starting reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
 
 	if r.kopsClientset == nil {
 		kopsClientset, err := utils.GetKopsClientset(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)

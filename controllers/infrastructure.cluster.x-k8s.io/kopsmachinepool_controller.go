@@ -19,6 +19,8 @@ package infrastructureclusterxk8sio
 import (
 	"context"
 	"fmt"
+	"sigs.k8s.io/cluster-api/util/annotations"
+	"sigs.k8s.io/cluster-api/util/patch"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -42,7 +44,6 @@ import (
 	"k8s.io/kops/pkg/validation"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/util/conditions"
-	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -75,7 +76,7 @@ func (r *KopsMachinePoolReconciler) getKopsControlPlaneByName(ctx context.Contex
 	}
 
 	if err := r.Client.Get(ctx, key, kopsControlPlane); err != nil {
-		return nil, errors.Wrapf(err, "failed to get KopsControlPlane/%s", name)
+		return nil, errors.Wrapf(err, "failed to get kcp/%s", name)
 	}
 
 	return kopsControlPlane, nil
@@ -125,16 +126,13 @@ func getInstanceGroupNameFromKopsMachinePool(kopsMachinePool *infrastructurev1al
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kopsmachinepools,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kopsmachinepools/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kopsmachinepools/finalizers,verbs=update
+//+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
 
 func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	r.log = ctrl.LoggerFrom(ctx)
 
 	kopsMachinePool := &infrastructurev1alpha1.KopsMachinePool{}
 	err := r.Get(ctx, req.NamespacedName, kopsMachinePool)
-	if err != nil {
-		return resultError, err
-	}
-	igName, err := getInstanceGroupNameFromKopsMachinePool(kopsMachinePool)
 	if err != nil {
 		return resultError, err
 	}
@@ -150,13 +148,47 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		err = patchHelper.Patch(ctx, kopsMachinePool)
 
 		if err != nil {
-			r.log.Error(rerr, "Failed to patch kopsMachinePool")
+			r.log.Error(rerr, "failed to patch kopsMachinePool")
 			if rerr == nil {
 				rerr = err
 			}
 		}
 		r.log.Info(fmt.Sprintf("finished reconcile loop for %s", kopsMachinePool.ObjectMeta.GetName()))
 	}()
+
+	cluster, err := util.GetClusterByName(ctx, r.Client, kopsMachinePool.ObjectMeta.Namespace, kopsMachinePool.Spec.ClusterName)
+	if err != nil {
+		return resultError, err
+	}
+
+	if annotations.HasPaused(cluster) {
+		r.log.Info(fmt.Sprintf("reconciliation is paused for kmp %s since cluster %s is paused", kopsMachinePool.ObjectMeta.Name, cluster.ObjectMeta.Name))
+		kopsMachinePool.Status.Paused = true
+		return resultDefault, nil
+	}
+
+	igName, err := getInstanceGroupNameFromKopsMachinePool(kopsMachinePool)
+	if err != nil {
+		return resultError, err
+	}
+
+	kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{}
+	if cluster.Spec.ControlPlaneRef != nil && cluster.Spec.ControlPlaneRef.Kind == "KopsControlPlane" {
+		kopsControlPlane, err = r.getKopsControlPlaneByName(ctx, kopsMachinePool.ObjectMeta.Namespace, cluster.Spec.ControlPlaneRef.Name)
+		if err != nil {
+			return resultError, err
+		}
+	}
+
+	if annotations.HasPaused(kopsControlPlane) {
+		r.log.Info(fmt.Sprintf("reconciliation is paused for kmp %s since kcp %s is paused", kopsMachinePool.ObjectMeta.Name, kopsControlPlane.ObjectMeta.Name))
+		kopsMachinePool.Status.Paused = true
+		return resultDefault, nil
+	}
+
+	r.log.Info(fmt.Sprintf("starting reconcile loop for %s", kopsMachinePool.ObjectMeta.GetName()))
+
+	kopsControlPlane.Status.Paused = false
 
 	kopsInstanceGroup := &kopsapi.InstanceGroup{
 		ObjectMeta: metav1.ObjectMeta{
@@ -165,19 +197,6 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			Labels:    kopsMachinePool.Spec.SpotInstOptions,
 		},
 		Spec: kopsMachinePool.Spec.KopsInstanceGroupSpec,
-	}
-
-	cluster, err := util.GetClusterByName(ctx, r.Client, kopsInstanceGroup.ObjectMeta.Namespace, kopsMachinePool.Spec.ClusterName)
-	if err != nil {
-		return resultError, err
-	}
-
-	kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{}
-	if cluster.Spec.ControlPlaneRef != nil && cluster.Spec.ControlPlaneRef.Kind == "KopsControlPlane" {
-		kopsControlPlane, err = r.getKopsControlPlaneByName(ctx, kopsInstanceGroup.ObjectMeta.Namespace, cluster.Spec.ControlPlaneRef.Name)
-		if err != nil {
-			return resultError, err
-		}
 	}
 
 	if r.kopsClientset == nil {
