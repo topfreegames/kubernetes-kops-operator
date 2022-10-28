@@ -81,6 +81,7 @@ type KopsMachinePoolStatus struct {
 }
 
 //+kubebuilder:object:root=true
+//+kubebuilder:resource:path=kopsmachinepools,scope=Namespaced,shortName=kmp
 //+kubebuilder:subresource:status
 
 // KopsMachinePool is the Schema for the kopsmachinepools API

@@ -102,6 +102,7 @@ type KopsControlPlaneStatus struct {
 }
 
 //+kubebuilder:object:root=true
+//+kubebuilder:resource:path=kopscontrolplanes,scope=Namespaced,shortName=kcp
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
 

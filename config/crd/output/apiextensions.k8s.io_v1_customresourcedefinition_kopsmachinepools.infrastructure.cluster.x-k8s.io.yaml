@@ -11,6 +11,8 @@ spec:
     kind: KopsMachinePool
     listKind: KopsMachinePoolList
     plural: kopsmachinepools
+    shortNames:
+    - kmp
     singular: kopsmachinepool
   scope: Namespaced
   versions:
