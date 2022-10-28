@@ -8,14 +8,6 @@ resources:
 - api:
     crdVersion: v1
     namespaced: true
-  domain: cluster.x-k8s.io
-  group: infrastructure
-  kind: KopsAWSCluster
-  path: github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1
-  version: v1alpha1
-- api:
-    crdVersion: v1
-    namespaced: true
   controller: true
   domain: cluster.x-k8s.io
   group: controlplane
