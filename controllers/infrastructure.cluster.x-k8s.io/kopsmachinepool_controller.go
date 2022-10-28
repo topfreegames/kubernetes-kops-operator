@@ -126,7 +126,6 @@ func getInstanceGroupNameFromKopsMachinePool(kopsMachinePool *infrastructurev1al
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kopsmachinepools,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kopsmachinepools/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kopsmachinepools/finalizers,verbs=update
-//+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
 
 func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	r.log = ctrl.LoggerFrom(ctx)

@@ -15,7 +15,11 @@ spec:
     singular: kopscontrolplane
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.paused
+      name: Paused
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: KopsControlPlane is the Schema for the kopscontrolplanes API

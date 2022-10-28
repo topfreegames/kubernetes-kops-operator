@@ -351,7 +351,6 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ko
 //+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;patch
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update
-//+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
 
 func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	r.log = ctrl.LoggerFrom(ctx)

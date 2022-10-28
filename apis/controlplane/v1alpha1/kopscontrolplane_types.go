@@ -103,6 +103,7 @@ type KopsControlPlaneStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
 
 // KopsControlPlane is the Schema for the kopscontrolplanes API
 type KopsControlPlane struct {
