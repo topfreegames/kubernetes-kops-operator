@@ -40,6 +40,7 @@ type KopsAWSClusterStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
 
 // KopsAWSCluster is the Schema for the kopsawsclusters API
 type KopsAWSCluster struct {

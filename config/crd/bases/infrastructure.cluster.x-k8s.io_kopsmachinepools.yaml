@@ -1030,6 +1030,11 @@ spec:
                 description: ErrorMessage indicates that there is a terminal problem
                   reconciling the state, and will be set to a descriptive error message.
                 type: string
+              paused:
+                default: false
+                description: Paused indicates that the controller is prevented from
+                  processing the KopsMachinePool.
+                type: boolean
               ready:
                 default: false
                 description: Ready denotes that the API Server is ready to receive

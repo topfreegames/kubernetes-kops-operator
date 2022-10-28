@@ -30,7 +30,7 @@ const (
 	// KopsControlPlaneSecretsReadyCondition reports on the successful reconcile of the Kops Secrets
 	KopsControlPlaneSecretsReadyCondition clusterv1.ConditionType = "KopsControlPlaneSecretsReady"
 
-	// KopsterraformGenerationReadyCondition reports on the successful generation of Terraform files by Kops.
+	// KopsTerraformGenerationReadyCondition reports on the successful generation of Terraform files by Kops.
 	KopsTerraformGenerationReadyCondition clusterv1.ConditionType = "KopsTerraformGenerationReady"
 
 	// TerraformApplyReadyCondition reports on the successful apply of the Terraform files.
@@ -83,6 +83,11 @@ type KopsControlPlaneStatus struct {
 	// +kubebuilder:default=false
 	Ready bool `json:"ready,omitempty"`
 
+	// +kubebuilder:default=false
+	// Paused indicates that the controller is prevented from processing the KopsControlPlane and all its associated objects.
+	// +optional
+	Paused bool `json:"paused,omitempty"`
+
 	// ErrorMessage indicates that there is a terminal problem reconciling the
 	// state, and will be set to a descriptive error message.
 	// +optional
@@ -98,6 +103,7 @@ type KopsControlPlaneStatus struct {
 
 //+kubebuilder:object:root=true
 //+kubebuilder:subresource:status
+//+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
 
 // KopsControlPlane is the Schema for the kopscontrolplanes API
 type KopsControlPlane struct {
@@ -122,11 +128,11 @@ func init() {
 }
 
 // GetConditions returns the set of conditions for this object.
-func (cp *KopsControlPlane) GetConditions() clusterv1.Conditions {
-	return cp.Status.Conditions
+func (kcp *KopsControlPlane) GetConditions() clusterv1.Conditions {
+	return kcp.Status.Conditions
 }
 
 // SetConditions sets the conditions on this object.
-func (cp *KopsControlPlane) SetConditions(conditions clusterv1.Conditions) {
-	cp.Status.Conditions = conditions
+func (kcp *KopsControlPlane) SetConditions(conditions clusterv1.Conditions) {
+	kcp.Status.Conditions = conditions
 }

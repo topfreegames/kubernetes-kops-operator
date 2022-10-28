@@ -21,7 +21,11 @@ spec:
     singular: kopsawscluster
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.paused
+      name: Paused
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: KopsAWSCluster is the Schema for the kopsawsclusters API
@@ -72,7 +76,11 @@ spec:
     singular: kopscontrolplane
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .status.paused
+      name: Paused
+      type: string
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: KopsControlPlane is the Schema for the kopscontrolplanes API
@@ -5627,6 +5635,11 @@ spec:
                 description: ErrorMessage indicates that there is a terminal problem
                   reconciling the state, and will be set to a descriptive error message.
                 type: string
+              paused:
+                default: false
+                description: Paused indicates that the controller is prevented from
+                  processing the KopsControlPlane and all its associated objects.
+                type: boolean
               ready:
                 default: false
                 description: Ready denotes that the API Server is ready to receive
@@ -6676,6 +6689,11 @@ spec:
                 description: ErrorMessage indicates that there is a terminal problem
                   reconciling the state, and will be set to a descriptive error message.
                 type: string
+              paused:
+                default: false
+                description: Paused indicates that the controller is prevented from
+                  processing the KopsMachinePool.
+                type: boolean
               ready:
                 default: false
                 description: Ready denotes that the API Server is ready to receive
