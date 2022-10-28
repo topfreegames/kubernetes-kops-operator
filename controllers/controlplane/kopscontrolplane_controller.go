@@ -20,6 +20,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"k8s.io/klog/v2"
 	"os"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/patch"
@@ -81,6 +82,11 @@ type KopsControlPlaneReconciler struct {
 	ApplyTerraformFactory        func(ctx context.Context, terraformDir, tfExecPath string) error
 	ValidateKopsClusterFactory   func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
+}
+
+func init() {
+	// Discard logs sent to stdout from the kops lib
+	klog.SetLogger(logr.Discard())
 }
 
 func ApplyTerraform(ctx context.Context, terraformDir, tfExecPath string) error {
@@ -167,6 +173,11 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 		TargetName:         "terraform",
 	}
 
+	stdout := os.Stdout
+	defer func() {
+		os.Stdout = stdout
+	}()
+	os.Stdout = nil
 	if err := applyCmd.Run(ctx); err != nil {
 		return err
 	}
