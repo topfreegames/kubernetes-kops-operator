@@ -19,6 +19,8 @@ spec:
     kind: KopsControlPlane
     listKind: KopsControlPlaneList
     plural: kopscontrolplanes
+    shortNames:
+    - kcp
     singular: kopscontrolplane
   scope: Namespaced
   versions:
@@ -5617,6 +5619,8 @@ spec:
     kind: KopsMachinePool
     listKind: KopsMachinePoolList
     plural: kopsmachinepools
+    shortNames:
+    - kmp
     singular: kopsmachinepool
   scope: Namespaced
   versions:
