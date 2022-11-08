@@ -3,7 +3,6 @@ package utils
 import (
 	"embed"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -20,7 +19,7 @@ func TestCreateAdditionalTerraformFiles(t *testing.T) {
 	RegisterFailHandler(Fail)
 	g := NewWithT(t)
 
-	tmpDir, err := ioutil.TempDir("", "test_terraform")
+	tmpDir, err := os.MkdirTemp("", "test_terraform")
 	g.Expect(err).NotTo(HaveOccurred())
 
 	testCases := []struct {

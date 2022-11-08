@@ -278,6 +278,18 @@ spec:
                     description: AWSLoadbalancerControllerConfig determines the AWS
                       LB controller configuration.
                     properties:
+                      enableShield:
+                        description: 'EnableShield specifies whether the controller
+                          can enable Shield Advanced. Default: false'
+                        type: boolean
+                      enableWAF:
+                        description: 'EnableWAF specifies whether the controller can
+                          use WAFs (Classic Regional). Default: false'
+                        type: boolean
+                      enableWAFv2:
+                        description: 'EnableWAFv2 specifies whether the controller
+                          can use WAFs (V2). Default: false'
+                        type: boolean
                       enabled:
                         description: 'Enabled enables the loadbalancer controller.
                           Default: false'
@@ -296,6 +308,13 @@ spec:
                       enabled:
                         description: 'Enabled enables the cert manager. Default: false'
                         type: boolean
+                      hostedZoneIDs:
+                        description: HostedZoneIDs is a list of route53 hostedzone
+                          IDs that cert-manager will be allowed to do dns-01 validation
+                          for
+                        items:
+                          type: string
+                        type: array
                       image:
                         description: 'Image is the docker container used. Default:
                           the latest supported image for the specified kubernetes
@@ -306,6 +325,12 @@ spec:
                           deployed by kOps. The deployment of cert-manager is skipped
                           if this is set to false.
                         type: boolean
+                      nameservers:
+                        description: 'nameservers is a list of nameserver IP addresses
+                          to use instead of the pod defaults. Default: none'
+                        items:
+                          type: string
+                        type: array
                     type: object
                   channel:
                     description: The Channel we are following
@@ -321,6 +346,17 @@ spec:
                             description: 'Enabled enables the AWS EBS CSI driver Default:
                               false'
                             type: boolean
+                          managed:
+                            description: Managed controls if aws-ebs-csi-driver is
+                              manged and deployed by kOps. The deployment of aws-ebs-csi-driver
+                              is skipped if this is set to false.
+                            type: boolean
+                          podAnnotations:
+                            additionalProperties:
+                              type: string
+                            description: 'PodAnnotations are the annotations added
+                              to AWS EBS CSI node and controller Pods. Default: none'
+                            type: object
                           version:
                             description: 'Version is the container image tag used.
                               Default: The latest stable release which is compatible
@@ -332,37 +368,6 @@ spec:
                               applies to all nodes. If not specified, the value is
                               approximated from the instance type. Default: -'
                             type: integer
-                        type: object
-                      azure:
-                        description: Azure cloud-config options
-                        properties:
-                          adminUser:
-                            description: AdminUser specifies the admin user of VMs.
-                            type: string
-                          resourceGroupName:
-                            description: ResourceGroupName specifies the name of the
-                              resource group where the cluster is built. If this is
-                              empty, kops will create a new resource group whose name
-                              is same as the cluster name. If this is not empty, kops
-                              will not create a new resource group, and it will just
-                              reuse the existing resource group of the name. This
-                              follows the model that kops takes for AWS VPC.
-                            type: string
-                          routeTableName:
-                            description: RouteTableName is the name of the route table
-                              attached to the subnet that the cluster is deployed
-                              in.
-                            type: string
-                          subscriptionId:
-                            description: SubscriptionID specifies the subscription
-                              used for the cluster installation.
-                            type: string
-                          tenantID:
-                            description: TenantID is the ID of the tenant that the
-                              cluster is deployed in.
-                            type: string
-                        required:
-                        - tenantID
                         type: object
                       disableSecurityGroupIngress:
                         description: AWS cloud-config options
@@ -399,8 +404,174 @@ spec:
                         type: string
                       nodeTags:
                         type: string
+                      spotinstOrientation:
+                        type: string
+                      spotinstProduct:
+                        description: Spotinst cloud-config specs
+                        type: string
+                    type: object
+                  cloudControllerManager:
+                    description: CloudControllerManagerConfig is the configuration
+                      of the cloud controller
+                    properties:
+                      allocateNodeCIDRs:
+                        description: AllocateNodeCIDRs enables CIDRs for Pods to be
+                          allocated and, if ConfigureCloudRoutes is true, to be set
+                          on the cloud provider.
+                        type: boolean
+                      allowUntaggedCloud:
+                        description: Allow the cluster to run without the cluster-id
+                          on cloud instances
+                        type: boolean
+                      cidrAllocatorType:
+                        description: CIDRAllocatorType specifies the type of CIDR
+                          allocator to use.
+                        type: string
+                      cloudProvider:
+                        description: CloudProvider is the provider for cloud services.
+                        type: string
+                      clusterCIDR:
+                        description: ClusterCIDR is CIDR Range for Pods in cluster.
+                        type: string
+                      clusterName:
+                        description: ClusterName is the instance prefix for the cluster.
+                        type: string
+                      configureCloudRoutes:
+                        description: ConfigureCloudRoutes enables CIDRs allocated
+                          with to be configured on the cloud provider.
+                        type: boolean
+                      controllers:
+                        description: Controllers is a list of controllers to enable
+                          on the controller-manager
+                        items:
+                          type: string
+                        type: array
+                      cpuRequest:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: 'CPURequest of NodeTerminationHandler container.
+                          Default: 200m'
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      enableLeaderMigration:
+                        description: EnableLeaderMigration enables controller leader
+                          migration.
+                        type: boolean
+                      image:
+                        description: Image is the OCI image of the cloud controller
+                          manager.
+                        type: string
+                      leaderElection:
+                        description: LeaderElection defines the configuration of leader
+                          election client.
+                        properties:
+                          leaderElect:
+                            description: leaderElect enables a leader election client
+                              to gain leadership before executing the main loop. Enable
+                              this when running replicated components for high availability.
+                            type: boolean
+                          leaderElectLeaseDuration:
+                            description: leaderElectLeaseDuration is the length in
+                              time non-leader candidates will wait after observing
+                              a leadership renewal until attempting to acquire leadership
+                              of a led but unrenewed leader slot. This is effectively
+                              the maximum duration that a leader can be stopped before
+                              it is replaced by another candidate
+                            type: string
+                          leaderElectRenewDeadlineDuration:
+                            description: LeaderElectRenewDeadlineDuration is the interval
+                              between attempts by the acting master to renew a leadership
+                              slot before it stops leading. This must be less than
+                              or equal to the lease duration.
+                            type: string
+                          leaderElectResourceLock:
+                            description: LeaderElectResourceLock is the type of resource
+                              object that is used for locking during leader election.
+                              Supported options are endpoints (default) and `configmaps`.
+                            type: string
+                          leaderElectResourceName:
+                            description: LeaderElectResourceName is the name of resource
+                              object that is used for locking during leader election.
+                            type: string
+                          leaderElectResourceNamespace:
+                            description: LeaderElectResourceNamespace is the namespace
+                              of resource object that is used for locking during leader
+                              election.
+                            type: string
+                          leaderElectRetryPeriod:
+                            description: LeaderElectRetryPeriod is The duration the
+                              clients should wait between attempting acquisition and
+                              renewal of a leadership. This is only applicable if
+                              leader election is enabled.
+                            type: string
+                        type: object
+                      logLevel:
+                        description: LogLevel is the verbosity of the logs.
+                        format: int32
+                        type: integer
+                      master:
+                        description: Master is the url for the kube api master.
+                        type: string
+                      useServiceAccountCredentials:
+                        description: UseServiceAccountCredentials controls whether
+                          we use individual service account credentials for each controller.
+                        type: boolean
+                    type: object
+                  cloudLabels:
+                    additionalProperties:
+                      type: string
+                    description: CloudLabels defines additional tags or labels on
+                      cloud provider resources
+                    type: object
+                  cloudProvider:
+                    description: CloudProvider configures the cloud provider to use.
+                    properties:
+                      aws:
+                        description: AWS configures the AWS cloud provider.
+                        type: object
+                      azure:
+                        description: Azure configures the Azure cloud provider.
+                        properties:
+                          adminUser:
+                            description: AdminUser specifies the admin user of VMs.
+                            type: string
+                          resourceGroupName:
+                            description: ResourceGroupName specifies the name of the
+                              resource group where the cluster is built. If this is
+                              empty, kops will create a new resource group whose name
+                              is same as the cluster name. If this is not empty, kops
+                              will not create a new resource group, and it will just
+                              reuse the existing resource group of the name. This
+                              follows the model that kops takes for AWS VPC.
+                            type: string
+                          routeTableName:
+                            description: RouteTableName is the name of the route table
+                              attached to the subnet that the cluster is deployed
+                              in.
+                            type: string
+                          subscriptionID:
+                            description: SubscriptionID specifies the subscription
+                              used for the cluster installation.
+                            type: string
+                          tenantID:
+                            description: TenantID is the ID of the tenant that the
+                              cluster is deployed in.
+                            type: string
+                        required:
+                        - tenantID
+                        type: object
+                      do:
+                        description: DO configures the Digital Ocean cloud provider.
+                        type: object
+                      gce:
+                        description: GCE configures the GCE cloud provider.
+                        type: object
+                      hetzner:
+                        description: Hetzner configures the Hetzner cloud provider.
+                        type: object
                       openstack:
-                        description: Openstack cloud-config options
+                        description: Openstack configures the Openstack cloud provider.
                         properties:
                           blockStorage:
                             properties:
@@ -475,6 +646,16 @@ spec:
                                 items:
                                   type: string
                                 type: array
+                              internalNetworkNames:
+                                items:
+                                  type: string
+                                type: array
+                              ipv6SupportDisabled:
+                                type: boolean
+                              publicNetworkNames:
+                                items:
+                                  type: string
+                                type: array
                             type: object
                           router:
                             description: OpenstackRouter defines the config for a
@@ -492,111 +673,7 @@ spec:
                                 type: string
                             type: object
                         type: object
-                      spotinstOrientation:
-                        type: string
-                      spotinstProduct:
-                        description: Spotinst cloud-config specs
-                        type: string
                     type: object
-                  cloudControllerManager:
-                    description: CloudControllerManagerConfig is the configuration
-                      of the cloud controller
-                    properties:
-                      allocateNodeCIDRs:
-                        description: AllocateNodeCIDRs enables CIDRs for Pods to be
-                          allocated and, if ConfigureCloudRoutes is true, to be set
-                          on the cloud provider.
-                        type: boolean
-                      cidrAllocatorType:
-                        description: CIDRAllocatorType specifies the type of CIDR
-                          allocator to use.
-                        type: string
-                      cloudProvider:
-                        description: CloudProvider is the provider for cloud services.
-                        type: string
-                      clusterCIDR:
-                        description: ClusterCIDR is CIDR Range for Pods in cluster.
-                        type: string
-                      clusterName:
-                        description: ClusterName is the instance prefix for the cluster.
-                        type: string
-                      configureCloudRoutes:
-                        description: ConfigureCloudRoutes enables CIDRs allocated
-                          with to be configured on the cloud provider.
-                        type: boolean
-                      enableLeaderMigration:
-                        description: EnableLeaderMigration enables controller leader
-                          migration.
-                        type: boolean
-                      image:
-                        description: Image is the OCI image of the cloud controller
-                          manager.
-                        type: string
-                      leaderElection:
-                        description: LeaderElection defines the configuration of leader
-                          election client.
-                        properties:
-                          leaderElect:
-                            description: leaderElect enables a leader election client
-                              to gain leadership before executing the main loop. Enable
-                              this when running replicated components for high availability.
-                            type: boolean
-                          leaderElectLeaseDuration:
-                            description: leaderElectLeaseDuration is the length in
-                              time non-leader candidates will wait after observing
-                              a leadership renewal until attempting to acquire leadership
-                              of a led but unrenewed leader slot. This is effectively
-                              the maximum duration that a leader can be stopped before
-                              it is replaced by another candidate
-                            type: string
-                          leaderElectRenewDeadlineDuration:
-                            description: LeaderElectRenewDeadlineDuration is the interval
-                              between attempts by the acting master to renew a leadership
-                              slot before it stops leading. This must be less than
-                              or equal to the lease duration.
-                            type: string
-                          leaderElectResourceLock:
-                            description: LeaderElectResourceLock is the type of resource
-                              object that is used for locking during leader election.
-                              Supported options are endpoints (default) and `configmaps`.
-                            type: string
-                          leaderElectResourceName:
-                            description: LeaderElectResourceName is the name of resource
-                              object that is used for locking during leader election.
-                            type: string
-                          leaderElectResourceNamespace:
-                            description: LeaderElectResourceNamespace is the namespace
-                              of resource object that is used for locking during leader
-                              election.
-                            type: string
-                          leaderElectRetryPeriod:
-                            description: LeaderElectRetryPeriod is The duration the
-                              clients should wait between attempting acquisition and
-                              renewal of a leadership. This is only applicable if
-                              leader election is enabled.
-                            type: string
-                        type: object
-                      logLevel:
-                        description: LogLevel is the verbosity of the logs.
-                        format: int32
-                        type: integer
-                      master:
-                        description: Master is the url for the kube api master.
-                        type: string
-                      useServiceAccountCredentials:
-                        description: UseServiceAccountCredentials controls whether
-                          we use individual service account credentials for each controller.
-                        type: boolean
-                    type: object
-                  cloudLabels:
-                    additionalProperties:
-                      type: string
-                    description: CloudLabels defines additional tags or labels on
-                      cloud provider resources
-                    type: object
-                  cloudProvider:
-                    description: The CloudProvider to use (aws or gce)
-                    type: string
                   clusterAutoscaler:
                     description: ClusterAutoscaler defines the cluster autoscaler
                       configuration.
@@ -609,6 +686,11 @@ spec:
                       balanceSimilarNodeGroups:
                         description: 'BalanceSimilarNodeGroups makes cluster autoscaler
                           treat similar node groups as one. Default: false'
+                        type: boolean
+                      cordonNodeBeforeTerminating:
+                        description: 'CordonNodeBeforeTerminating should CA cordon
+                          nodes before terminating during downscale process Default:
+                          false'
                         type: boolean
                       cpuRequest:
                         anyOf:
@@ -661,6 +743,16 @@ spec:
                       scaleDownDelayAfterAdd:
                         description: 'ScaleDownDelayAfterAdd determines the time after
                           scale up that scale down evaluation resumes Default: 10m0s'
+                        type: string
+                      scaleDownUnneededTime:
+                        description: 'scaleDownUnneededTime determines the time a
+                          node should be unneeded before it is eligible for scale
+                          down Default: 10m0s'
+                        type: string
+                      scaleDownUnreadyTime:
+                        description: 'ScaleDownUnreadyTime determines the time an
+                          unready node should be unneeded before it is eligible for
+                          scale down Default: 20m0s'
                         type: string
                       scaleDownUtilizationThreshold:
                         description: 'ScaleDownUtilizationThreshold determines the
@@ -719,7 +811,7 @@ spec:
                             type: boolean
                           package:
                             description: Package is the name of the nvidia driver
-                              package that will be installed. Default is "nvidia-headless-460-server".
+                              package that will be installed. Default is "nvidia-headless-510-server".
                             type: string
                         type: object
                       packages:
@@ -752,6 +844,34 @@ spec:
                       root:
                         description: Root directory for persistent data (default "/var/lib/containerd").
                         type: string
+                      runc:
+                        description: Runc configures the runc runtime.
+                        properties:
+                          packages:
+                            description: Packages overrides the URL and hash for the
+                              packages.
+                            properties:
+                              hashAmd64:
+                                description: HashAmd64 overrides the hash for the
+                                  AMD64 package.
+                                type: string
+                              hashArm64:
+                                description: HashArm64 overrides the hash for the
+                                  ARM64 package.
+                                type: string
+                              urlAmd64:
+                                description: UrlAmd64 overrides the URL for the AMD64
+                                  package.
+                                type: string
+                              urlArm64:
+                                description: UrlArm64 overrides the URL for the ARM64
+                                  package.
+                                type: string
+                            type: object
+                          version:
+                            description: Version used to pick the runc package.
+                            type: string
+                        type: object
                       skipInstall:
                         description: SkipInstall prevents kOps from installing and
                           modifying containerd in any way (default "false").
@@ -1073,6 +1193,10 @@ spec:
                         manager:
                           description: Manager describes the manager configuration
                           properties:
+                            backupInterval:
+                              description: BackupInterval which is used for backups.
+                                The default is 15 minutes.
+                              type: string
                             discoveryPollInterval:
                               description: DiscoveryPollInterval which is used for
                                 discovering other cluster members. The default is
@@ -1178,6 +1302,9 @@ spec:
                         isBase64:
                           description: IsBase64 indicates the contents is base64 encoded
                           type: boolean
+                        mode:
+                          description: Mode is this file's mode and permission bits
+                          type: string
                         name:
                           description: Name is a shortened reference to the asset
                           type: string
@@ -1341,6 +1468,12 @@ spec:
                       PodCIDR * run kube-proxy on the master * enable debugging handlers
                       on the master, so kubectl logs works'
                     type: boolean
+                  karpenter:
+                    description: Karpenter defines the Karpenter configuration.
+                    properties:
+                      enabled:
+                        type: boolean
+                    type: object
                   keyStore:
                     description: KeyStore is the VFS path to where SSL keys and certificates
                       are stored
@@ -1362,6 +1495,10 @@ spec:
                       admissionControlConfigFile:
                         description: AdmissionControlConfigFile is the location of
                           the admission-control-config-file
+                        type: string
+                      advertiseAddress:
+                        description: AdvertiseAddress is the IP address on which to
+                          advertise the apiserver to members of the cluster.
                         type: string
                       allowPrivileged:
                         description: AllowPrivileged indicates if we can run privileged
@@ -2488,9 +2625,6 @@ spec:
                                             null selector and null or empty namespaces
                                             list means "this pod's namespace". An
                                             empty selector ({}) matches all namespaces.
-                                            This field is beta-level and is only honored
-                                            when PodAffinityNamespaceSelector feature
-                                            is enabled.
                                           properties:
                                             matchExpressions:
                                               description: matchExpressions is a list
@@ -2551,7 +2685,7 @@ spec:
                                             union of the namespaces listed in this
                                             field and the ones selected by namespaceSelector.
                                             null or empty namespaces list and null
-                                            namespaceSelector means "this pod's namespace"
+                                            namespaceSelector means "this pod's namespace".
                                           items:
                                             type: string
                                           type: array
@@ -2661,9 +2795,7 @@ spec:
                                         this field and the ones listed in the namespaces
                                         field. null selector and null or empty namespaces
                                         list means "this pod's namespace". An empty
-                                        selector ({}) matches all namespaces. This
-                                        field is beta-level and is only honored when
-                                        PodAffinityNamespaceSelector feature is enabled.
+                                        selector ({}) matches all namespaces.
                                       properties:
                                         matchExpressions:
                                           description: matchExpressions is a list
@@ -2721,7 +2853,7 @@ spec:
                                         listed in this field and the ones selected
                                         by namespaceSelector. null or empty namespaces
                                         list and null namespaceSelector means "this
-                                        pod's namespace"
+                                        pod's namespace".
                                       items:
                                         type: string
                                       type: array
@@ -2833,9 +2965,6 @@ spec:
                                             null selector and null or empty namespaces
                                             list means "this pod's namespace". An
                                             empty selector ({}) matches all namespaces.
-                                            This field is beta-level and is only honored
-                                            when PodAffinityNamespaceSelector feature
-                                            is enabled.
                                           properties:
                                             matchExpressions:
                                               description: matchExpressions is a list
@@ -2896,7 +3025,7 @@ spec:
                                             union of the namespaces listed in this
                                             field and the ones selected by namespaceSelector.
                                             null or empty namespaces list and null
-                                            namespaceSelector means "this pod's namespace"
+                                            namespaceSelector means "this pod's namespace".
                                           items:
                                             type: string
                                           type: array
@@ -3006,9 +3135,7 @@ spec:
                                         this field and the ones listed in the namespaces
                                         field. null selector and null or empty namespaces
                                         list means "this pod's namespace". An empty
-                                        selector ({}) matches all namespaces. This
-                                        field is beta-level and is only honored when
-                                        PodAffinityNamespaceSelector feature is enabled.
+                                        selector ({}) matches all namespaces.
                                       properties:
                                         matchExpressions:
                                           description: matchExpressions is a list
@@ -3066,7 +3193,7 @@ spec:
                                         listed in this field and the ones selected
                                         by namespaceSelector. null or empty namespaces
                                         list and null namespaceSelector means "this
-                                        pod's namespace"
+                                        pod's namespace".
                                       items:
                                         type: string
                                       type: array
@@ -3173,6 +3300,12 @@ spec:
                               5Mi.
                             pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                             x-kubernetes-int-or-string: true
+                          podAnnotations:
+                            additionalProperties:
+                              type: string
+                            description: 'PodAnnotations makes possible to add additional
+                              annotations to node-local-dns. Default: none'
+                            type: object
                         type: object
                       provider:
                         description: Provider indicates whether CoreDNS or kube-dns
@@ -3466,7 +3599,9 @@ spec:
                         type: boolean
                     type: object
                   kubelet:
-                    description: KubeletConfigSpec defines the kubelet configuration
+                    description: Kubelet is the kubelet configuration for nodes not
+                      belonging to the control plane. It can be overridden by the
+                      kubelet configuration specified in the instance group.
                     properties:
                       allowPrivileged:
                         description: AllowPrivileged enables containers to request
@@ -3904,7 +4039,9 @@ spec:
                       master nodes
                     type: string
                   masterKubelet:
-                    description: KubeletConfigSpec defines the kubelet configuration
+                    description: MasterKubelet is the kubelet configuration for nodes
+                      belonging to the control plane It can be overridden by the kubelet
+                      configuration specified in the instance group.
                     properties:
                       allowPrivileged:
                         description: AllowPrivileged enables containers to request
@@ -4842,6 +4979,12 @@ spec:
                               + operator container. (default: 128Mi)'
                             pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                             x-kubernetes-int-or-string: true
+                          metrics:
+                            description: Metrics is a list of metrics to add or remove
+                              from the default list of metrics the agent exposes.
+                            items:
+                              type: string
+                            type: array
                           monitorAggregation:
                             description: 'MonitorAggregation sets the level of packet
                               monitoring. Possible values are "low", "medium", or
@@ -5171,9 +5314,17 @@ spec:
                         description: 'Enabled enables the node termination handler.
                           Default: true'
                         type: boolean
+                      excludeFromLoadBalancers:
+                        description: 'ExcludeFromLoadBalancers makes node termination
+                          handler will mark for exclusion from load balancers before
+                          node are cordoned. Default: true'
+                        type: boolean
                       managedASGTag:
                         description: ManagedASGTag is the tag used to determine which
-                          nodes NTH can take action on
+                          nodes NTH can take action on This field has kept its name
+                          even though it now maps to the --managed-tag flag due to
+                          keeping the API stable. Node termination handler does no
+                          longer check the ASG for this tag, but the actual EC2 instances.
                         type: string
                       memoryRequest:
                         anyOf:
@@ -5187,6 +5338,9 @@ spec:
                         description: EnablePrometheusMetrics enables the "/metrics"
                           endpoint.
                         type: boolean
+                      version:
+                        description: Version is the container image tag used.
+                        type: string
                     type: object
                   nonMasqueradeCIDR:
                     description: NonMasqueradeCIDR is the CIDR for the internal k8s
@@ -5211,6 +5365,8 @@ spec:
                     properties:
                       enabled:
                         type: boolean
+                      replicas:
+                        type: integer
                     type: object
                   project:
                     description: Project is the cloud project we should use, required
@@ -5310,6 +5466,19 @@ spec:
                     items:
                       description: ClusterSubnetSpec defines a subnet
                       properties:
+                        additionalRoutes:
+                          description: AdditionalRoutes to attach to the subnet's
+                            route table
+                          items:
+                            properties:
+                              cidr:
+                                description: CIDR destination of the route
+                                type: string
+                              target:
+                                description: Target of the route
+                                type: string
+                            type: object
+                          type: array
                         cidr:
                           description: CIDR is the IPv4 CIDR block assigned to the
                             subnet.

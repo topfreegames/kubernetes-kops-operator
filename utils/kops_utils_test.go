@@ -469,8 +469,10 @@ func newKopsControlPlane(name, namespace string) *controlplanev1alpha1.KopsContr
 		Spec: controlplanev1alpha1.KopsControlPlaneSpec{
 			SSHPublicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCu7OR4k/qpc6VFqQsMGk7wQcnGzDA/hKABnj3qN85tgIDVsbnOIVgXl4FV1gO+gBjblCLkAmbZYlwhhkosL4xpEc8uk8QWJIzRqalvnLEofdIjClngGqzC40Yu6oVPiqImDazlVNvJ7UdzX02mmYJMe4eRzS1w1dA2hm9uTsaq6CNZuJF2/joV+SKLW88IEXWnb7PdOPZWFy0iN/9JcQKqON7zmR0j1zb4Ydj6Pt9MMIOTRiJpyeTqw0Gy4RWgkKJpwuRhOTnhZ1I8zigXgu4+keMYBgtLLP90Wx6/SI6vt+sG/Zrx5+s0av6vHFH/fDzqX4BSsxY83cOMH6ILLQ1C0hE9ykXx/EAKoou+DT8Doe0wabVxZNMRDOAb0ZnLF1HwUItW+MvgIjtCVpap/jBGmSSqZ5B9cvib7UV+JfLHty7n3AP2SKf52+E3Fp1fP4UiXQ/YUXZksopHLXLtwMdam/qijq5tjk0lVh7j8GGNuejt17+tSOCaP2kNKFyc1u8=",
 			KopsClusterSpec: kopsapi.ClusterSpec{
-				KubernetesVersion: "1.20.1",
-				CloudProvider:     "aws",
+				KubernetesVersion: "1.23.12",
+				CloudProvider: kopsapi.CloudProviderSpec{
+					AWS: &kopsapi.AWSSpec{},
+				},
 				Channel:           "none",
 				ConfigBase:        fmt.Sprintf("memfs://tests/%s.test.k8s.cluster", name),
 				NonMasqueradeCIDR: "10.0.1.0/21",
