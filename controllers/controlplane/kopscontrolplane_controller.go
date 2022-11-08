@@ -28,12 +28,15 @@ import (
 	"time"
 
 	"github.com/go-logr/logr"
+	"github.com/go-logr/zapr"
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	kopsutils "github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/util"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -85,8 +88,16 @@ type KopsControlPlaneReconciler struct {
 }
 
 func init() {
-	// Discard logs sent to stdout from the kops lib
-	klog.SetLogger(logr.Discard())
+	// Set kops lib verbosity to ERROR
+	var log logr.Logger
+	zc := zap.NewProductionConfig()
+	zc.Level = zap.NewAtomicLevelAt(zapcore.Level(2))
+	z, err := zc.Build()
+	if err != nil {
+		panic(fmt.Sprintf("failed to initialize logging (%v)?", err))
+	}
+	log = zapr.NewLogger(z)
+	klog.SetLogger(log)
 }
 
 func ApplyTerraform(ctx context.Context, terraformDir, tfExecPath string) error {
