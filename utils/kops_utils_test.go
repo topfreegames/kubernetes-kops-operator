@@ -20,7 +20,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/stretchr/testify/assert"
-	kopsapi "k8s.io/kops/pkg/apis/kops"
+	kopsapi "k8s.io/kops/pkg/apis/kops/v1alpha2"
 
 	"k8s.io/kops/util/pkg/vfs"
 )

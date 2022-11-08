@@ -43,7 +43,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
-	kopsapi "k8s.io/kops/pkg/apis/kops"
+	kopsapi "k8s.io/kops/pkg/apis/kops/v1alpha2"
 	"k8s.io/kops/pkg/assets"
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/validation"

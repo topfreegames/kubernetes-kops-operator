@@ -39,7 +39,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/tools/record"
-	kopsapi "k8s.io/kops/pkg/apis/kops"
+	kopsapi "k8s.io/kops/pkg/apis/kops/v1alpha2"
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/validation"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"

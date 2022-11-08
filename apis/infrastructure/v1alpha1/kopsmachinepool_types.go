@@ -18,7 +18,7 @@ package v1alpha1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kops "k8s.io/kops/pkg/apis/kops"
+	kops "k8s.io/kops/pkg/apis/kops/v1alpha2"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 

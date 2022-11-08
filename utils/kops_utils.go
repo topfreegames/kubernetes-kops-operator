@@ -18,7 +18,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/kops/cmd/kops/util"
-	kopsapi "k8s.io/kops/pkg/apis/kops"
+	kopsapi "k8s.io/kops/pkg/apis/kops/v1alpha2"
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/featureflag"
 	"k8s.io/kops/pkg/kubeconfig"
