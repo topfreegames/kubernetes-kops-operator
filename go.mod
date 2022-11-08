@@ -17,8 +17,8 @@ require (
 	k8s.io/apimachinery v0.25.3
 	k8s.io/client-go v0.25.3
 	k8s.io/kops v1.25.2
-	k8s.io/kubectl v0.25.2
-	sigs.k8s.io/cluster-api v1.2.4
+	k8s.io/kubectl v0.25.3
+	sigs.k8s.io/cluster-api v1.2.5
 	sigs.k8s.io/controller-runtime v0.13.1
 )
 
@@ -108,7 +108,7 @@ require (
 	github.com/fatih/color v1.13.0 // indirect
 	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
-	github.com/go-logr/zapr v1.2.3 // indirect
+	github.com/go-logr/zapr v1.2.3
 	github.com/gobuffalo/flect v0.3.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect

@@ -96,7 +96,7 @@ func main() {
 	// Setup the context that's going to be used in controllers and for the manager.
 	ctx := ctrl.SetupSignalHandler()
 
-	const tfVersion = "1.1.7"
+	const tfVersion = "1.3.4"
 
 	tfPath := fmt.Sprintf("/tmp/%s_%s", product.Terraform.Name, tfVersion)
 
