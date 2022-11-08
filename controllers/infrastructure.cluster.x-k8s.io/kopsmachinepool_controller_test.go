@@ -808,7 +808,9 @@ func newKopsCluster(name string) *kopsapi.Cluster {
 		},
 		Spec: kopsapi.ClusterSpec{
 			KubernetesVersion: "1.20.1",
-			CloudProvider:     "aws",
+			CloudProvider: kopsapi.CloudProviderSpec{
+				AWS: &kopsapi.AWSSpec{},
+			},
 			NonMasqueradeCIDR: "10.0.1.0/21",
 			NetworkCIDR:       "10.0.1.0/21",
 			Subnets: []kopsapi.ClusterSubnetSpec{

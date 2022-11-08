@@ -46,7 +46,7 @@ func GetKopsClientset(configBase string) (simple.Clientset, error) {
 
 	factory := util.NewFactory(factoryOptions)
 
-	kopsClientset, err := factory.Clientset()
+	kopsClientset, err := factory.KopsClient()
 	if err != nil {
 		return nil, err
 	}
