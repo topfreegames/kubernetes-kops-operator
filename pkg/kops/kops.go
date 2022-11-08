@@ -3,7 +3,7 @@ package kops
 import (
 	"context"
 	"fmt"
-	kopsapi "k8s.io/kops/pkg/apis/kops"
+	kopsapi "k8s.io/kops/pkg/apis/kops/v1alpha2"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/pkg/errors"

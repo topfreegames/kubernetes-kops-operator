@@ -17,7 +17,7 @@ import (
 	kcontrolplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	kinfrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kopsapi "k8s.io/kops/pkg/apis/kops"
+	kopsapi "k8s.io/kops/pkg/apis/kops/v1alpha2"
 )
 
 func TestGetSubnetFromKopsControlPlane(t *testing.T) {
