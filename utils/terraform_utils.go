@@ -3,6 +3,7 @@ package utils
 import (
 	"context"
 	"embed"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +19,21 @@ type Template struct {
 	Data             any
 }
 
-// CreateAdditionalTerraformFiles create files in the terraform state directory
+//go:embed templates/*.tpl
+var terraformTemplates embed.FS
+
+// CreateTerraformFileFromTemplate populates a Terraform template and create files in the state
+func CreateTerraformFilesFromTemplate(terraformTemplateFilePath string, TerraformOutputFileName string, terraformOutputDir string, templateData any) error {
+	template := Template{
+		TemplateFilename: terraformTemplateFilePath,
+		EmbeddedFiles:    terraformTemplates,
+		OutputFilename:   fmt.Sprintf("%s/%s", terraformOutputDir, TerraformOutputFileName),
+		Data:             templateData,
+	}
+	return CreateAdditionalTerraformFiles(template)
+}
+
+// CreateAdditionalTerraformFiles create files in the terraform state directory from a template
 func CreateAdditionalTerraformFiles(tfFiles ...Template) error {
 	for _, tfFile := range tfFiles {
 		file, err := os.Create(tfFile.OutputFilename)
