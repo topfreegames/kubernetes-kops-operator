@@ -19,6 +19,7 @@ package infrastructureclusterxk8sio
 import (
 	"context"
 	"fmt"
+	"github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"time"
@@ -110,19 +111,6 @@ func (r *KopsMachinePoolReconciler) updateInstanceGroup(ctx context.Context, kop
 	return nil
 }
 
-func getInstanceGroupNameFromKopsMachinePool(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) (string, error) {
-	clusterName := kopsMachinePool.Spec.ClusterName
-	kopsMachinePoolName := kopsMachinePool.ObjectMeta.Name
-
-	if len(kopsMachinePoolName) <= len(clusterName) {
-		return "", errors.New("kopsMachinePool name unexpected format")
-	}
-
-	igName := kopsMachinePool.ObjectMeta.Name[len(kopsMachinePool.Spec.ClusterName)+1:]
-
-	return igName, nil
-}
-
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kopsmachinepools,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kopsmachinepools/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=infrastructure.cluster.x-k8s.io,resources=kopsmachinepools/finalizers,verbs=update
@@ -166,9 +154,15 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return resultDefault, nil
 	}
 
-	igName, err := getInstanceGroupNameFromKopsMachinePool(kopsMachinePool)
-	if err != nil {
-		return resultError, err
+	igName := kopsMachinePool.Name
+
+	if _, ok := kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"]; !ok {
+		return resultError, fmt.Errorf("instance group name missing from kops ig config")
+	}
+
+	// Patch kops IG node label to be the same as the KMP object
+	if kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"] != igName {
+		kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"] = igName
 	}
 
 	kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{}
@@ -294,7 +288,7 @@ func GetASGByTag(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsCli
 	clusterFilterKey := "tag:KubernetesCluster"
 	instanceGroupKey := "tag:kops.k8s.io/instancegroup"
 
-	igName, err := getInstanceGroupNameFromKopsMachinePool(kopsMachinePool)
+	asgName, err := kops.GetAutoScalingGroupNameFromKopsMachinePool(*kopsMachinePool)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +304,7 @@ func GetASGByTag(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsCli
 			{
 				Name: &instanceGroupKey,
 				Values: []*string{
-					&igName,
+					asgName,
 				},
 			},
 		},

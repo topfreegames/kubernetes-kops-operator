@@ -33,63 +33,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func TestGetInstanceGroupName(t *testing.T) {
-	testCases := []map[string]interface{}{
-		{
-			"description": "Should successfully return IG name",
-			"input": &infrastructurev1alpha1.KopsMachinePool{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "<cluster-name>-<ig-name>",
-				},
-				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
-					ClusterName: "<cluster-name>",
-				},
-			},
-			"expectedError": false,
-			"expected":      "<ig-name>",
-		},
-		{
-			"description": "Should fail with an unexpected input",
-			"input": &infrastructurev1alpha1.KopsMachinePool{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "<ig-name>",
-				},
-				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
-					ClusterName: "<cluster-name>",
-				},
-			},
-			"expectedError": true,
-		},
-		{
-			"description": "Should fail if the kopsMachinePool name has the same length as the clusterName",
-			"input": &infrastructurev1alpha1.KopsMachinePool{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "<cluster-name>",
-				},
-				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
-					ClusterName: "<cluster-name>",
-				},
-			},
-			"expectedError": true,
-		},
-	}
-
-	RegisterFailHandler(Fail)
-	g := NewWithT(t)
-
-	for _, tc := range testCases {
-		t.Run(tc["description"].(string), func(t *testing.T) {
-			igName, err := getInstanceGroupNameFromKopsMachinePool(tc["input"].(*infrastructurev1alpha1.KopsMachinePool))
-			if !tc["expectedError"].(bool) {
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(igName).To(Equal(tc["expected"].(string)))
-			} else {
-				g.Expect(err).To(HaveOccurred())
-			}
-		})
-	}
-}
-
 func TestIsInstanceGroupCreated(t *testing.T) {
 
 	testCases := []map[string]interface{}{
@@ -288,6 +231,15 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			"asgNotFound":   false,
 		},
 		{
+			"description": "Should correct IG name in kops config if different from kmp name",
+			"kopsMachinePoolFunction": func(kmp *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) *infrastructurev1alpha1.KopsMachinePool {
+				kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"] = "another-name"
+				return kmp
+			},
+			"expectedError": false,
+			"asgNotFound":   false,
+		},
+		{
 			"description":             "Should requeue if couldn't retrieve ASG",
 			"kopsMachinePoolFunction": nil,
 			"getASGByTagFunction": func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
@@ -297,7 +249,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			"asgNotFound":   true,
 		},
 		{
-			"description":             "Should failt if couldn't retrieve ASG and it's not a NotFound error",
+			"description":             "Should faill if couldn't retrieve ASG and it's not a NotFound error",
 			"kopsMachinePoolFunction": nil,
 			"getASGByTagFunction": func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
 				return nil, errors.New("error")
@@ -367,17 +319,24 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: client.ObjectKey{
 					Namespace: "default",
-					Name:      "test-cluster.k8s.cluster-test-kops-machine-pool",
+					Name:      "test-kops-machine-pool",
 				},
 			})
 			if !tc["expectedError"].(bool) {
 				g.Expect(result).ToNot(BeNil())
 				g.Expect(err).To(BeNil())
+				kmp := &infrastructurev1alpha1.KopsMachinePool{}
+				err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsMachinePool), kmp)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(kmp.Name).To(Equal(kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"]))
 			} else if tc["asgNotFound"].(bool) {
 				g.Expect(err).To(BeNil())
 				g.Expect(result.RequeueAfter).To(Equal(1 * time.Minute))
 			} else {
 				g.Expect(err).NotTo(BeNil())
+				if _, ok := tc["expectedErrorMessage"]; ok {
+					g.Expect(err.Error()).To(Equal(tc["expectedErrorMessage"]))
+				}
 			}
 			if _, ok := tc["providerIDList"]; ok {
 				kmp := &infrastructurev1alpha1.KopsMachinePool{}
@@ -517,7 +476,7 @@ func TestKopsMachinePoolReconcilerSpotinst(t *testing.T) {
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: client.ObjectKey{
 					Namespace: "default",
-					Name:      fmt.Sprintf("%s.k8s.cluster-%s", "test-cluster", "test-kops-machine-pool"),
+					Name:      "test-kops-machine-pool",
 				},
 			})
 			g.Expect(result).ToNot(BeNil())
@@ -618,7 +577,11 @@ func TestMachinePoolStatus(t *testing.T) {
 		{
 			description: "should have a failed condition when InstanceGroupSpec is not set",
 			kopsMachinePoolFunction: func(kmp *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
-				kmp.Spec.KopsInstanceGroupSpec = kopsapi.InstanceGroupSpec{}
+				kmp.Spec.KopsInstanceGroupSpec = kopsapi.InstanceGroupSpec{
+					NodeLabels: map[string]string{
+						"kops.k8s.io/instance-group-name": "test-kops-machine-pool",
+					},
+				}
 				return kmp
 			},
 			expectedReconcilerError: true,
@@ -693,7 +656,7 @@ func TestMachinePoolStatus(t *testing.T) {
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: client.ObjectKey{
 					Namespace: "default",
-					Name:      "test-cluster.k8s.cluster-test-kops-machine-pool",
+					Name:      "test-kops-machine-pool",
 				},
 			})
 			if !tc.expectedReconcilerError {
@@ -862,12 +825,18 @@ func newKopsMachinePool(name, clusterName, namespace string) *infrastructurev1al
 	return &infrastructurev1alpha1.KopsMachinePool{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
-			Name:      fmt.Sprintf("%s.k8s.cluster-%s", clusterName, name),
+			Name:      name,
+			Labels: map[string]string{
+				"cluster.x-k8s.io/cluster-name": clusterName,
+			},
 		},
 		Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 			ClusterName: fmt.Sprintf("%s.k8s.cluster", clusterName),
 			KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
 				Role: "Node",
+				NodeLabels: map[string]string{
+					"kops.k8s.io/instance-group-name": name,
+				},
 			},
 		},
 	}
