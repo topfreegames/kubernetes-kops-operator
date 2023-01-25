@@ -92,10 +92,6 @@ func GetAutoScalingGroupNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.Kops
 
 func GetVirtualNodeGroupNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.KopsMachinePool) (*string, error) {
 
-	if _, ok := kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"]; !ok {
-		return nil, fmt.Errorf("failed to retrieve igName from Kops config in KopsMachinePool %s", kmp.GetName())
-	}
-
 	if _, ok := kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-role"]; !ok {
 		return nil, fmt.Errorf("failed to retrieve role from Kops config from KopsMachinePool %s", kmp.GetName())
 	}
