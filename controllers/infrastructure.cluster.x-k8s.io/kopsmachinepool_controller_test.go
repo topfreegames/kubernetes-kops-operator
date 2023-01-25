@@ -249,7 +249,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			"asgNotFound":   true,
 		},
 		{
-			"description":             "Should faill if couldn't retrieve ASG and it's not a NotFound error",
+			"description":             "Should fail if couldn't retrieve ASG and it's not a NotFound error",
 			"kopsMachinePoolFunction": nil,
 			"getASGByTagFunction": func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
 				return nil, errors.New("error")
