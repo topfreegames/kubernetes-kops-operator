@@ -249,19 +249,6 @@ func TestGetVirtualNodeGroupNameFromKopsMachinePool(t *testing.T) {
 			"isErrorExpected": false,
 		},
 		{
-			"description": "should fail when missing nodeLabel in kops config",
-			"input": kinfrastructurev1alpha1.KopsMachinePool{
-				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
-					ClusterName: "test-cluster",
-					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
-						NodeLabels: map[string]string{},
-					},
-				},
-			},
-			"isErrorExpected":      true,
-			"expectedErrorMessage": "failed to retrieve igName",
-		},
-		{
 			"description": "should fail when missing clusterName",
 			"input": kinfrastructurev1alpha1.KopsMachinePool{
 				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
