@@ -231,9 +231,17 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			"asgNotFound":   false,
 		},
 		{
-			"description": "Should correct IG name in kops config if different from kmp name",
+			"description": "Should have correct IG name in Kops NodeLabels",
 			"kopsMachinePoolFunction": func(kmp *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) *infrastructurev1alpha1.KopsMachinePool {
 				kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"] = "another-name"
+				return kmp
+			},
+			"expectedError": false,
+			"asgNotFound":   false,
+		},
+		{
+			"description": "Should Add instance-group-name if no NodeLabel is defined",
+			"kopsMachinePoolFunction": func(kmp *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) *infrastructurev1alpha1.KopsMachinePool {
 				return kmp
 			},
 			"expectedError": false,
