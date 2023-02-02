@@ -150,14 +150,14 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 		for _, kmp := range kmps {
 			if _, ok := kmp.Spec.SpotInstOptions["spotinst.io/hybrid"]; ok {
 				if kmp.Spec.SpotInstOptions["spotinst.io/hybrid"] == "true" {
-					vngName, err := kopsutils.GetVirtualNodeGroupNameFromKopsMachinePool(kmp)
+					vngName, err := kopsutils.GetCloudResourceNameFromKopsMachinePool(kmp)
 					if err != nil {
 						return err
 					}
 					vngNames = append(vngNames, vngName)
 				}
 			} else {
-				asgName, err := kopsutils.GetAutoScalingGroupNameFromKopsMachinePool(kmp)
+				asgName, err := kopsutils.GetCloudResourceNameFromKopsMachinePool(kmp)
 				if err != nil {
 					return err
 				}

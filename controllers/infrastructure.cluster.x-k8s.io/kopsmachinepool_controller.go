@@ -286,25 +286,21 @@ func GetASGByTag(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsCli
 	svc := autoscaling.New(awsClient)
 
 	clusterFilterKey := "tag:KubernetesCluster"
-	instanceGroupKey := "tag:kops.k8s.io/instancegroup"
 
-	asgName, err := kops.GetAutoScalingGroupNameFromKopsMachinePool(*kopsMachinePool)
+	asgName, err := kops.GetCloudResourceNameFromKopsMachinePool(*kopsMachinePool)
 	if err != nil {
 		return nil, err
 	}
 
 	input := &autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: []*string{
+			asgName,
+		},
 		Filters: []*autoscaling.Filter{
 			{
 				Name: &clusterFilterKey,
 				Values: []*string{
 					&kopsMachinePool.Spec.ClusterName,
-				},
-			},
-			{
-				Name: &instanceGroupKey,
-				Values: []*string{
-					asgName,
 				},
 			},
 		},

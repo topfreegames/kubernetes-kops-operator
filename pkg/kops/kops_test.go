@@ -112,16 +112,18 @@ func TestGetRegionFromKopsSubnet(t *testing.T) {
 	}
 }
 
-func TestGetAutoScalingGroupNameFromKopsMachinePool(t *testing.T) {
+func TestGetCloudResourceNameFromKopsMachinePool(t *testing.T) {
 	testCases := []map[string]interface{}{
 		{
 			"description": "should return the correct node asgName",
 			"input": kinfrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "nodes-a",
+				},
 				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
 					ClusterName: "test-cluster",
 					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
 						NodeLabels: map[string]string{
-							"kops.k8s.io/instance-group-name": "nodes-a",
 							"kops.k8s.io/instance-group-role": "Node",
 						},
 					},
@@ -133,11 +135,13 @@ func TestGetAutoScalingGroupNameFromKopsMachinePool(t *testing.T) {
 		{
 			"description": "should return the correct master asgName",
 			"input": kinfrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "master-1a",
+				},
 				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
 					ClusterName: "test-cluster",
 					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
 						NodeLabels: map[string]string{
-							"kops.k8s.io/instance-group-name": "master-1a",
 							"kops.k8s.io/instance-group-role": "Master",
 						},
 					},
@@ -147,8 +151,28 @@ func TestGetAutoScalingGroupNameFromKopsMachinePool(t *testing.T) {
 			"isErrorExpected": false,
 		},
 		{
-			"description": "should fail when missing nodeLabel annotation",
+			"description": "should fail when missing clusterName",
 			"input": kinfrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "nodes-a",
+				},
+				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
+					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
+						NodeLabels: map[string]string{
+							"kops.k8s.io/instance-group-role": "Node",
+						},
+					},
+				},
+			},
+			"isErrorExpected":      true,
+			"expectedErrorMessage": "failed to retrieve clusterName",
+		},
+		{
+			"description": "should fail when missing role",
+			"input": kinfrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "nodes-a",
+				},
 				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
 					ClusterName: "test-cluster",
 					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
@@ -157,36 +181,6 @@ func TestGetAutoScalingGroupNameFromKopsMachinePool(t *testing.T) {
 				},
 			},
 			"isErrorExpected":      true,
-			"expectedErrorMessage": "failed to retrieve igName",
-		},
-		{
-			"description": "should fail when missing clusterName",
-			"input": kinfrastructurev1alpha1.KopsMachinePool{
-				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
-					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
-						NodeLabels: map[string]string{
-							"kops.k8s.io/instance-group-name": "nodes-a",
-							"kops.k8s.io/instance-group-role": "Node",
-						},
-					},
-				},
-			},
-			"isErrorExpected":      true,
-			"expectedErrorMessage": "failed to retrieve clusterName",
-		},
-		{
-			"description": "should fail when missing role",
-			"input": kinfrastructurev1alpha1.KopsMachinePool{
-				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
-					ClusterName: "test-cluster",
-					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
-						NodeLabels: map[string]string{
-							"kops.k8s.io/instance-group-name": "nodes-a",
-						},
-					},
-				},
-			},
-			"isErrorExpected":      true,
 			"expectedErrorMessage": "failed to retrieve role from",
 		},
 	}
@@ -195,100 +189,11 @@ func TestGetAutoScalingGroupNameFromKopsMachinePool(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc["description"].(string), func(t *testing.T) {
-			asgName, err := GetAutoScalingGroupNameFromKopsMachinePool(tc["input"].(kinfrastructurev1alpha1.KopsMachinePool))
+			asgName, err := GetCloudResourceNameFromKopsMachinePool(tc["input"].(kinfrastructurev1alpha1.KopsMachinePool))
 			if !tc["isErrorExpected"].(bool) {
 				g.Expect(asgName).ToNot(BeNil())
 				g.Expect(err).To(BeNil())
 				g.Expect(*asgName).To(Equal(tc["expected"].(string)))
-			} else {
-				g.Expect(err).ToNot(BeNil())
-				g.Expect(err.Error()).To(ContainSubstring(tc["expectedErrorMessage"].(string)))
-			}
-		})
-	}
-}
-
-func TestGetVirtualNodeGroupNameFromKopsMachinePool(t *testing.T) {
-	testCases := []map[string]interface{}{
-		{
-			"description": "should return the correct VNG Name",
-			"input": kinfrastructurev1alpha1.KopsMachinePool{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "nodes-a",
-				},
-				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
-					ClusterName: "test-cluster",
-					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
-						NodeLabels: map[string]string{
-							"kops.k8s.io/instance-group-name": "nodes-a",
-							"kops.k8s.io/instance-group-role": "Node",
-						},
-					},
-				},
-			},
-			"expected":        "nodes-a.test-cluster",
-			"isErrorExpected": false,
-		},
-		{
-			"description": "should return the correct master VNG Name",
-			"input": kinfrastructurev1alpha1.KopsMachinePool{
-				ObjectMeta: metav1.ObjectMeta{
-					Name: "master-1a",
-				},
-				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
-					ClusterName: "test-cluster",
-					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
-						NodeLabels: map[string]string{
-							"kops.k8s.io/instance-group-name": "master-1a",
-							"kops.k8s.io/instance-group-role": "Master",
-						},
-					},
-				},
-			},
-			"expected":        "master-1a.masters.test-cluster",
-			"isErrorExpected": false,
-		},
-		{
-			"description": "should fail when missing clusterName",
-			"input": kinfrastructurev1alpha1.KopsMachinePool{
-				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
-					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
-						NodeLabels: map[string]string{
-							"kops.k8s.io/instance-group-name": "nodes-a",
-							"kops.k8s.io/instance-group-role": "Node",
-						},
-					},
-				},
-			},
-			"isErrorExpected":      true,
-			"expectedErrorMessage": "failed to retrieve clusterName",
-		},
-		{
-			"description": "should fail when missing role",
-			"input": kinfrastructurev1alpha1.KopsMachinePool{
-				Spec: kinfrastructurev1alpha1.KopsMachinePoolSpec{
-					ClusterName: "test-cluster",
-					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
-						NodeLabels: map[string]string{
-							"kops.k8s.io/instance-group-name": "nodes-a",
-						},
-					},
-				},
-			},
-			"isErrorExpected":      true,
-			"expectedErrorMessage": "failed to retrieve role from",
-		},
-	}
-	RegisterFailHandler(Fail)
-	g := NewWithT(t)
-
-	for _, tc := range testCases {
-		t.Run(tc["description"].(string), func(t *testing.T) {
-			vngName, err := GetVirtualNodeGroupNameFromKopsMachinePool(tc["input"].(kinfrastructurev1alpha1.KopsMachinePool))
-			if !tc["isErrorExpected"].(bool) {
-				g.Expect(vngName).ToNot(BeNil())
-				g.Expect(err).To(BeNil())
-				g.Expect(*vngName).To(Equal(tc["expected"].(string)))
 			} else {
 				g.Expect(err).ToNot(BeNil())
 				g.Expect(err.Error()).To(ContainSubstring(tc["expectedErrorMessage"].(string)))

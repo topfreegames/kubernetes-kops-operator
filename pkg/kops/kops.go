@@ -66,11 +66,7 @@ func GetKopsMachinePoolsWithLabel(ctx context.Context, c client.Client, key, val
 	return kmpsList.Items, nil
 }
 
-func GetAutoScalingGroupNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.KopsMachinePool) (*string, error) {
-
-	if _, ok := kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"]; !ok {
-		return nil, fmt.Errorf("failed to retrieve igName from KopsMachinePool %s", kmp.GetName())
-	}
+func GetCloudResourceNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.KopsMachinePool) (*string, error) {
 
 	if _, ok := kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-role"]; !ok {
 		return nil, fmt.Errorf("failed to retrieve role from KopsMachinePool %s", kmp.GetName())
@@ -80,32 +76,12 @@ func GetAutoScalingGroupNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.Kops
 		return nil, fmt.Errorf("failed to retrieve clusterName from KopsMachinePool %s", kmp.GetName())
 	}
 
-	var asgName string
+	var cloudName string
 	if kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-role"] == "Master" {
-		asgName = fmt.Sprintf("%s.masters.%s", kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"], kmp.Spec.ClusterName)
+		cloudName = fmt.Sprintf("%s.masters.%s", kmp.Name, kmp.Spec.ClusterName)
 	} else {
-		asgName = fmt.Sprintf("%s.%s", kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"], kmp.Spec.ClusterName)
+		cloudName = fmt.Sprintf("%s.%s", kmp.Name, kmp.Spec.ClusterName)
 	}
 
-	return &asgName, nil
-}
-
-func GetVirtualNodeGroupNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.KopsMachinePool) (*string, error) {
-
-	if _, ok := kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-role"]; !ok {
-		return nil, fmt.Errorf("failed to retrieve role from Kops config from KopsMachinePool %s", kmp.GetName())
-	}
-
-	if kmp.Spec.ClusterName == "" {
-		return nil, fmt.Errorf("failed to retrieve clusterName from KopsMachinePool %s", kmp.GetName())
-	}
-
-	var vngName string
-	if kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-role"] == "Master" {
-		vngName = fmt.Sprintf("%s.masters.%s", kmp.Name, kmp.Spec.ClusterName)
-	} else {
-		vngName = fmt.Sprintf("%s.%s", kmp.Name, kmp.Spec.ClusterName)
-	}
-
-	return &vngName, nil
+	return &cloudName, nil
 }
