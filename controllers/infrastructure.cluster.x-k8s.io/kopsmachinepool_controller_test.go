@@ -250,7 +250,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 		{
 			"description":             "Should requeue if couldn't retrieve ASG",
 			"kopsMachinePoolFunction": nil,
-			"getASGByTagFunction": func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
+			"getASGByNameFunction": func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
 				return nil, apierrors.NewNotFound(schema.GroupResource{}, "ASG not ready")
 			},
 			"expectedError": false,
@@ -259,7 +259,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 		{
 			"description":             "Should fail if couldn't retrieve ASG and it's not a NotFound error",
 			"kopsMachinePoolFunction": nil,
-			"getASGByTagFunction": func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
+			"getASGByNameFunction": func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
 				return nil, errors.New("error")
 			},
 			"expectedError": true,
@@ -299,11 +299,11 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			kopsControlPlane := newKopsControlPlane("test-kops-control-plane", "default")
 			fakeClient := fake.NewClientBuilder().WithObjects(kopsMachinePool, kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
 
-			var getASGByTag func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error)
-			if _, ok := tc["getASGByTagFunction"]; ok {
-				getASGByTag = tc["getASGByTagFunction"].(func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error))
+			var getASGByName func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error)
+			if _, ok := tc["getASGByNameFunction"]; ok {
+				getASGByName = tc["getASGByNameFunction"].(func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error))
 			} else {
-				getASGByTag = func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
+				getASGByName = func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
 					return &autoscaling.Group{
 						Instances: []*autoscaling.Instance{
 							{
@@ -321,7 +321,7 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 				ValidateKopsClusterFactory: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 					return &validation.ValidationCluster{}, nil
 				},
-				GetASGByTagFactory: getASGByTag,
+				GetASGByNameFactory: getASGByName,
 			}
 
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
@@ -469,7 +469,7 @@ func TestKopsMachinePoolReconcilerSpotinst(t *testing.T) {
 				ValidateKopsClusterFactory: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 					return &validation.ValidationCluster{}, nil
 				},
-				GetASGByTagFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
+				GetASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
 					return &autoscaling.Group{
 						Instances: []*autoscaling.Instance{
 							{
@@ -650,7 +650,7 @@ func TestMachinePoolStatus(t *testing.T) {
 				Client:                     fakeClient,
 				Recorder:                   recorder,
 				ValidateKopsClusterFactory: validateKopsCluster,
-				GetASGByTagFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
+				GetASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
 					return &autoscaling.Group{
 						Instances: []*autoscaling.Instance{
 							{

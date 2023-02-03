@@ -19,10 +19,11 @@ package infrastructureclusterxk8sio
 import (
 	"context"
 	"fmt"
+	"time"
+
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/patch"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/awserr"
@@ -65,7 +66,7 @@ type KopsMachinePoolReconciler struct {
 	kopsClientset              simple.Clientset
 	Recorder                   record.EventRecorder
 	ValidateKopsClusterFactory func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
-	GetASGByTagFactory         func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsClient *session.Session) (*autoscaling.Group, error)
+	GetASGByNameFactory        func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsClient *session.Session) (*autoscaling.Group, error)
 }
 
 // getKopsControlPlaneByName returns kopsControlPlane by its name
@@ -225,7 +226,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 			return resultError, err
 		}
 
-		asg, err := r.GetASGByTagFactory(kopsMachinePool, awsClient)
+		asg, err := r.GetASGByNameFactory(kopsMachinePool, awsClient)
 		if err != nil {
 			if apierrors.IsNotFound(err) {
 				r.log.Info("ASG not created yet, requeue after 1 minute")
@@ -279,11 +280,9 @@ func regionBySubnet(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) (st
 	return zone[:len(zone)-1], nil
 }
 
-// GetASGByTag returns the existing ASG or nothing if it doesn't exist.
-func GetASGByTag(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsClient *session.Session) (*autoscaling.Group, error) {
+// GetASGByName returns the existing ASG or nothing if it doesn't exist.
+func GetASGByName(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsClient *session.Session) (*autoscaling.Group, error) {
 	svc := autoscaling.New(awsClient)
-
-	clusterFilterKey := "tag:KubernetesCluster"
 
 	asgName, err := kops.GetCloudResourceNameFromKopsMachinePool(*kopsMachinePool)
 	if err != nil {
@@ -293,14 +292,6 @@ func GetASGByTag(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsCli
 	input := &autoscaling.DescribeAutoScalingGroupsInput{
 		AutoScalingGroupNames: []*string{
 			asgName,
-		},
-		Filters: []*autoscaling.Filter{
-			{
-				Name: &clusterFilterKey,
-				Values: []*string{
-					&kopsMachinePool.Spec.ClusterName,
-				},
-			},
 		},
 	}
 
