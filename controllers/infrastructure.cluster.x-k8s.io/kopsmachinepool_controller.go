@@ -154,15 +154,13 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return resultDefault, nil
 	}
 
-	igName := kopsMachinePool.Name
-
-	if _, ok := kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"]; !ok {
-		return resultError, fmt.Errorf("instance group name missing from kops ig config")
-	}
-
-	// Patch kops IG node label to be the same as the KMP object
-	if kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"] != igName {
-		kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"] = igName
+	// Ensure correct NodeLabel for the IG
+	if kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels != nil {
+		kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"] = kopsMachinePool.Name
+	} else {
+		kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
+			"kops.k8s.io/instance-group-name": kopsMachinePool.Name,
+		}
 	}
 
 	kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{}
@@ -185,7 +183,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 
 	kopsInstanceGroup := &kopsapi.InstanceGroup{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      igName,
+			Name:      kopsMachinePool.Name,
 			Namespace: kopsMachinePool.ObjectMeta.Namespace,
 			Labels:    kopsMachinePool.Spec.SpotInstOptions,
 		},
@@ -286,25 +284,21 @@ func GetASGByTag(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsCli
 	svc := autoscaling.New(awsClient)
 
 	clusterFilterKey := "tag:KubernetesCluster"
-	instanceGroupKey := "tag:kops.k8s.io/instancegroup"
 
-	asgName, err := kops.GetAutoScalingGroupNameFromKopsMachinePool(*kopsMachinePool)
+	asgName, err := kops.GetCloudResourceNameFromKopsMachinePool(*kopsMachinePool)
 	if err != nil {
 		return nil, err
 	}
 
 	input := &autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: []*string{
+			asgName,
+		},
 		Filters: []*autoscaling.Filter{
 			{
 				Name: &clusterFilterKey,
 				Values: []*string{
 					&kopsMachinePool.Spec.ClusterName,
-				},
-			},
-			{
-				Name: &instanceGroupKey,
-				Values: []*string{
-					asgName,
 				},
 			},
 		},

@@ -18,7 +18,6 @@ package controlplane
 
 import (
 	"context"
-	"embed"
 	"fmt"
 	"k8s.io/klog/v2"
 	"os"
@@ -64,8 +63,6 @@ import (
 )
 
 var (
-	//go:embed templates/*.tpl
-	templates     embed.FS
 	requeue1min   = ctrl.Result{RequeueAfter: 1 * time.Minute}
 	resultDefault = ctrl.Result{RequeueAfter: 1 * time.Hour}
 	resultError   = ctrl.Result{RequeueAfter: 30 * time.Minute}
@@ -129,20 +126,15 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 		return err
 	}
 
-	template := utils.Template{
-		TemplateFilename: "templates/backend.tf.tpl",
-		EmbeddedFiles:    templates,
-		OutputFilename:   fmt.Sprintf("%s/backend.tf", terraformOutputDir),
-		Data: struct {
-			Bucket      string
-			ClusterName string
-		}{
-			s3Bucket,
-			kopsCluster.Name,
-		},
+	backendTemplate := struct {
+		Bucket      string
+		ClusterName string
+	}{
+		s3Bucket,
+		kopsCluster.Name,
 	}
 
-	err = utils.CreateAdditionalTerraformFiles(template)
+	err = utils.CreateTerraformFilesFromTemplate("templates/backend.tf.tpl", "backend.tf", terraformOutputDir, backendTemplate)
 	if err != nil {
 		return err
 	}
@@ -152,25 +144,39 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 		if err != nil {
 			return err
 		}
+
 		asgNames := []*string{}
+		vngNames := []*string{}
 		for _, kmp := range kmps {
-			asgName, err := kopsutils.GetAutoScalingGroupNameFromKopsMachinePool(kmp)
+			if _, ok := kmp.Spec.SpotInstOptions["spotinst.io/hybrid"]; ok {
+				if kmp.Spec.SpotInstOptions["spotinst.io/hybrid"] == "true" {
+					vngName, err := kopsutils.GetCloudResourceNameFromKopsMachinePool(kmp)
+					if err != nil {
+						return err
+					}
+					vngNames = append(vngNames, vngName)
+				}
+			} else {
+				asgName, err := kopsutils.GetCloudResourceNameFromKopsMachinePool(kmp)
+				if err != nil {
+					return err
+				}
+				asgNames = append(asgNames, asgName)
+			}
+		}
+
+		if len(asgNames) > 0 {
+			err = utils.CreateTerraformFilesFromTemplate("templates/launch_template_override.tf.tpl", "launch_template_override.tf", terraformOutputDir, asgNames)
 			if err != nil {
 				return err
 			}
-			asgNames = append(asgNames, asgName)
 		}
 
-		template := utils.Template{
-			TemplateFilename: "templates/launch_template_override.tf.tpl",
-			EmbeddedFiles:    templates,
-			OutputFilename:   fmt.Sprintf("%s/launch_template_override.tf", terraformOutputDir),
-			Data:             asgNames,
-		}
-
-		err = utils.CreateAdditionalTerraformFiles(template)
-		if err != nil {
-			return err
+		if len(vngNames) > 0 {
+			err = utils.CreateTerraformFilesFromTemplate("templates/spotinst_launch_spec_override.tf.tpl", "spotinst_launch_spec_override.tf", terraformOutputDir, vngNames)
+			if err != nil {
+				return err
+			}
 		}
 	}
 
@@ -486,7 +492,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
 
 	var shouldIgnoreSG bool
-	if _, ok := owner.GetAnnotations()["clustermesh.infrastructure.wildlife.io"]; ok {
+	if _, ok := owner.GetAnnotations()["kopscontrolplane.controlplane.wildlife.io/external-security-groups"]; ok {
 		shouldIgnoreSG = true
 	}
 
