@@ -146,7 +146,7 @@ func main() {
 		Scheme:                     mgr.GetScheme(),
 		Recorder:                   mgr.GetEventRecorderFor("kopsmachinepool-controller"),
 		ValidateKopsClusterFactory: utils.ValidateKopsCluster,
-		GetASGByTagFactory:         infrastructureclusterxk8siocontrollers.GetASGByTag,
+		GetASGByNameFactory:        infrastructureclusterxk8siocontrollers.GetASGByName,
 	}).SetupWithManager(ctx, mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsMachinePool")
 		os.Exit(1)
