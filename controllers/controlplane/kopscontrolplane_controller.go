@@ -19,12 +19,13 @@ package controlplane
 import (
 	"context"
 	"fmt"
-	"k8s.io/klog/v2"
 	"os"
+	"time"
+
+	"k8s.io/klog/v2"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
-	"time"
 
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
@@ -64,8 +65,8 @@ import (
 
 var (
 	requeue1min   = ctrl.Result{RequeueAfter: 1 * time.Minute}
-	resultDefault = ctrl.Result{RequeueAfter: 1 * time.Hour}
-	resultError   = ctrl.Result{RequeueAfter: 30 * time.Minute}
+	resultDefault = ctrl.Result{RequeueAfter: 20 * time.Minute}
+	resultError   = ctrl.Result{RequeueAfter: 5 * time.Minute}
 )
 
 // KopsControlPlaneReconciler reconciles a KopsControlPlane object

@@ -53,8 +53,8 @@ import (
 
 var (
 	requeue1min   = ctrl.Result{RequeueAfter: 1 * time.Minute}
-	resultDefault = ctrl.Result{RequeueAfter: 1 * time.Hour}
-	resultError   = ctrl.Result{RequeueAfter: 30 * time.Minute}
+	resultDefault = ctrl.Result{RequeueAfter: 20 * time.Minute}
+	resultError   = ctrl.Result{RequeueAfter: 5 * time.Minute}
 )
 
 // KopsMachinePoolReconciler reconciles a KopsMachinePool object
