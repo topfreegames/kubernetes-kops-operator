@@ -325,7 +325,7 @@ func TestAddSSHCredential(t *testing.T) {
 
 }
 
-func TestUpdateKopsState(t *testing.T) {
+func TestCreateOrUpdateKopsCluster(t *testing.T) {
 	testCases := []struct {
 		description         string
 		expectedError       bool
@@ -380,7 +380,7 @@ func TestUpdateKopsState(t *testing.T) {
 				},
 			}
 
-			err := reconciler.updateKopsState(ctx, fakeKopsClientset, bareKopsCluster, dummySSHPublicKey, nil)
+			err := reconciler.createOrUpdateKopsCluster(ctx, fakeKopsClientset, bareKopsCluster, dummySSHPublicKey, nil)
 			if !tc.expectedError {
 				g.Expect(err).NotTo(HaveOccurred())
 				cluster, err := fakeKopsClientset.GetCluster(ctx, bareKopsCluster.Name)

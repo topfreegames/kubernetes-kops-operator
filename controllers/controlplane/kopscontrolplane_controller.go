@@ -204,35 +204,36 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 
 }
 
-// updateKopsState creates or updates the kops state in the remote storage
-func (r *KopsControlPlaneReconciler) updateKopsState(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, SSHPublicKey string, cloud fi.Cloud) error {
+// createOrUpdateKopsCluster creates or updates the kops state in the remote storage
+func (r *KopsControlPlaneReconciler) createOrUpdateKopsCluster(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, SSHPublicKey string, cloud fi.Cloud) error {
 	log := ctrl.LoggerFrom(ctx)
-	oldCluster, _ := kopsClientset.GetCluster(ctx, kopsCluster.Name)
-	if oldCluster != nil {
-		status, err := r.GetClusterStatusFactory(oldCluster, cloud)
+	oldCluster, err := kopsClientset.GetCluster(ctx, kopsCluster.Name)
+	if apierrors.IsNotFound(err) {
+		_, err = kopsClientset.CreateCluster(ctx, kopsCluster)
 		if err != nil {
 			return err
 		}
-		_, err = kopsClientset.UpdateCluster(ctx, kopsCluster, status)
+		err = addSSHCredential(kopsCluster, kopsClientset, SSHPublicKey)
 		if err != nil {
 			return err
 		}
-		log.Info(fmt.Sprintf("updated kops state for cluster %s", kopsCluster.ObjectMeta.Name))
+
+		log.Info(fmt.Sprintf("created kops state for cluster %s", kopsCluster.ObjectMeta.Name))
 		return nil
 	}
-
-	_, err := kopsClientset.CreateCluster(ctx, kopsCluster)
 	if err != nil {
 		return err
 	}
 
-	err = addSSHCredential(kopsCluster, kopsClientset, SSHPublicKey)
+	status, err := r.GetClusterStatusFactory(oldCluster, cloud)
 	if err != nil {
 		return err
 	}
-
-	log.Info(fmt.Sprintf("created kops state for cluster %s", kopsCluster.ObjectMeta.Name))
-
+	_, err = kopsClientset.UpdateCluster(ctx, kopsCluster, status)
+	if err != nil {
+		return err
+	}
+	log.Info(fmt.Sprintf("updated kops state for cluster %s", kopsCluster.ObjectMeta.Name))
 	return nil
 }
 
@@ -466,7 +467,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	err = r.updateKopsState(ctx, r.kopsClientset, fullCluster, kopsControlPlane.Spec.SSHPublicKey, cloud)
+	err = r.createOrUpdateKopsCluster(ctx, r.kopsClientset, fullCluster, kopsControlPlane.Spec.SSHPublicKey, cloud)
 	if err != nil {
 		r.log.Error(err, fmt.Sprintf("failed to manage kops state: %v", err))
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneStateReadyCondition, controlplanev1alpha1.KopsControlPlaneStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())

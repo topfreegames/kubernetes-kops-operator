@@ -84,30 +84,28 @@ func (r *KopsMachinePoolReconciler) getKopsControlPlaneByName(ctx context.Contex
 	return kopsControlPlane, nil
 }
 
-// isInstanceGroupCreated check if IG is created in kops state
-func (r *KopsMachinePoolReconciler) isInstanceGroupCreated(ctx context.Context, cluster *kopsapi.Cluster, instanceGroupName string) bool {
-	ig, _ := r.kopsClientset.InstanceGroupsFor(cluster).Get(ctx, instanceGroupName, metav1.GetOptions{})
-	return ig != nil
-}
-
-// updateInstanceGroup create or update the instance group in kops state
-func (r *KopsMachinePoolReconciler) updateInstanceGroup(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsInstanceGroup *kopsapi.InstanceGroup) error {
+// createOrUpdateInstanceGroup create or update the instance group in kops state
+func (r *KopsMachinePoolReconciler) createOrUpdateInstanceGroup(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsInstanceGroup *kopsapi.InstanceGroup) error {
 
 	instanceGroupName := kopsInstanceGroup.ObjectMeta.Name
-	if r.isInstanceGroupCreated(ctx, kopsCluster, kopsInstanceGroup.Name) {
-		_, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).Update(ctx, kopsInstanceGroup, metav1.UpdateOptions{})
+	_, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).Get(ctx, instanceGroupName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		_, err = r.kopsClientset.InstanceGroupsFor(kopsCluster).Create(ctx, kopsInstanceGroup, metav1.CreateOptions{})
 		if err != nil {
-			return fmt.Errorf("error updating instanceGroup: %v", err)
+			return fmt.Errorf("error creating instanceGroup: %v", err)
 		}
-		r.log.Info(fmt.Sprintf("updated instancegroup/%s", instanceGroupName))
+		r.log.Info(fmt.Sprintf("created instancegroup/%s", instanceGroupName))
 		return nil
 	}
-
-	_, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).Create(ctx, kopsInstanceGroup, metav1.CreateOptions{})
 	if err != nil {
-		return fmt.Errorf("error creating instanceGroup: %v", err)
+		return err
 	}
-	r.log.Info(fmt.Sprintf("created instancegroup/%s", instanceGroupName))
+
+	_, err = r.kopsClientset.InstanceGroupsFor(kopsCluster).Update(ctx, kopsInstanceGroup, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("error updating instanceGroup: %v", err)
+	}
+	r.log.Info(fmt.Sprintf("updated instancegroup/%s", instanceGroupName))
 
 	return nil
 }
@@ -207,7 +205,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
-	err = r.updateInstanceGroup(ctx, kopsCluster, kopsInstanceGroup)
+	err = r.createOrUpdateInstanceGroup(ctx, kopsCluster, kopsInstanceGroup)
 	if err != nil {
 		conditions.MarkFalse(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition, infrastructurev1alpha1.KopsMachinePoolStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		return resultError, err

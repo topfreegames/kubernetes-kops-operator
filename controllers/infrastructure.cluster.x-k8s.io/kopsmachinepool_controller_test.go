@@ -33,66 +33,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
-func TestIsInstanceGroupCreated(t *testing.T) {
-
-	testCases := []map[string]interface{}{
-		{
-			"description":    "Should return true for IG created",
-			"expectedError":  false,
-			"kopsIGFunction": nil,
-		},
-		{
-			"description":   "Should return false for IG not created",
-			"expectedError": true,
-			"kopsIGFunction": func(kopsIG *kopsapi.InstanceGroup) *kopsapi.InstanceGroup {
-				return &kopsapi.InstanceGroup{
-					ObjectMeta: metav1.ObjectMeta{
-						Name: "another-test-kopsig",
-					},
-					Spec: kopsapi.InstanceGroupSpec{
-						Role: "Node",
-					},
-				}
-			},
-		},
-	}
-	RegisterFailHandler(Fail)
-	g := NewWithT(t)
-	ctx := context.TODO()
-	for _, tc := range testCases {
-		t.Run(tc["description"].(string), func(t *testing.T) {
-			fakeKopsClientset := newFakeKopsClientset()
-
-			kopsCluster := newKopsCluster("test-kopscluster")
-
-			ig := newKopsIG("test-kopsig", kopsCluster.GetObjectMeta().GetName())
-			if tc["kopsIGFunction"] != nil {
-				kopsIGFunction := tc["kopsIGFunction"].(func(kopsIG *kopsapi.InstanceGroup) *kopsapi.InstanceGroup)
-				ig = kopsIGFunction(ig)
-			}
-			cluster, err := fakeKopsClientset.CreateCluster(ctx, kopsCluster)
-			g.Expect(cluster).NotTo(BeNil())
-			g.Expect(err).NotTo(HaveOccurred())
-
-			ig, err = fakeKopsClientset.InstanceGroupsFor(kopsCluster).Create(ctx, ig, metav1.CreateOptions{})
-			g.Expect(ig).NotTo(BeNil())
-			g.Expect(err).NotTo(HaveOccurred())
-
-			reconciler := &KopsMachinePoolReconciler{
-				kopsClientset: fakeKopsClientset,
-			}
-			isIGCreated := reconciler.isInstanceGroupCreated(ctx, kopsCluster, "test-kopsig")
-			if !tc["expectedError"].(bool) {
-				g.Expect(isIGCreated).To(BeTrue())
-			} else {
-				g.Expect(isIGCreated).To(BeFalse())
-			}
-
-		})
-	}
-}
-
-func TestUpdateInstanceGroup(t *testing.T) {
+func TestCreateOrUpdateInstanceGroup(t *testing.T) {
 
 	testCases := []map[string]interface{}{
 		{
@@ -141,7 +82,7 @@ func TestUpdateInstanceGroup(t *testing.T) {
 				kopsClientset: fakeKopsClientset,
 				log:           ctrl.LoggerFrom(ctx),
 			}
-			err = reconciler.updateInstanceGroup(ctx, kopsCluster, ig)
+			err = reconciler.createOrUpdateInstanceGroup(ctx, kopsCluster, ig)
 			if tc["expectedError"].(bool) {
 				g.Expect(err).To(HaveOccurred())
 				return
