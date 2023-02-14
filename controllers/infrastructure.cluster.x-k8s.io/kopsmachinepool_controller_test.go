@@ -670,10 +670,10 @@ func TestMachinePoolStatus(t *testing.T) {
 			if !tc.expectedReconcilerError {
 				g.Expect(err).ToNot(HaveOccurred())
 				g.Expect(result.Requeue).To(BeFalse())
-				g.Expect(result.RequeueAfter).To(Equal(1 * time.Hour))
+				g.Expect(result.RequeueAfter).To(Equal(20 * time.Minute))
 			} else {
 				g.Expect(err).To(HaveOccurred())
-				g.Expect(result.RequeueAfter).To(Equal(30 * time.Minute))
+				g.Expect(result.RequeueAfter).To(Equal(5 * time.Minute))
 			}
 
 			if tc.expectedStatus != nil {
