@@ -65,6 +65,7 @@ type KopsMachinePoolReconciler struct {
 	WatchFilterValue           string
 	kopsClientset              simple.Clientset
 	Recorder                   record.EventRecorder
+	GetKopsClientSetFactory    func(configBase string) (simple.Clientset, error)
 	ValidateKopsClusterFactory func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetASGByNameFactory        func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsClient *session.Session) (*autoscaling.Group, error)
 }
@@ -189,14 +190,11 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		Spec: kopsMachinePool.Spec.KopsInstanceGroupSpec,
 	}
 
-	if r.kopsClientset == nil {
-		kopsClientset, err := utils.GetKopsClientset(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
-		if err != nil {
-			return resultError, err
-		}
-
-		r.kopsClientset = kopsClientset
+	kopsClientset, err := r.GetKopsClientSetFactory(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
+	if err != nil {
+		return resultError, err
 	}
+	r.kopsClientset = kopsClientset
 
 	kopsCluster := &kopsapi.Cluster{
 		ObjectMeta: metav1.ObjectMeta{

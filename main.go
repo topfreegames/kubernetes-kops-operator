@@ -146,6 +146,7 @@ func main() {
 		Client:                     mgr.GetClient(),
 		Scheme:                     mgr.GetScheme(),
 		Recorder:                   mgr.GetEventRecorderFor("kopsmachinepool-controller"),
+		GetKopsClientSetFactory:    utils.GetKopsClientset,
 		ValidateKopsClusterFactory: utils.ValidateKopsCluster,
 		GetASGByNameFactory:        infrastructureclusterxk8siocontrollers.GetASGByName,
 	}).SetupWithManager(ctx, mgr); err != nil {
