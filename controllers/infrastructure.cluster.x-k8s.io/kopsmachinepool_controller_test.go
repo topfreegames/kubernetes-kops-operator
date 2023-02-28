@@ -259,6 +259,9 @@ func TestKopsMachinePoolReconciler(t *testing.T) {
 			reconciler := KopsMachinePoolReconciler{
 				Client:   fakeClient,
 				Recorder: record.NewFakeRecorder(5),
+				GetKopsClientSetFactory: func(configBase string) (simple.Clientset, error) {
+					return newFakeKopsClientset(), nil
+				},
 				ValidateKopsClusterFactory: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 					return &validation.ValidationCluster{}, nil
 				},
@@ -404,9 +407,11 @@ func TestKopsMachinePoolReconcilerSpotinst(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().WithObjects(kopsMachinePool, kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
 
 			reconciler := KopsMachinePoolReconciler{
-				Client:        fakeClient,
-				kopsClientset: fakeKopsClientset,
-				Recorder:      record.NewFakeRecorder(5),
+				Client:   fakeClient,
+				Recorder: record.NewFakeRecorder(5),
+				GetKopsClientSetFactory: func(configBase string) (simple.Clientset, error) {
+					return fakeKopsClientset, nil
+				},
 				ValidateKopsClusterFactory: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 					return &validation.ValidationCluster{}, nil
 				},
@@ -588,8 +593,11 @@ func TestMachinePoolStatus(t *testing.T) {
 			}
 
 			reconciler := KopsMachinePoolReconciler{
-				Client:                     fakeClient,
-				Recorder:                   recorder,
+				Client:   fakeClient,
+				Recorder: recorder,
+				GetKopsClientSetFactory: func(configBase string) (simple.Clientset, error) {
+					return newFakeKopsClientset(), nil
+				},
 				ValidateKopsClusterFactory: validateKopsCluster,
 				GetASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, _ *session.Session) (*autoscaling.Group, error) {
 					return &autoscaling.Group{
