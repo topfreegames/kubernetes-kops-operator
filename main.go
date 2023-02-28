@@ -131,6 +131,7 @@ func main() {
 		Scheme:                       mgr.GetScheme(),
 		Recorder:                     mgr.GetEventRecorderFor("kopscontrolplane-controller"),
 		TfExecPath:                   tfExecPath,
+		GetKopsClientSetFactory:      utils.GetKopsClientset,
 		BuildCloudFactory:            utils.BuildCloud,
 		PopulateClusterSpecFactory:   controlplane.PopulateClusterSpec,
 		PrepareCloudResourcesFactory: controlplane.PrepareCloudResources,

@@ -77,6 +77,7 @@ type KopsControlPlaneReconciler struct {
 	log                          logr.Logger
 	Recorder                     record.EventRecorder
 	TfExecPath                   string
+	GetKopsClientSetFactory      func(configBase string) (simple.Clientset, error)
 	BuildCloudFactory            func(*kopsapi.Cluster) (fi.Cloud, error)
 	PopulateClusterSpecFactory   func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
 	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool) error
@@ -435,14 +436,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	r.log.Info(fmt.Sprintf("starting reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
 
-	if r.kopsClientset == nil {
-		kopsClientset, err := utils.GetKopsClientset(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
-		if err != nil {
-			r.log.Error(rerr, "failed to get kops clientset")
-			return resultError, err
-		}
-		r.kopsClientset = kopsClientset
+	kopsClientset, err := r.GetKopsClientSetFactory(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
+	if err != nil {
+		r.log.Error(rerr, "failed to get kops clientset")
+		return resultError, err
 	}
+	r.kopsClientset = kopsClientset
 
 	kopsCluster := &kopsapi.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
