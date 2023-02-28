@@ -511,10 +511,12 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			g.Expect(err).NotTo(HaveOccurred())
 
 			reconciler := &KopsControlPlaneReconciler{
-				log:           ctrl.LoggerFrom(ctx),
-				Client:        fakeClient,
-				kopsClientset: fakeKopsClientset,
-				Recorder:      record.NewFakeRecorder(5),
+				log:    ctrl.LoggerFrom(ctx),
+				Client: fakeClient,
+				GetKopsClientSetFactory: func(configBase string) (simple.Clientset, error) {
+					return fakeKopsClientset, nil
+				},
+				Recorder: record.NewFakeRecorder(5),
 				BuildCloudFactory: func(*kopsapi.Cluster) (fi.Cloud, error) {
 					return nil, nil
 				},
@@ -783,10 +785,12 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			}
 
 			reconciler := &KopsControlPlaneReconciler{
-				log:           ctrl.LoggerFrom(ctx),
-				Client:        fakeClient,
-				kopsClientset: fakeKopsClientset,
-				Recorder:      recorder,
+				log:      ctrl.LoggerFrom(ctx),
+				Client:   fakeClient,
+				Recorder: recorder,
+				GetKopsClientSetFactory: func(configBase string) (simple.Clientset, error) {
+					return fakeKopsClientset, nil
+				},
 				BuildCloudFactory: func(*kopsapi.Cluster) (fi.Cloud, error) {
 					return nil, nil
 				},
