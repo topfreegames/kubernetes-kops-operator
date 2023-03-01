@@ -141,12 +141,25 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 		return err
 	}
 
-	if shouldIgnoreSG {
-		kmps, err := kopsutils.GetKopsMachinePoolsWithLabel(ctx, kubeClient, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
-		if err != nil {
-			return err
-		}
+	kmps, err := kopsutils.GetKopsMachinePoolsWithLabel(ctx, kubeClient, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
+	if err != nil {
+		return err
+	}
 
+	// TODO: Refactor to assert if spot is enabled in a better way
+	if kopsControlPlane.Spec.SpotInst.Enabled {
+		for _, kmp := range kmps {
+			if _, ok := kmp.Spec.SpotInstOptions["spotinst.io/hybrid"]; ok {
+				err = utils.CreateTerraformFilesFromTemplate("templates/spotinst_ocean_aws_override.tf.tpl", "spotinst_ocean_aws_override.tf", terraformOutputDir, kopsCluster.Name)
+				if err != nil {
+					return err
+				}
+				break
+			}
+		}
+	}
+
+	if shouldIgnoreSG {
 		asgNames := []*string{}
 		vngNames := []*string{}
 		for _, kmp := range kmps {
