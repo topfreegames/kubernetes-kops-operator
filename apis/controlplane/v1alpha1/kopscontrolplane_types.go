@@ -105,6 +105,7 @@ type KopsControlPlaneStatus struct {
 //+kubebuilder:resource:path=kopscontrolplanes,scope=Namespaced,shortName=kcp
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
+//+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 
 // KopsControlPlane is the Schema for the kopscontrolplanes API
 type KopsControlPlane struct {

@@ -28,6 +28,9 @@ spec:
     - jsonPath: .status.paused
       name: Paused
       type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -4109,7 +4112,11 @@ spec:
     singular: kopsmachinepool
   scope: Namespaced
   versions:
-  - name: v1alpha1
+  - additionalPrinterColumns:
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
     schema:
       openAPIV3Schema:
         description: KopsMachinePool is the Schema for the kopsmachinepools API
@@ -5328,7 +5335,7 @@ spec:
               optional: false
         - name: AWS_REGION
           value: us-east-1
-        image: tfgco/kubernetes-kops-operator:v0.3.4-alpha
+        image: tfgco/kubernetes-kops-operator:v0.3.5-alpha
         livenessProbe:
           httpGet:
             path: /healthz
@@ -5345,7 +5352,7 @@ spec:
         resources:
           limits:
             cpu: 2
-            memory: 1Gi
+            memory: 2Gi
           requests:
             cpu: 1
             memory: 400Mi
