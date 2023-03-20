@@ -121,7 +121,7 @@ func (r *KopsMachinePoolReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	kopsMachinePool := &infrastructurev1alpha1.KopsMachinePool{}
 	err := r.Get(ctx, req.NamespacedName, kopsMachinePool)
 	if err != nil {
-		return resultError, err
+		return resultError, client.IgnoreNotFound(err)
 	}
 
 	// Initialize the patch helper.
