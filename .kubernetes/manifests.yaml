@@ -5345,6 +5345,7 @@ spec:
             memory: 2Gi
           requests:
             cpu: 1
+            ephemeral-storage: 14Gi
             memory: 400Mi
         securityContext:
           allowPrivilegeEscalation: false
