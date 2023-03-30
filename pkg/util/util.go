@@ -2,8 +2,11 @@ package util
 
 import (
 	"context"
+	"os"
 
+	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/pkg/errors"
+	corev1 "k8s.io/api/core/v1"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
@@ -21,4 +24,37 @@ func GetClusterByName(ctx context.Context, c client.Client, namespace, name stri
 	}
 
 	return cluster, nil
+}
+
+func SetAWSEnvFromKopsControlPlaneSecret(ctx context.Context, c client.Client, secretName string) error {
+	secret := &corev1.Secret{}
+	key := client.ObjectKey{
+		Namespace: "kubernetes-kops-operator-system",
+		Name:      secretName,
+	}
+	if err := c.Get(ctx, key, secret); err != nil {
+		return errors.Wrapf(err, "failed to get Secret/%s", secretName)
+	}
+
+	accessKeyID := string(secret.Data["AccessKeyID"])
+	secretAccessKey := string(secret.Data["SecretAccessKey"])
+
+	os.Setenv("AWS_ACCESS_KEY_ID", accessKeyID)
+	os.Setenv("AWS_ACCESS_KEY_ID", secretAccessKey)
+
+	return nil
+}
+
+func GetAwsCredentialsFromKopsControlPlaneSecret(ctx context.Context, c client.Client, secretName string) (*credentials.Credentials, error) {
+	secret := &corev1.Secret{}
+	key := client.ObjectKey{
+		Namespace: "kubernetes-kops-operator-system",
+		Name:      secretName,
+	}
+	if err := c.Get(ctx, key, secret); err != nil {
+		return nil, errors.Wrapf(err, "failed to get Secret/%s", secretName)
+	}
+	accessKeyID := string(secret.Data["AccessKeyID"])
+	secretAccessKey := string(secret.Data["SecretAccessKey"])
+	return credentials.NewStaticCredentials(accessKeyID, secretAccessKey, ""), nil
 }
