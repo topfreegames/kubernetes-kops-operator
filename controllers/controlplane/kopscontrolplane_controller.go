@@ -27,11 +27,15 @@ import (
 	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
+	"github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 	kopsutils "github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/util"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
@@ -42,6 +46,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
@@ -84,6 +89,7 @@ type KopsControlPlaneReconciler struct {
 	ApplyTerraformFactory        func(ctx context.Context, terraformDir, tfExecPath string) error
 	ValidateKopsClusterFactory   func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
+	GetASGByNameFactory          func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsClient *session.Session) (*autoscaling.Group, error)
 }
 
 func init() {
@@ -451,10 +457,27 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	kopsClientset, err := r.GetKopsClientSetFactory(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
 	if err != nil {
-		r.log.Error(rerr, "failed to get kops clientset")
 		return resultError, err
 	}
 	r.kopsClientset = kopsClientset
+
+	kmps, err := kopsutils.GetKopsMachinePoolsWithLabel(ctx, r.Client, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
+	if err != nil && !apierrors.IsNotFound(err) {
+		return resultError, err
+	}
+
+	if len(kmps) > 0 {
+		err = r.reconcileKopsMachinePools(ctx, kopsControlPlane, kmps)
+		if err != nil {
+			return resultError, err
+		}
+	}
+
+	err = util.SetAWSEnvFromKopsControlPlaneSecret(ctx, r.Client, kopsControlPlane.Spec.IdentityRef.Name)
+	if err != nil {
+		r.log.Error(rerr, "failed to set AWS envs")
+		return resultError, err
+	}
 
 	kopsCluster := &kopsapi.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
@@ -558,6 +581,116 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	kopsControlPlane.Status.Ready = statusReady
 	return resultDefault, nil
+}
+
+func (r *KopsControlPlaneReconciler) reconcileKopsMachinePools(ctx context.Context, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool) error {
+	for _, kopsMachinePool := range kmps {
+		// Ensure correct NodeLabel for the IG
+		if kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels != nil {
+			kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"] = kopsMachinePool.Name
+		} else {
+			kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
+				"kops.k8s.io/instance-group-name": kopsMachinePool.Name,
+			}
+		}
+		kopsInstanceGroup := &kopsapi.InstanceGroup{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      kopsMachinePool.Name,
+				Namespace: kopsMachinePool.ObjectMeta.Namespace,
+				Labels:    kopsMachinePool.Spec.SpotInstOptions,
+			},
+			Spec: kopsMachinePool.Spec.KopsInstanceGroupSpec,
+		}
+		kopsCluster := &kopsapi.Cluster{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: kopsMachinePool.Spec.ClusterName,
+			},
+			Spec: kopsControlPlane.Spec.KopsClusterSpec,
+		}
+		err := r.createOrUpdateInstanceGroup(ctx, kopsCluster, kopsInstanceGroup)
+		if err != nil {
+			conditions.MarkFalse(&kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition, infrastructurev1alpha1.KopsMachinePoolStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
+			return err
+		}
+		conditions.MarkTrue(&kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition)
+		if err := r.Update(ctx, &kopsMachinePool); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// GetASGByName returns the existing ASG or nothing if it doesn't exist.
+func GetASGByName(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, awsClient *session.Session) (*autoscaling.Group, error) {
+	svc := autoscaling.New(awsClient)
+
+	asgName, err := kops.GetCloudResourceNameFromKopsMachinePool(*kopsMachinePool)
+	if err != nil {
+		return nil, err
+	}
+
+	input := &autoscaling.DescribeAutoScalingGroupsInput{
+		AutoScalingGroupNames: []*string{
+			asgName,
+		},
+	}
+
+	out, err := svc.DescribeAutoScalingGroups(input)
+	if err != nil {
+		if aerr, ok := err.(awserr.Error); ok {
+			switch aerr.Code() {
+			case autoscaling.ErrCodeInvalidNextToken:
+				return nil, fmt.Errorf(aerr.Error(), autoscaling.ErrCodeInvalidNextToken)
+			case autoscaling.ErrCodeResourceContentionFault:
+				return nil, fmt.Errorf(aerr.Error(), autoscaling.ErrCodeResourceContentionFault)
+			default:
+				return nil, fmt.Errorf(aerr.Error(), aerr.Error())
+			}
+		} else {
+			return nil, fmt.Errorf(aerr.Error(), aerr.Error())
+		}
+	}
+	if len(out.AutoScalingGroups) > 0 {
+		return out.AutoScalingGroups[0], nil
+	}
+	return nil, apierrors.NewNotFound(schema.GroupResource{}, "ASG not ready")
+}
+
+func regionBySubnet(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) (string, error) {
+	subnets := kopsControlPlane.Spec.KopsClusterSpec.Subnets
+	if len(subnets) == 0 {
+		return "", errors.New("kopsControlPlane with no subnets")
+	}
+
+	zone := subnets[0].Zone
+
+	return zone[:len(zone)-1], nil
+}
+
+// createOrUpdateInstanceGroup create or update the instance group in kops state
+func (r *KopsControlPlaneReconciler) createOrUpdateInstanceGroup(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsInstanceGroup *kopsapi.InstanceGroup) error {
+
+	instanceGroupName := kopsInstanceGroup.ObjectMeta.Name
+	_, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).Get(ctx, instanceGroupName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		_, err = r.kopsClientset.InstanceGroupsFor(kopsCluster).Create(ctx, kopsInstanceGroup, metav1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("error creating instanceGroup: %v", err)
+		}
+		r.log.Info(fmt.Sprintf("created instancegroup/%s", instanceGroupName))
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	_, err = r.kopsClientset.InstanceGroupsFor(kopsCluster).Update(ctx, kopsInstanceGroup, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("error updating instanceGroup: %v", err)
+	}
+	r.log.Info(fmt.Sprintf("updated instancegroup/%s", instanceGroupName))
+
+	return nil
 }
 
 // SetupWithManager sets up the controller with the Manager.
