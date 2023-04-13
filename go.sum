@@ -701,6 +701,8 @@ github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKs
 github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
 github.com/subosito/gotenv v1.4.1 h1:jyEFiXpy21Wm81FBN71l9VoMMV8H8jG+qIK3GCpY6Qs=
 github.com/subosito/gotenv v1.4.1/go.mod h1:ayKnFf/c6rvx/2iiLrJUk1e6plDbT3edrFNGqEflhK0=
+github.com/topfreegames/kops v1.25.5 h1:bmoA0YwUMyrxF5u12uLwArJSuAMgYzy/lA38kCxWtgk=
+github.com/topfreegames/kops v1.25.5/go.mod h1:De2552OtQN9EOiRyUNr82yV45ZKYkQ8xZMJAhtK7jWE=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
 github.com/urfave/cli v1.22.4/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
 github.com/vbatts/tar-split v0.11.2 h1:Via6XqJr0hceW4wff3QRzD5gAk/tatMw/4ZA7cTlIME=
@@ -1336,8 +1338,6 @@ k8s.io/csi-translation-lib v0.25.5/go.mod h1:rWX0mmfbwsKrldO+wUtqUD7bIlMbur+EGxs
 k8s.io/klog/v2 v2.0.0/go.mod h1:PBfzABfn139FHAV07az/IF9Wp1bkk3vpT2XSJ76fSDE=
 k8s.io/klog/v2 v2.80.1 h1:atnLQ121W371wYYFawwYx1aEY2eUfs4l3J72wtgAwV4=
 k8s.io/klog/v2 v2.80.1/go.mod h1:y1WjHnz7Dj687irZUWR/WLkLc5N1YHtjLdmgWjndZn0=
-k8s.io/kops v1.25.4 h1:jsCfUk4TLpJKNoy2xvdDSujDfYWkEUu02pdI+J3AuoI=
-k8s.io/kops v1.25.4/go.mod h1:De2552OtQN9EOiRyUNr82yV45ZKYkQ8xZMJAhtK7jWE=
 k8s.io/kube-openapi v0.0.0-20221106113015-f73e7dbcfe29 h1:tya1+VIpw4iOtih5oB7B7nMINohQcyedmlTzdDwSHPA=
 k8s.io/kube-openapi v0.0.0-20221106113015-f73e7dbcfe29/go.mod h1:+Axhij7bCpeqhklhUTe3xmOn6bWxolyZEeyaFpjGtl4=
 k8s.io/kubectl v0.25.5 h1:m3Y3ysrlRR+wAD0TYoFCrngcYtwVH7UPCqubEwbe6oo=
