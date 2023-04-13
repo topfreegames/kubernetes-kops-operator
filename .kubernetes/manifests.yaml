@@ -5030,10 +5030,6 @@ spec:
               failureMessage:
                 description: ErrorMessage indicates that there is a terminal problem reconciling the state, and will be set to a descriptive error message.
                 type: string
-              paused:
-                default: false
-                description: Paused indicates that the controller is prevented from processing the KopsMachinePool.
-                type: boolean
               ready:
                 default: false
                 description: Ready denotes that the API Server is ready to receive requests.
@@ -5167,32 +5163,6 @@ rules:
   - controlplane.cluster.x-k8s.io
   resources:
   - kopscontrolplanes/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - infrastructure.cluster.x-k8s.io
-  resources:
-  - kopsmachinepools
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - infrastructure.cluster.x-k8s.io
-  resources:
-  - kopsmachinepools/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - infrastructure.cluster.x-k8s.io
-  resources:
-  - kopsmachinepools/status
   verbs:
   - get
   - patch
@@ -5337,18 +5307,6 @@ spec:
               key: account
               name: spotinst-credentials
               optional: true
-        - name: AWS_ACCESS_KEY_ID
-          valueFrom:
-            secretKeyRef:
-              key: access-key-id
-              name: aws-credentials
-              optional: false
-        - name: AWS_SECRET_ACCESS_KEY
-          valueFrom:
-            secretKeyRef:
-              key: secret-access-key
-              name: aws-credentials
-              optional: false
         - name: AWS_REGION
           value: us-east-1
         image: tfgco/kubernetes-kops-operator:v0.3.7-alpha

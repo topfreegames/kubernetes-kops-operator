@@ -61,11 +61,6 @@ type KopsMachinePoolStatus struct {
 	// +kubebuilder:default=false
 	Ready bool `json:"ready,omitempty"`
 
-	// +kubebuilder:default=false
-	// Paused indicates that the controller is prevented from processing the KopsMachinePool.
-	// +optional
-	Paused bool `json:"paused,omitempty"`
-
 	// Replicas is the most recently observed number of replicas
 	// +optional
 	Replicas int32 `json:"replicas"`
