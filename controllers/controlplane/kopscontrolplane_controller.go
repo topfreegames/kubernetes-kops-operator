@@ -457,9 +457,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			if err := r.Status().Update(ctx, &kopsMachinePool); err != nil {
 				r.log.Error(rerr, "Failed to update kopsMachinePool %s status", kopsMachinePool.Name)
 			}
-
 		}
-
 		r.log.Info(fmt.Sprintf("finished reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
 	}()
 
@@ -647,9 +645,6 @@ func (r *KopsControlPlaneReconciler) reconcileKopsMachinePools(ctx context.Conte
 			return err
 		}
 		conditions.MarkTrue(&kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition)
-		// if err := r.Update(ctx, &kopsMachinePool); err != nil {
-		// 	return err
-		// }
 	}
 	return nil
 }
