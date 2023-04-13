@@ -39,8 +39,11 @@ func SetAWSEnvFromKopsControlPlaneSecret(ctx context.Context, c client.Client, s
 	accessKeyID := string(secret.Data["AccessKeyID"])
 	secretAccessKey := string(secret.Data["SecretAccessKey"])
 
+	os.Unsetenv("AWS_ACCESS_KEY_ID")
+	os.Unsetenv("AWS_SECRET_ACCESS_KEY")
+
 	os.Setenv("AWS_ACCESS_KEY_ID", accessKeyID)
-	os.Setenv("AWS_ACCESS_KEY_ID", secretAccessKey)
+	os.Setenv("AWS_SECRET_ACCESS_KEY", secretAccessKey)
 
 	return nil
 }
