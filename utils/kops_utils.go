@@ -27,6 +27,8 @@ import (
 	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
+	"k8s.io/kops/upup/pkg/fi/cloudup/awsup"
+	"k8s.io/kops/util/pkg/vfs"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -45,7 +47,7 @@ func GetKopsClientset(configBase string) (simple.Clientset, error) {
 	}
 
 	factory := util.NewFactory(factoryOptions)
-
+	vfs.Context = vfs.NewVFSContext()
 	kopsClientset, err := factory.KopsClient()
 	if err != nil {
 		return nil, err
@@ -53,18 +55,13 @@ func GetKopsClientset(configBase string) (simple.Clientset, error) {
 	return kopsClientset, nil
 }
 
-func ValidateKopsCluster(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+func ValidateKopsCluster(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 	config, err := GetKubeconfigFromKopsState(kopsCluster, kopsClientset)
 	if err != nil {
 		return nil, err
 	}
 
 	k8sClient, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-
-	cloud, err := BuildCloud(kopsCluster)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +107,7 @@ func BuildCloud(kopscluster *kopsapi.Cluster) (_ fi.Cloud, rerr error) {
 			rerr = fmt.Errorf(fmt.Sprintf("failed to instantiate cloud for %s", kopscluster.ObjectMeta.GetName()))
 		}
 	}()
+	awsup.AWSCloudInstances = awsup.NewAWSCloudInstances()
 	cloud, err := cloudup.BuildCloud(kopscluster)
 	if err != nil {
 		return nil, err

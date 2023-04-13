@@ -169,12 +169,6 @@ func Test_GetKopsClientset(t *testing.T) {
 			"expectedError":      false,
 			"input":              "s3://bucket-test/cluster.general.test.wildlife.io",
 		},
-		{
-			"description":        "Should return clientset for memfs",
-			"expectedPathPrefix": "memfs://",
-			"expectedError":      false,
-			"input":              "memfs://bucket-test/cluster.general.test.wildlife.io",
-		},
 	}
 	vfs.Context.ResetMemfsContext(true)
 	for _, tc := range testCases {

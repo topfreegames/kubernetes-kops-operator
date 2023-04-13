@@ -8,6 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/service/autoscaling"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -17,6 +20,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/record"
@@ -400,8 +404,10 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 	testCases := []struct {
 		description              string
 		expectedError            bool
+		expectedRequeue          bool
 		kopsControlPlaneFunction func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane
 		clusterFunction          func(cluster *clusterv1.Cluster) *clusterv1.Cluster
+		getASGByNameFactory      func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *credentials.Credentials) (*autoscaling.Group, error)
 		createKubeconfigSecret   bool
 		updateKubeconfigSecret   bool
 	}{
@@ -430,6 +436,20 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			},
 		},
 		{
+			description:     "should not fail to if ASG not ready",
+			expectedRequeue: true,
+			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *credentials.Credentials) (*autoscaling.Group, error) {
+				return nil, apierrors.NewNotFound(schema.GroupResource{}, "ASG not ready")
+			},
+		},
+		{
+			description:   "should fail to if can't retrieve ASG",
+			expectedError: true,
+			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *credentials.Credentials) (*autoscaling.Group, error) {
+				return nil, errors.New("error")
+			},
+		},
+		{
 			description:   "should fail to create Kops Cluster",
 			expectedError: true,
 			kopsControlPlaneFunction: func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane {
@@ -454,16 +474,20 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	err = clusterv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
+	err = infrastructurev1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			kopsControlPlane := newKopsControlPlane("testKopsControlPlane", metav1.NamespaceDefault)
+			kopsControlPlane := newKopsControlPlane("testCluster", metav1.NamespaceDefault)
+			kopsControlPlaneSecret := newAWSCredentialSecret()
 
 			cluster := newCluster("testCluster", getFQDN(kopsControlPlane.Name), metav1.NamespaceDefault)
 			if tc.clusterFunction != nil {
 				clusterFunction := tc.clusterFunction
 				cluster = clusterFunction(cluster)
 			}
+			kopsMachinePool := newKopsMachinePool("testIG", kopsControlPlane.Namespace, cluster.Name)
 
 			fakeKopsClientset := newFakeKopsClientset()
 
@@ -482,8 +506,23 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				kopsControlPlaneFunction := tc.kopsControlPlaneFunction
 				kopsControlPlane = kopsControlPlaneFunction(kopsControlPlane)
 			}
+			var getASGByName func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *credentials.Credentials) (*autoscaling.Group, error)
+			if tc.getASGByNameFactory != nil {
+				getASGByName = tc.getASGByNameFactory
+			} else {
+				getASGByName = func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *credentials.Credentials) (*autoscaling.Group, error) {
+					return &autoscaling.Group{
+						Instances: []*autoscaling.Instance{
+							{
+								AvailabilityZone: aws.String("us-east-1"),
+								InstanceId:       aws.String("<teste>"),
+							},
+						},
+					}, nil
+				}
+			}
 
-			fakeClient := fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
+			fakeClient := fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster, kopsControlPlaneSecret, kopsMachinePool).WithScheme(scheme.Scheme).Build()
 
 			if tc.updateKubeconfigSecret {
 				secretKubeconfig := &corev1.Secret{
@@ -502,12 +541,6 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			g.Expect(err).NotTo(HaveOccurred())
 
 			err = createFakeKopsKeyPair(keyStore)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			ig := newKopsIG("testIG", kopsCluster.GetObjectMeta().GetName())
-
-			ig, err = fakeKopsClientset.InstanceGroupsFor(kopsCluster).Create(ctx, ig, metav1.CreateOptions{})
-			g.Expect(ig).NotTo(BeNil())
 			g.Expect(err).NotTo(HaveOccurred())
 
 			reconciler := &KopsControlPlaneReconciler{
@@ -532,20 +565,25 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				GetClusterStatusFactory: func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
 					return nil, nil
 				},
-				ValidateKopsClusterFactory: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+				ValidateKopsClusterFactory: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 					return &validation.ValidationCluster{}, nil
 				},
+				GetASGByNameFactory: getASGByName,
 			}
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: client.ObjectKey{
 					Namespace: metav1.NamespaceDefault,
-					Name:      getFQDN("testKopsControlPlane"),
+					Name:      getFQDN("testCluster"),
 				},
 			})
 			if !tc.expectedError {
 				g.Expect(err).ToNot(HaveOccurred())
 				g.Expect(result.Requeue).To(BeFalse())
-				g.Expect(result.RequeueAfter).To(Equal(time.Duration(20 * time.Minute)))
+				if tc.expectedRequeue {
+					g.Expect(result.RequeueAfter).To(Equal(time.Duration(1 * time.Minute)))
+				} else {
+					g.Expect(result.RequeueAfter).To(Equal(time.Duration(20 * time.Minute)))
+				}
 
 				kopsCluster, err := fakeKopsClientset.GetCluster(ctx, cluster.GetObjectMeta().GetName())
 				g.Expect(kopsCluster).ToNot(BeNil())
@@ -595,7 +633,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 		expectedErrorGetClusterStatusFactory func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
 		expectedErrorPrepareCloudResources   func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool) error
 		expectedErrorApplyTerraform          func(ctx context.Context, terraformDir, tfExecPath string) error
-		expectedValidateKopsCluster          func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
+		expectedValidateKopsCluster          func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	}{
 		{
 			description: "should successfully patch KopsControlPlane",
@@ -648,7 +686,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			eventsToAssert: []string{
 				"dummy error message",
 			},
-			expectedValidateKopsCluster: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+			expectedValidateKopsCluster: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 				return nil, errors.New("dummy error message")
 			},
 		},
@@ -663,7 +701,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			eventsToAssert: []string{
 				"failed to validate this test case",
 			},
-			expectedValidateKopsCluster: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+			expectedValidateKopsCluster: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 				return &validation.ValidationCluster{
 					Failures: []*validation.ValidationError{
 						{
@@ -681,7 +719,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				"test case B",
 				"node hostA condition is False",
 			},
-			expectedValidateKopsCluster: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+			expectedValidateKopsCluster: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 				return &validation.ValidationCluster{
 					Failures: []*validation.ValidationError{
 						{
@@ -709,17 +747,21 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 	Expect(err).NotTo(HaveOccurred())
 	err = clusterv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
+	err = infrastructurev1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			kopsControlPlane := newKopsControlPlane("testKopsControlPlane", metav1.NamespaceDefault)
+			kopsControlPlane := newKopsControlPlane("testCluster", metav1.NamespaceDefault)
+			kopsControlPlaneSecret := newAWSCredentialSecret()
 			cluster := newCluster("testCluster", getFQDN(kopsControlPlane.Name), metav1.NamespaceDefault)
 			if tc.clusterFunction != nil {
 				clusterFunction := tc.clusterFunction
 				cluster = clusterFunction(cluster)
 			}
+			kopsMachinePool := newKopsMachinePool("testIG", kopsControlPlane.Namespace, cluster.Name)
 
-			fakeClient := fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster).WithScheme(scheme.Scheme).Build()
+			fakeClient := fake.NewClientBuilder().WithObjects(kopsControlPlane, kopsControlPlaneSecret, cluster, kopsMachinePool).WithScheme(scheme.Scheme).Build()
 
 			fakeKopsClientset := newFakeKopsClientset()
 
@@ -741,12 +783,6 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			g.Expect(err).NotTo(HaveOccurred())
 
 			recorder := record.NewFakeRecorder(5)
-
-			ig := newKopsIG("testIG", kopsCluster.GetObjectMeta().GetName())
-
-			ig, err = fakeKopsClientset.InstanceGroupsFor(kopsCluster).Create(ctx, ig, metav1.CreateOptions{})
-			g.Expect(ig).NotTo(BeNil())
-			g.Expect(err).NotTo(HaveOccurred())
 
 			var getClusterStatus func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
 			if tc.expectedErrorGetClusterStatusFactory != nil {
@@ -775,11 +811,11 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				}
 			}
 
-			var validateKopsCluster func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
+			var validateKopsCluster func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 			if tc.expectedValidateKopsCluster != nil {
 				validateKopsCluster = tc.expectedValidateKopsCluster
 			} else {
-				validateKopsCluster = func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+				validateKopsCluster = func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
 					return &validation.ValidationCluster{}, nil
 				}
 			}
@@ -801,12 +837,22 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				ApplyTerraformFactory:        applyTerraform,
 				GetClusterStatusFactory:      getClusterStatus,
 				ValidateKopsClusterFactory:   validateKopsCluster,
+				GetASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *credentials.Credentials) (*autoscaling.Group, error) {
+					return &autoscaling.Group{
+						Instances: []*autoscaling.Instance{
+							{
+								AvailabilityZone: aws.String("us-east-1"),
+								InstanceId:       aws.String("<teste>"),
+							},
+						},
+					}, nil
+				},
 			}
 
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: client.ObjectKey{
 					Namespace: metav1.NamespaceDefault,
-					Name:      getFQDN("testKopsControlPlane"),
+					Name:      getFQDN("testCluster"),
 				},
 			})
 			if !tc.expectedReconcilerError {
@@ -1075,6 +1121,127 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 	}
 }
 
+func TestCreateOrUpdateInstanceGroup(t *testing.T) {
+
+	testCases := []map[string]interface{}{
+		{
+			"description":    "Should successfully create a IG",
+			"expectedError":  false,
+			"kopsIGFunction": nil,
+			"updateIG":       false,
+		},
+		{
+			"description":    "Should successfully update a IG",
+			"expectedError":  false,
+			"kopsIGFunction": nil,
+			"updateIG":       true,
+		},
+		{
+			"description":   "Should fail without required fields",
+			"expectedError": true,
+			"kopsIGFunction": func(kopsIG *kopsapi.InstanceGroup) *kopsapi.InstanceGroup {
+				return &kopsapi.InstanceGroup{}
+			},
+			"updateIG": false,
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+	ctx := context.TODO()
+	for _, tc := range testCases {
+		t.Run(tc["description"].(string), func(t *testing.T) {
+			fakeKopsClientset := newFakeKopsClientset()
+			kopsCluster := newKopsCluster("test-kopscluster")
+			_, err := fakeKopsClientset.CreateCluster(ctx, kopsCluster)
+			g.Expect(err).NotTo(HaveOccurred())
+			ig := newKopsIG("test-kopsig", kopsCluster.GetObjectMeta().GetName())
+			if tc["kopsIGFunction"] != nil {
+				kopsIGFunction := tc["kopsIGFunction"].(func(kopsIG *kopsapi.InstanceGroup) *kopsapi.InstanceGroup)
+				ig = kopsIGFunction(ig)
+			}
+			if tc["updateIG"].(bool) == true {
+				ig, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Create(ctx, ig, metav1.CreateOptions{})
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(ig).NotTo(BeNil())
+				ig.Spec.MachineType = "m5.test"
+			}
+
+			reconciler := &KopsControlPlaneReconciler{
+				kopsClientset: fakeKopsClientset,
+				log:           ctrl.LoggerFrom(ctx),
+			}
+			err = reconciler.createOrUpdateInstanceGroup(ctx, kopsCluster, ig)
+			if tc["expectedError"].(bool) {
+				g.Expect(err).To(HaveOccurred())
+				return
+			}
+			g.Expect(err).ToNot(HaveOccurred())
+
+			ig, err = fakeKopsClientset.InstanceGroupsFor(kopsCluster).Get(ctx, "test-kopsig", metav1.GetOptions{})
+			g.Expect(ig).NotTo(BeNil())
+			g.Expect(err).ToNot(HaveOccurred())
+			if tc["updateIG"].(bool) == true {
+				g.Expect(ig.Spec.MachineType).To(Equal("m5.test"))
+			}
+		})
+	}
+}
+
+func TestGetRegionBySubnet(t *testing.T) {
+	var testCases = []struct {
+		description   string
+		expectedError bool
+		expectedRes   string
+		input         []kopsapi.ClusterSubnetSpec
+	}{
+		{"Should return error about no subnets found", true, "", []kopsapi.ClusterSubnetSpec{}},
+		{"Should return the region", false, "ap-northeast-1",
+			[]kopsapi.ClusterSubnetSpec{
+				{
+					Name: "ap-northeast-1d",
+					Type: "Private",
+					Zone: "ap-northeast-1d",
+					CIDR: "172.27.48.0/24",
+				},
+				{
+					Name: "ap-northeast-1b",
+					Type: "Private",
+					Zone: "ap-northeast-1b",
+					CIDR: "172.27.49.0/24",
+				},
+			}},
+		{"Should return the region", false, "us-west-1",
+			[]kopsapi.ClusterSubnetSpec{
+				{
+					Name: "us-west-1a",
+					Type: "Private",
+					Zone: "us-west-1a",
+					CIDR: "172.27.53.0/24",
+				},
+			},
+		},
+	}
+
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		kcp := &controlplanev1alpha1.KopsControlPlane{}
+		kcp.Spec.KopsClusterSpec.Subnets = tc.input
+		region, err := regionBySubnet(kcp)
+
+		t.Run(tc.description, func(t *testing.T) {
+			if tc.expectedError {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(tc.expectedRes).To(Equal(""))
+			} else {
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(tc.expectedRes).To(Equal(region))
+			}
+		})
+	}
+}
+
 func newCluster(name, controlplane, namespace string) *clusterv1.Cluster {
 	return &clusterv1.Cluster{
 		TypeMeta: metav1.TypeMeta{
@@ -1092,6 +1259,19 @@ func newCluster(name, controlplane, namespace string) *clusterv1.Cluster {
 				Namespace: namespace,
 				Kind:      "KopsControlPlane",
 			},
+		},
+	}
+}
+
+func newAWSCredentialSecret() *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "11111111-credential",
+			Namespace: "kubernetes-kops-operator-system",
+		},
+		Data: map[string][]byte{
+			"AccessKeyID":     []byte("test"),
+			"SecretAccessKey": []byte("test"),
 		},
 	}
 }
@@ -1158,6 +1338,10 @@ func newKopsControlPlane(name, namespace string) *controlplanev1alpha1.KopsContr
 			},
 		},
 		Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+			IdentityRef: &corev1.ObjectReference{
+				Kind: "Secret",
+				Name: "11111111-credential",
+			},
 			SSHPublicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCu7OR4k/qpc6VFqQsMGk7wQcnGzDA/hKABnj3qN85tgIDVsbnOIVgXl4FV1gO+gBjblCLkAmbZYlwhhkosL4xpEc8uk8QWJIzRqalvnLEofdIjClngGqzC40Yu6oVPiqImDazlVNvJ7UdzX02mmYJMe4eRzS1w1dA2hm9uTsaq6CNZuJF2/joV+SKLW88IEXWnb7PdOPZWFy0iN/9JcQKqON7zmR0j1zb4Ydj6Pt9MMIOTRiJpyeTqw0Gy4RWgkKJpwuRhOTnhZ1I8zigXgu4+keMYBgtLLP90Wx6/SI6vt+sG/Zrx5+s0av6vHFH/fDzqX4BSsxY83cOMH6ILLQ1C0hE9ykXx/EAKoou+DT8Doe0wabVxZNMRDOAb0ZnLF1HwUItW+MvgIjtCVpap/jBGmSSqZ5B9cvib7UV+JfLHty7n3AP2SKf52+E3Fp1fP4UiXQ/YUXZksopHLXLtwMdam/qijq5tjk0lVh7j8GGNuejt17+tSOCaP2kNKFyc1u8=",
 			KopsClusterSpec: kopsapi.ClusterSpec{
 				KubernetesVersion: "1.23.12",
@@ -1252,6 +1436,29 @@ func newKopsIG(name, clusterName string) *kopsapi.InstanceGroup {
 			Role: "Master",
 			Subnets: []string{
 				"dummy-subnet",
+			},
+		},
+	}
+}
+
+func newKopsMachinePool(name, namespace, clusterName string) *infrastructurev1alpha1.KopsMachinePool {
+	return &infrastructurev1alpha1.KopsMachinePool{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Labels: map[string]string{
+				"cluster.x-k8s.io/cluster-name": clusterName,
+			},
+			ResourceVersion:   "1",
+			CreationTimestamp: metav1.Time{},
+		},
+		Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+			ClusterName: clusterName,
+			KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
+				Role: "Master",
+				Subnets: []string{
+					"dummy-subnet",
+				},
 			},
 		},
 	}
