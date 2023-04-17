@@ -568,28 +568,13 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	for i, kopsMachinePool := range kmps {
-		if len(kopsMachinePool.Spec.SpotInstOptions) == 0 {
-			asg, err := r.GetASGByNameFactory(&kopsMachinePool, kopsControlPlane, credentials)
+	err = r.updateKopsMachinePoolWithProviderIDList(ctx, kopsControlPlane, kmps, credentials)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
-					r.log.Info("ASG not created yet, requeue after 1 minute")
-					kmps[i].Status.Ready = false
 					return requeue1min, nil
-				}
-				r.log.Error(err, fmt.Sprintf("failed retriving ASG: %v", err))
-				kmps[i].Status.Ready = false
+		} else {
 				return resultError, err
 			}
-
-			providerIDList := make([]string, len(asg.Instances))
-			for i, instance := range asg.Instances {
-				providerIDList[i] = fmt.Sprintf("aws:///%s/%s", *instance.AvailabilityZone, *instance.InstanceId)
-			}
-			kmps[i].Spec.ProviderIDList = providerIDList
-			kmps[i].Status.Replicas = int32(len(providerIDList))
-			kmps[i].Status.Ready = true
-		}
 	}
 
 	igList, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).List(ctx, metav1.ListOptions{})
@@ -619,6 +604,32 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return resultDefault, nil
 }
 
+func (r *KopsControlPlaneReconciler) updateKopsMachinePoolWithProviderIDList(ctx context.Context, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, credentials *aws.CredentialsCache) error {
+	for i, kopsMachinePool := range kmps {
+		if len(kopsMachinePool.Spec.SpotInstOptions) == 0 {
+			asg, err := r.GetASGByNameFactory(&kopsMachinePool, kopsControlPlane, credentials)
+			if err != nil {
+				if apierrors.IsNotFound(err) {
+					r.log.Info("ASG not created yet, requeue after 1 minute")
+					kmps[i].Status.Ready = false
+					return err
+				}
+				r.log.Error(err, fmt.Sprintf("failed retriving ASG: %v", err))
+				kmps[i].Status.Ready = false
+				return err
+			}
+
+			providerIDList := make([]string, len(asg.Instances))
+			for i, instance := range asg.Instances {
+				providerIDList[i] = fmt.Sprintf("aws:///%s/%s", *instance.AvailabilityZone, *instance.InstanceId)
+			}
+			kmps[i].Spec.ProviderIDList = providerIDList
+			kmps[i].Status.Replicas = int32(len(providerIDList))
+			kmps[i].Status.Ready = true
+		}
+	}
+	return nil
+}
 func (r *KopsControlPlaneReconciler) reconcileKopsMachinePool(ctx context.Context, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) error {
 		// Ensure correct NodeLabel for the IG
 		if kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels != nil {
