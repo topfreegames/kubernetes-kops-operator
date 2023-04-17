@@ -482,9 +482,13 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	r.kopsClientset = kopsClientset
 
-	err = r.reconcileKopsMachinePools(ctx, kopsControlPlane, kmps)
+	for i, kopsMachinePool := range kmps {
+		err = r.reconcileKopsMachinePool(ctx, kopsControlPlane, &kmps[i])
 	if err != nil {
-		return resultError, err
+			r.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeWarning, "KopsMachinePoolReconcileFailed", err.Error())
+		} else {
+			r.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeNormal, "KopsMachinePoolReconcileSuccess", kopsMachinePool.Name)
+		}
 	}
 
 	kopsCluster := &kopsapi.Cluster{
@@ -615,8 +619,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return resultDefault, nil
 }
 
-func (r *KopsControlPlaneReconciler) reconcileKopsMachinePools(ctx context.Context, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool) error {
-	for _, kopsMachinePool := range kmps {
+func (r *KopsControlPlaneReconciler) reconcileKopsMachinePool(ctx context.Context, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) error {
 		// Ensure correct NodeLabel for the IG
 		if kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels != nil {
 			kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"] = kopsMachinePool.Name
@@ -641,11 +644,11 @@ func (r *KopsControlPlaneReconciler) reconcileKopsMachinePools(ctx context.Conte
 		}
 		err := r.createOrUpdateInstanceGroup(ctx, kopsCluster, kopsInstanceGroup)
 		if err != nil {
-			conditions.MarkFalse(&kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition, infrastructurev1alpha1.KopsMachinePoolStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
+		conditions.MarkFalse(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition, infrastructurev1alpha1.KopsMachinePoolStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 			return err
 		}
-		conditions.MarkTrue(&kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition)
-	}
+	conditions.MarkTrue(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition)
+
 	return nil
 }
 
