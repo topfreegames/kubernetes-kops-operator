@@ -415,11 +415,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, client.IgnoreNotFound(err)
 	}
 
-	kmps, err := kopsutils.GetKopsMachinePoolsWithLabel(ctx, r.Client, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
-	if err != nil {
-		return resultError, err
-	}
-
 	owner, err := r.getClusterOwnerRef(ctx, kopsControlPlane)
 	if err != nil || owner == nil {
 		if apierrors.IsNotFound(err) {
@@ -435,30 +430,32 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	// Initialize the patch helper.
-	patchHelper, err := patch.NewHelper(kopsControlPlane, r.Client)
+	kmps, err := kopsutils.GetKopsMachinePoolsWithLabel(ctx, r.Client, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
 	if err != nil {
-		r.log.Error(err, "failed to initialize patch helper")
 		return resultError, err
 	}
 
-	// Attempt to Patch the KopsControlPlane object and status after each reconciliation if no error occurs.
+	// Attempt to Update the KopsControlPlane and KopsMachinePool object and status after each reconciliation if no error occurs.
 	defer func() {
-		err = patchHelper.Patch(ctx, kopsControlPlane)
-		if err != nil {
-			r.log.Error(rerr, "Failed to patch kopsControlPlane")
-			if rerr == nil {
-				rerr = err
+		kopsControlPlaneHelper := kopsControlPlane.DeepCopy()
+		if err := r.Update(ctx, kopsControlPlane); err != nil {
+			r.log.Error(rerr, "failed to update kopsControlPlane %s", kopsControlPlane.Name)
 			}
+
+		kopsControlPlane.Status = kopsControlPlaneHelper.Status
+		if err := r.Status().Update(ctx, kopsControlPlane); err != nil {
+			r.log.Error(rerr, "failed to update kopsControlPlane %s status", kopsControlPlane.Name)
 		}
 
 		for _, kopsMachinePool := range kmps {
+			kopsMachinePoolHelper := kopsMachinePool.DeepCopy()
 			if err := r.Update(ctx, &kopsMachinePool); err != nil {
-				r.log.Error(rerr, "Failed to update kopsMachinePool %s", kopsMachinePool.Name)
+				r.log.Error(rerr, "failed to update kopsMachinePool %s", kopsMachinePool.Name)
 			}
 
+			kopsMachinePool.Status = kopsMachinePoolHelper.Status
 			if err := r.Status().Update(ctx, &kopsMachinePool); err != nil {
-				r.log.Error(rerr, "Failed to update kopsMachinePool %s status", kopsMachinePool.Name)
+				r.log.Error(rerr, "failed to update kopsMachinePool %s status", kopsMachinePool.Name)
 			}
 		}
 		r.log.Info(fmt.Sprintf("finished reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
