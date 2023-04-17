@@ -4,7 +4,8 @@ import (
 	"context"
 	"os"
 
-	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -48,7 +49,7 @@ func SetAWSEnvFromKopsControlPlaneSecret(ctx context.Context, c client.Client, s
 	return nil
 }
 
-func GetAwsCredentialsFromKopsControlPlaneSecret(ctx context.Context, c client.Client, secretName string) (*credentials.Credentials, error) {
+func GetAwsCredentialsFromKopsControlPlaneSecret(ctx context.Context, c client.Client, secretName string) (*aws.CredentialsCache, error) {
 	secret := &corev1.Secret{}
 	key := client.ObjectKey{
 		Namespace: "kubernetes-kops-operator-system",
@@ -59,5 +60,6 @@ func GetAwsCredentialsFromKopsControlPlaneSecret(ctx context.Context, c client.C
 	}
 	accessKeyID := string(secret.Data["AccessKeyID"])
 	secretAccessKey := string(secret.Data["SecretAccessKey"])
-	return credentials.NewStaticCredentials(accessKeyID, secretAccessKey, ""), nil
+
+	return aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider(accessKeyID, secretAccessKey, "")), nil
 }

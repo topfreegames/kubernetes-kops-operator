@@ -66,14 +66,14 @@ func GetKopsMachinePoolsWithLabel(ctx context.Context, c client.Client, key, val
 	return kmpsList.Items, nil
 }
 
-func GetCloudResourceNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.KopsMachinePool) (*string, error) {
+func GetCloudResourceNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.KopsMachinePool) (string, error) {
 
 	if _, ok := kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-role"]; !ok {
-		return nil, fmt.Errorf("failed to retrieve role from KopsMachinePool %s", kmp.GetName())
+		return "", fmt.Errorf("failed to retrieve role from KopsMachinePool %s", kmp.GetName())
 	}
 
 	if kmp.Spec.ClusterName == "" {
-		return nil, fmt.Errorf("failed to retrieve clusterName from KopsMachinePool %s", kmp.GetName())
+		return "", fmt.Errorf("failed to retrieve clusterName from KopsMachinePool %s", kmp.GetName())
 	}
 
 	var cloudName string
@@ -83,5 +83,5 @@ func GetCloudResourceNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.KopsMac
 		cloudName = fmt.Sprintf("%s.%s", kmp.Name, kmp.Spec.ClusterName)
 	}
 
-	return &cloudName, nil
+	return cloudName, nil
 }
