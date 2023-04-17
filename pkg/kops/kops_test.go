@@ -193,7 +193,7 @@ func TestGetCloudResourceNameFromKopsMachinePool(t *testing.T) {
 			if !tc["isErrorExpected"].(bool) {
 				g.Expect(asgName).ToNot(BeNil())
 				g.Expect(err).To(BeNil())
-				g.Expect(*asgName).To(Equal(tc["expected"].(string)))
+				g.Expect(asgName).To(Equal(tc["expected"].(string)))
 			} else {
 				g.Expect(err).ToNot(BeNil())
 				g.Expect(err.Error()).To(ContainSubstring(tc["expectedErrorMessage"].(string)))

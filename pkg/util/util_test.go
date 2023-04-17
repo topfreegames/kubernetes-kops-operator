@@ -6,7 +6,8 @@ import (
 	"os"
 	"testing"
 
-	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -102,7 +103,7 @@ func TestGetAwsCredentialsFromKopsControlPlaneSecret(t *testing.T) {
 	testCases := []struct {
 		description           string
 		k8sObjects            []client.Object
-		expectedAwsCredential *credentials.Credentials
+		expectedAwsCredential *aws.CredentialsCache
 		expectedError         bool
 	}{
 		{
@@ -111,7 +112,7 @@ func TestGetAwsCredentialsFromKopsControlPlaneSecret(t *testing.T) {
 			k8sObjects: []client.Object{
 				newAWSCredentialSecret("accessTest", "secretTest"),
 			},
-			expectedAwsCredential: credentials.NewStaticCredentials("accessTest", "secretTest", ""),
+			expectedAwsCredential: aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider("accessTest", "secretTest", "")),
 		},
 		{
 			description:   "Should fail if can't get secret",

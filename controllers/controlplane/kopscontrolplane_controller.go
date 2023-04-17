@@ -24,20 +24,17 @@ import (
 
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/cluster-api/util/annotations"
-	"sigs.k8s.io/cluster-api/util/patch"
 	"sigs.k8s.io/cluster-api/util/predicates"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/credentials"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/autoscaling"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/autoscaling"
+	asgTypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
-	"github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 	kopsutils "github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/util"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
@@ -91,7 +88,7 @@ type KopsControlPlaneReconciler struct {
 	ApplyTerraformFactory        func(ctx context.Context, terraformDir, tfExecPath string) error
 	ValidateKopsClusterFactory   func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
-	GetASGByNameFactory          func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *credentials.Credentials) (*autoscaling.Group, error)
+	GetASGByNameFactory          func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.CredentialsCache) (*asgTypes.AutoScalingGroup, error)
 }
 
 func init() {
@@ -168,8 +165,8 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 	}
 
 	if shouldIgnoreSG {
-		asgNames := []*string{}
-		vngNames := []*string{}
+		asgNames := []string{}
+		vngNames := []string{}
 		for _, kmp := range kmps {
 			if _, ok := kmp.Spec.SpotInstOptions["spotinst.io/hybrid"]; ok {
 				if kmp.Spec.SpotInstOptions["spotinst.io/hybrid"] == "true" {
@@ -440,7 +437,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		kopsControlPlaneHelper := kopsControlPlane.DeepCopy()
 		if err := r.Update(ctx, kopsControlPlane); err != nil {
 			r.log.Error(rerr, "failed to update kopsControlPlane %s", kopsControlPlane.Name)
-			}
+		}
 
 		kopsControlPlane.Status = kopsControlPlaneHelper.Status
 		if err := r.Status().Update(ctx, kopsControlPlane); err != nil {
@@ -484,7 +481,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	for i, kopsMachinePool := range kmps {
 		err = r.reconcileKopsMachinePool(ctx, kopsControlPlane, &kmps[i])
-	if err != nil {
+		if err != nil {
 			r.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeWarning, "KopsMachinePoolReconcileFailed", err.Error())
 		} else {
 			r.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeNormal, "KopsMachinePoolReconcileSuccess", kopsMachinePool.Name)
@@ -569,12 +566,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	err = r.updateKopsMachinePoolWithProviderIDList(ctx, kopsControlPlane, kmps, credentials)
-			if err != nil {
-				if apierrors.IsNotFound(err) {
-					return requeue1min, nil
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return requeue1min, nil
 		} else {
-				return resultError, err
-			}
+			return resultError, err
+		}
 	}
 
 	igList, err := r.kopsClientset.InstanceGroupsFor(kopsCluster).List(ctx, metav1.ListOptions{})
@@ -630,83 +627,82 @@ func (r *KopsControlPlaneReconciler) updateKopsMachinePoolWithProviderIDList(ctx
 	}
 	return nil
 }
+
 func (r *KopsControlPlaneReconciler) reconcileKopsMachinePool(ctx context.Context, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) error {
-		// Ensure correct NodeLabel for the IG
-		if kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels != nil {
-			kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"] = kopsMachinePool.Name
-		} else {
-			kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
-				"kops.k8s.io/instance-group-name": kopsMachinePool.Name,
-			}
+	// Ensure correct NodeLabel for the IG
+	if kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels != nil {
+		kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"] = kopsMachinePool.Name
+	} else {
+		kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
+			"kops.k8s.io/instance-group-name": kopsMachinePool.Name,
 		}
-		kopsInstanceGroup := &kopsapi.InstanceGroup{
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      kopsMachinePool.Name,
-				Namespace: kopsMachinePool.ObjectMeta.Namespace,
-				Labels:    kopsMachinePool.Spec.SpotInstOptions,
-			},
-			Spec: kopsMachinePool.Spec.KopsInstanceGroupSpec,
-		}
-		kopsCluster := &kopsapi.Cluster{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: kopsMachinePool.Spec.ClusterName,
-			},
-			Spec: kopsControlPlane.Spec.KopsClusterSpec,
-		}
-		err := r.createOrUpdateInstanceGroup(ctx, kopsCluster, kopsInstanceGroup)
-		if err != nil {
+	}
+	kopsInstanceGroup := &kopsapi.InstanceGroup{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      kopsMachinePool.Name,
+			Namespace: kopsMachinePool.ObjectMeta.Namespace,
+			Labels:    kopsMachinePool.Spec.SpotInstOptions,
+		},
+		Spec: kopsMachinePool.Spec.KopsInstanceGroupSpec,
+	}
+	kopsCluster := &kopsapi.Cluster{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: kopsMachinePool.Spec.ClusterName,
+		},
+		Spec: kopsControlPlane.Spec.KopsClusterSpec,
+	}
+	err := r.createOrUpdateInstanceGroup(ctx, kopsCluster, kopsInstanceGroup)
+	if err != nil {
 		conditions.MarkFalse(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition, infrastructurev1alpha1.KopsMachinePoolStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
-			return err
-		}
+		return err
+	}
 	conditions.MarkTrue(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition)
 
 	return nil
 }
 
 // GetASGByName returns the existing ASG or nothing if it doesn't exist.
-func GetASGByName(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *credentials.Credentials) (*autoscaling.Group, error) {
+func GetASGByName(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.CredentialsCache) (*asgTypes.AutoScalingGroup, error) {
+	ctx := context.TODO()
 	region, err := regionBySubnet(kopsControlPlane)
 	if err != nil {
 		return nil, err
 	}
-	awsClient, err := session.NewSession(&aws.Config{
-		Region:      &region,
-		Credentials: credentials,
-	})
+	cfg, err := config.LoadDefaultConfig(ctx,
+		config.WithRegion(region),
+		config.WithCredentialsProvider(credentials),
+	)
 	if err != nil {
 		return nil, err
 	}
 
-	svc := autoscaling.New(awsClient)
+	svc := autoscaling.NewFromConfig(cfg)
 
-	asgName, err := kops.GetCloudResourceNameFromKopsMachinePool(*kopsMachinePool)
+	asgName, err := kopsutils.GetCloudResourceNameFromKopsMachinePool(*kopsMachinePool)
 	if err != nil {
 		return nil, err
 	}
 
 	input := &autoscaling.DescribeAutoScalingGroupsInput{
-		AutoScalingGroupNames: []*string{
+		AutoScalingGroupNames: []string{
 			asgName,
 		},
 	}
 
-	out, err := svc.DescribeAutoScalingGroups(input)
+	out, err := svc.DescribeAutoScalingGroups(ctx, input)
 	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case autoscaling.ErrCodeInvalidNextToken:
-				return nil, fmt.Errorf(aerr.Error(), autoscaling.ErrCodeInvalidNextToken)
-			case autoscaling.ErrCodeResourceContentionFault:
-				return nil, fmt.Errorf(aerr.Error(), autoscaling.ErrCodeResourceContentionFault)
-			default:
-				return nil, fmt.Errorf(aerr.Error(), aerr.Error())
-			}
-		} else {
-			return nil, fmt.Errorf(aerr.Error(), aerr.Error())
+		var invalidNextToken *asgTypes.InvalidNextToken
+		if errors.As(err, &invalidNextToken) {
+			return nil, fmt.Errorf(err.Error(), invalidNextToken)
 		}
+		var resourceContentionFault *asgTypes.ResourceContentionFault
+		if errors.As(err, &resourceContentionFault) {
+			return nil, fmt.Errorf(err.Error(), resourceContentionFault)
+		}
+		return nil, fmt.Errorf(err.Error(), err.Error())
 	}
 	if len(out.AutoScalingGroups) > 0 {
-		return out.AutoScalingGroups[0], nil
+		return &out.AutoScalingGroups[0], nil
 	}
 	return nil, apierrors.NewNotFound(schema.GroupResource{}, "ASG not ready")
 }
