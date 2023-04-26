@@ -53,6 +53,7 @@ import (
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/assets"
 	"k8s.io/kops/pkg/client/simple"
+	"k8s.io/kops/pkg/featureflag"
 	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
@@ -494,6 +495,8 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		},
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
+
+	featureflag.ParseFlags("Karpenter")
 
 	err = utils.ParseSpotinstFeatureflags(kopsControlPlane)
 	if err != nil {
