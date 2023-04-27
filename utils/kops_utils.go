@@ -107,7 +107,7 @@ func BuildCloud(kopscluster *kopsapi.Cluster) (_ fi.Cloud, rerr error) {
 			rerr = fmt.Errorf(fmt.Sprintf("failed to instantiate cloud for %s", kopscluster.ObjectMeta.GetName()))
 		}
 	}()
-	awsup.AWSCloudInstances = awsup.NewAWSCloudInstances()
+	awsup.ResetAWSCloudInstances()
 	cloud, err := cloudup.BuildCloud(kopscluster)
 	if err != nil {
 		return nil, err

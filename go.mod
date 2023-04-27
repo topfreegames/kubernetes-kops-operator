@@ -25,7 +25,7 @@ require (
 	sigs.k8s.io/controller-runtime v0.13.1
 )
 
-replace k8s.io/kops v1.25.4 => github.com/topfreegames/kops v1.25.6-0.20230426193947-bb461d4d0c10
+replace k8s.io/kops v1.25.4 => github.com/topfreegames/kops v1.25.5-karpenter
 
 require (
 	cloud.google.com/go/compute v1.13.0 // indirect
