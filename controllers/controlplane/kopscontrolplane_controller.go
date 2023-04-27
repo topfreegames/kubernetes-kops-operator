@@ -496,7 +496,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
+	featureflag.ParseFlags("-Karpenter")
+	if kopsControlPlane.Spec.KopsClusterSpec.Karpenter != nil {
+		if kopsControlPlane.Spec.KopsClusterSpec.Karpenter.Enabled {
 	featureflag.ParseFlags("Karpenter")
+		}
+	}
 
 	err = utils.ParseSpotinstFeatureflags(kopsControlPlane)
 	if err != nil {
@@ -606,7 +611,8 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 func (r *KopsControlPlaneReconciler) updateKopsMachinePoolWithProviderIDList(ctx context.Context, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, credentials *aws.CredentialsCache) error {
 	for i, kopsMachinePool := range kmps {
-		if len(kopsMachinePool.Spec.SpotInstOptions) == 0 {
+		// TODO: retrieve karpenter providerIDList
+		if len(kopsMachinePool.Spec.SpotInstOptions) == 0 && kopsMachinePool.Spec.KopsInstanceGroupSpec.Manager != "Karpenter" {
 			asg, err := r.GetASGByNameFactory(&kopsMachinePool, kopsControlPlane, credentials)
 			if err != nil {
 				if apierrors.IsNotFound(err) {
