@@ -437,23 +437,23 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	defer func() {
 		kopsControlPlaneHelper := kopsControlPlane.DeepCopy()
 		if err := r.Update(ctx, kopsControlPlane); err != nil {
-			r.log.Error(rerr, "failed to update kopsControlPlane %s", kopsControlPlane.Name)
+			r.log.Error(rerr, fmt.Sprintf("failed to update kopsControlPlane %s", kopsControlPlane.Name))
 		}
 
 		kopsControlPlane.Status = kopsControlPlaneHelper.Status
 		if err := r.Status().Update(ctx, kopsControlPlane); err != nil {
-			r.log.Error(rerr, "failed to update kopsControlPlane %s status", kopsControlPlane.Name)
+			r.log.Error(rerr, fmt.Sprintf("failed to update kopsControlPlane %s status", kopsControlPlane.Name))
 		}
 
 		for _, kopsMachinePool := range kmps {
 			kopsMachinePoolHelper := kopsMachinePool.DeepCopy()
 			if err := r.Update(ctx, &kopsMachinePool); err != nil {
-				r.log.Error(rerr, "failed to update kopsMachinePool %s", kopsMachinePool.Name)
+				r.log.Error(rerr, fmt.Sprintf("failed to update kopsMachinePool %s", kopsMachinePool.Name))
 			}
 
 			kopsMachinePool.Status = kopsMachinePoolHelper.Status
 			if err := r.Status().Update(ctx, &kopsMachinePool); err != nil {
-				r.log.Error(rerr, "failed to update kopsMachinePool %s status", kopsMachinePool.Name)
+				r.log.Error(rerr, fmt.Sprintf("failed to update kopsMachinePool %s status", kopsMachinePool.Name))
 			}
 		}
 		r.log.Info(fmt.Sprintf("finished reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
