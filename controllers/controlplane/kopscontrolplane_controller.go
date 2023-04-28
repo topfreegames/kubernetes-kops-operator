@@ -499,7 +499,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	featureflag.ParseFlags("-Karpenter")
 	if kopsControlPlane.Spec.KopsClusterSpec.Karpenter != nil {
 		if kopsControlPlane.Spec.KopsClusterSpec.Karpenter.Enabled {
-	featureflag.ParseFlags("Karpenter")
+			featureflag.ParseFlags("Karpenter")
 		}
 	}
 
