@@ -65,7 +65,7 @@ type SpotInstSpec struct {
 // KopsControlPlaneSpec defines the desired state of KopsControlPlane
 type KopsControlPlaneSpec struct {
 	// IdentityRef is a reference to a identity to be used when reconciling this cluster
-	IdentityRef *corev1.ObjectReference `json:"identityRef,omitempty"`
+	IdentityRef IdentityRefSpec `json:"identityRef"`
 	// SSHPublicKey is the SSH public key added in the nodes; required on AWS
 	SSHPublicKey string `json:"SSHPublicKey"`
 	// KopsClusterSpec declare the desired Cluster Kops resource: https://kops.sigs.k8s.io/cluster_spec/
@@ -76,6 +76,12 @@ type KopsControlPlaneSpec struct {
 	// SpotInst enables Spot and define their feature flags
 	// +optional
 	SpotInst SpotInstSpec `json:"spotInst,omitempty"`
+}
+
+type IdentityRefSpec struct {
+	Kind      string `json:"kind"`
+	Namespace string `json:"namespace"`
+	Name      string `json:"name"`
 }
 
 // KopsControlPlaneStatus defines the observed state of KopsControlPlane
