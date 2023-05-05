@@ -27,10 +27,10 @@ func GetClusterByName(ctx context.Context, c client.Client, namespace, name stri
 	return cluster, nil
 }
 
-func SetAWSEnvFromKopsControlPlaneSecret(ctx context.Context, c client.Client, secretName string) error {
+func SetAWSEnvFromKopsControlPlaneSecret(ctx context.Context, c client.Client, secretName, namespace string) error {
 	secret := &corev1.Secret{}
 	key := client.ObjectKey{
-		Namespace: "kubernetes-kops-operator-system",
+		Namespace: namespace,
 		Name:      secretName,
 	}
 	if err := c.Get(ctx, key, secret); err != nil {
@@ -49,10 +49,10 @@ func SetAWSEnvFromKopsControlPlaneSecret(ctx context.Context, c client.Client, s
 	return nil
 }
 
-func GetAwsCredentialsFromKopsControlPlaneSecret(ctx context.Context, c client.Client, secretName string) (*aws.CredentialsCache, error) {
+func GetAwsCredentialsFromKopsControlPlaneSecret(ctx context.Context, c client.Client, secretName, namespace string) (*aws.CredentialsCache, error) {
 	secret := &corev1.Secret{}
 	key := client.ObjectKey{
-		Namespace: "kubernetes-kops-operator-system",
+		Namespace: namespace,
 		Name:      secretName,
 	}
 	if err := c.Get(ctx, key, secret); err != nil {
