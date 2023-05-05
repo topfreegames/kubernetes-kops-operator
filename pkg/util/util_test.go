@@ -86,7 +86,7 @@ func TestSetAWSEnvFromKopsControlPlaneSecret(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithObjects(tc.k8sObjects...).Build()
-			err := SetAWSEnvFromKopsControlPlaneSecret(ctx, fakeClient, "11111111-credential")
+			err := SetAWSEnvFromKopsControlPlaneSecret(ctx, fakeClient, "11111111-credential", "kubernetes-kops-operator-system")
 			if !tc.expectedError {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(os.Getenv("AWS_ACCESS_KEY_ID")).To(Equal("accessTest"))
@@ -128,7 +128,7 @@ func TestGetAwsCredentialsFromKopsControlPlaneSecret(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithObjects(tc.k8sObjects...).Build()
-			credential, err := GetAwsCredentialsFromKopsControlPlaneSecret(ctx, fakeClient, "11111111-credential")
+			credential, err := GetAwsCredentialsFromKopsControlPlaneSecret(ctx, fakeClient, "11111111-credential", "kubernetes-kops-operator-system")
 			if !tc.expectedError {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(credential).To(Equal(tc.expectedAwsCredential))
