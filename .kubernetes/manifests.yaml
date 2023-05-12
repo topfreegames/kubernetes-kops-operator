@@ -5324,7 +5324,7 @@ spec:
               optional: true
         - name: AWS_REGION
           value: us-east-1
-        image: tfgco/kubernetes-kops-operator:v0.3.11-alpha
+        image: tfgco/kubernetes-kops-operator:v0.3.13-alpha
         livenessProbe:
           httpGet:
             path: /healthz
