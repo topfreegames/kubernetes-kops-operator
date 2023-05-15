@@ -55,13 +55,8 @@ func GetKopsClientset(configBase string) (simple.Clientset, error) {
 	return kopsClientset, nil
 }
 
-func ValidateKopsCluster(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
-	config, err := GetKubeconfigFromKopsState(kopsCluster, kopsClientset)
-	if err != nil {
-		return nil, err
-	}
-
-	k8sClient, err := kubernetes.NewForConfig(config)
+func ValidateKopsCluster(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+	k8sClient, err := kubernetes.NewForConfig(kubeConfig)
 	if err != nil {
 		return nil, err
 	}

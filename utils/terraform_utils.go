@@ -9,6 +9,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/hashicorp/terraform-exec/tfexec"
 )
 
@@ -60,12 +61,19 @@ func CreateAdditionalTerraformFiles(tfFiles ...Template) error {
 }
 
 // ApplyTerraform just applies the already created terraform files
-func ApplyTerraform(ctx context.Context, workingDir, terraformExecPath string) error {
+func ApplyTerraform(ctx context.Context, workingDir, terraformExecPath string, credentials aws.Credentials) error {
 
 	tf, err := tfexec.NewTerraform(workingDir, terraformExecPath)
 	if err != nil {
 		return err
 	}
+
+	env := map[string]string{
+		"AWS_ACCESS_KEY_ID":     credentials.AccessKeyID,
+		"AWS_SECRET_ACCESS_KEY": credentials.SecretAccessKey,
+	}
+
+	tf.SetEnv(env)
 
 	err = tf.Init(ctx, tfexec.Upgrade(true))
 	if err != nil {
