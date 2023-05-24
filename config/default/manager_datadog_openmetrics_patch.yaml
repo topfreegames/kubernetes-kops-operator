@@ -1,0 +1,23 @@
+# This patch inject a sidecar container which is a HTTP proxy for the
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: controller-manager
+  namespace: system
+spec:
+  template:
+    metadata:
+      annotations:
+        ad.datadoghq.com/manager.check_names: '["openmetrics"]'
+        ad.datadoghq.com/manager.init_configs: '[{}]'
+        ad.datadoghq.com/manager.instances: |-
+          [{
+            "metrics": [
+              "controller*",
+              "workqueue*"
+            ],
+            "namespace": "kopsoperator",
+            "prometheus_url": "http://%%host%%:8080/metrics",
+            "send_monotonic_counter": true,
+            "send_distribution_buckets": true
+          }]
