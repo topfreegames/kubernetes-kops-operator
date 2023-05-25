@@ -406,6 +406,8 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ku
 func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
 	log := ctrl.LoggerFrom(ctx)
 
+	initTime := time.Now()
+	log.Info("BATATA - Reconcile start")
 	kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{}
 	if err := r.Get(ctx, req.NamespacedName, kopsControlPlane); err != nil {
 		return resultError, client.IgnoreNotFound(err)
@@ -455,6 +457,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 		}
 		log.Info(fmt.Sprintf("finished reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
+		log.Info("BATATA - Reconcile finished, took %s", time.Now().Sub(initTime))
 	}()
 
 	if annotations.HasPaused(owner) {
@@ -463,8 +466,10 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultDefault, nil
 	}
 	kopsControlPlane.Status.Paused = false
+
+	lockInitTime := time.Now()
 	r.mux.Lock()
-	log.Info(fmt.Sprintf("LOCK %s %s", kopsControlPlane.Name, time.Now()))
+	log.Info(fmt.Sprintf("LOCK %s %s", kopsControlPlane.Name, lockInitTime))
 
 	log.Info(fmt.Sprintf("starting reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
 
@@ -582,8 +587,10 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
+	lockFinishTime := time.Now()
 	r.mux.Unlock()
-	log.Info(fmt.Sprintf("UNLOCK for %s %s", kopsControlPlane.Name, time.Now()))
+	log.Info(fmt.Sprintf("UNLOCK for %s %s", kopsControlPlane.Name, lockFinishTime))
+	log.Info("BATATA - Lock step took %s", lockFinishTime.Sub(lockInitTime))
 
 	err = r.ApplyTerraformFactory(ctx, terraformOutputDir, r.TfExecPath, credentials)
 	if err != nil {
