@@ -457,7 +457,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 		}
 		log.Info(fmt.Sprintf("finished reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
-		log.Info("BATATA - Reconcile finished, took %s", time.Now().Sub(initTime))
+		log.Info("BATATA - Reconcile finished, took %s", time.Since(initTime))
 	}()
 
 	if annotations.HasPaused(owner) {
