@@ -73,7 +73,10 @@ func ApplyTerraform(ctx context.Context, workingDir, terraformExecPath string, c
 		"AWS_SECRET_ACCESS_KEY": credentials.SecretAccessKey,
 	}
 
-	tf.SetEnv(env)
+	err = tf.SetEnv(env)
+	if err != nil {
+		return err
+	}
 
 	err = tf.Init(ctx, tfexec.Upgrade(true))
 	if err != nil {
