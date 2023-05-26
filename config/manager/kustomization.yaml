@@ -16,4 +16,4 @@ images:
   newTag: latest
 - name: manager
   newName: tfgco/kubernetes-kops-operator
-  newTag: v0.3.12-mux-lock-4
+  newTag: v0.3.12-mux-lock-5
