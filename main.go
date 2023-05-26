@@ -20,6 +20,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/hashicorp/go-version"
@@ -49,10 +50,6 @@ import (
 var (
 	scheme   = runtime.NewScheme()
 	setupLog = ctrl.Log.WithName("setup")
-)
-
-const (
-	workerCount = 10
 )
 
 func init() {
@@ -129,6 +126,17 @@ func main() {
 		os.Exit(1)
 	}
 
+	workerCount, ok := os.LookupEnv("WORKER_COUNT")
+	if ! ok {
+		workerCount = "10"
+	}
+
+	workers, err := strconv.Atoi(workerCount)
+	if err != nil {
+		setupLog.Error(err, "unable to convert WORKER_COUNT variable")
+		os.Exit(1)
+	}
+
 	if err = (&controlplane.KopsControlPlaneReconciler{
 		Client:                       mgr.GetClient(),
 		Scheme:                       mgr.GetScheme(),
@@ -142,7 +150,7 @@ func main() {
 		ValidateKopsClusterFactory:   utils.ValidateKopsCluster,
 		GetClusterStatusFactory:      controlplane.GetClusterStatus,
 		GetASGByNameFactory:          controlplane.GetASGByName,
-	}).SetupWithManager(ctx, mgr, workerCount); err != nil {
+	}).SetupWithManager(ctx, mgr, workers); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsControlPlane")
 		os.Exit(1)
 	}

@@ -591,6 +591,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
+	r.mux.Unlock()
 	lockFinishTime := time.Now()
 	log.Info(fmt.Sprintf("UNLOCK for %s %s", kopsControlPlane.Name, lockFinishTime))
 	log.Info(fmt.Sprintf("BATATA - Lock step took %s", lockFinishTime.Sub(lockInitTime)))
