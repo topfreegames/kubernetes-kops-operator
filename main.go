@@ -51,6 +51,10 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
+const (
+	workerCount = 10
+)
+
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
@@ -138,7 +142,7 @@ func main() {
 		ValidateKopsClusterFactory:   utils.ValidateKopsCluster,
 		GetClusterStatusFactory:      controlplane.GetClusterStatus,
 		GetASGByNameFactory:          controlplane.GetASGByName,
-	}).SetupWithManager(ctx, mgr); err != nil {
+	}).SetupWithManager(ctx, mgr, workerCount); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsControlPlane")
 		os.Exit(1)
 	}
