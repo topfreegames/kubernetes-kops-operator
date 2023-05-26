@@ -5259,7 +5259,7 @@ data:
     health:
       healthProbeBindAddress: :8081
     metrics:
-      bindAddress: 127.0.0.1:8080
+      bindAddress: :8080
     webhook:
       port: 9443
     leaderElection:
@@ -5299,13 +5299,25 @@ spec:
       control-plane: controller-manager
   template:
     metadata:
+      annotations:
+        ad.datadoghq.com/manager.check_names: '["openmetrics"]'
+        ad.datadoghq.com/manager.init_configs: '[{}]'
+        ad.datadoghq.com/manager.instances: |-
+          [{
+            "metrics": [
+              "controller*",
+              "workqueue*"
+            ],
+            "namespace": "kopsoperator",
+            "prometheus_url": "http://%%host%%:8080/metrics",
+            "send_monotonic_counter": true,
+            "send_distribution_buckets": true
+          }]
       labels:
         control-plane: controller-manager
     spec:
       containers:
       - args:
-        - --health-probe-bind-address=:8081
-        - --metrics-bind-address=127.0.0.1:8080
         - --leader-elect
         command:
         - /manager
@@ -5348,16 +5360,6 @@ spec:
             memory: 400Mi
         securityContext:
           allowPrivilegeEscalation: false
-      - args:
-        - --secure-listen-address=0.0.0.0:8443
-        - --upstream=http://127.0.0.1:8080/
-        - --logtostderr=true
-        - --v=10
-        image: gcr.io/kubebuilder/kube-rbac-proxy:v0.8.0
-        name: kube-rbac-proxy
-        ports:
-        - containerPort: 8443
-          name: https
       securityContext:
         runAsNonRoot: true
       serviceAccountName: kubernetes-kops-operator-controller-manager
