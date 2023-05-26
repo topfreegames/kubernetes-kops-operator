@@ -404,6 +404,9 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ku
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update
 
 func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, rerr error) {
+	var lockInitTime time.Time
+	var shouldIUnlock bool
+
 	log := ctrl.LoggerFrom(ctx)
 
 	initTime := time.Now()
@@ -435,8 +438,11 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// Attempt to Update the KopsControlPlane and KopsMachinePool object and status after each reconciliation if no error occurs.
 	defer func() {
-		if ! r.mux.TryLock() {
+		if shouldIUnlock {
 			r.mux.Unlock()
+			lockFinishTimeUnexpected := time.Now()
+			log.Info(fmt.Sprintf("UNLOCK UNEXPECTED for %s %s", kopsControlPlane.Name, lockFinishTimeUnexpected))
+			log.Info(fmt.Sprintf("BATATA - Unexpected Unlock step took %s", lockFinishTimeUnexpected.Sub(lockInitTime)))
 		}
 
 		kopsControlPlaneHelper := kopsControlPlane.DeepCopy()
@@ -471,8 +477,9 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	kopsControlPlane.Status.Paused = false
 
-	lockInitTime := time.Now()
+	lockInitTime = time.Now()
 	r.mux.Lock()
+	shouldIUnlock = true
 	log.Info(fmt.Sprintf("LOCK %s %s", kopsControlPlane.Name, lockInitTime))
 
 	log.Info(fmt.Sprintf("starting reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
@@ -592,6 +599,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	r.mux.Unlock()
+	shouldIUnlock = false
 	lockFinishTime := time.Now()
 	log.Info(fmt.Sprintf("UNLOCK for %s %s", kopsControlPlane.Name, lockFinishTime))
 	log.Info(fmt.Sprintf("BATATA - Lock step took %s", lockFinishTime.Sub(lockInitTime)))
