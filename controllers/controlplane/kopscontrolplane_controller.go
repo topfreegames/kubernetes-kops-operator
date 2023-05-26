@@ -778,10 +778,10 @@ func (r *KopsControlPlaneReconciler) createOrUpdateInstanceGroup(ctx context.Con
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager) error {
+func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, workerCount int) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1alpha1.KopsControlPlane{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: 5}).
+		WithOptions(controller.Options{MaxConcurrentReconciles: workerCount}).
 		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
 		Watches(
 			&source.Kind{Type: &clusterv1.Cluster{}},
