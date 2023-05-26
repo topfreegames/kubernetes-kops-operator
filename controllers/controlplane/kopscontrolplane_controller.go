@@ -435,6 +435,10 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// Attempt to Update the KopsControlPlane and KopsMachinePool object and status after each reconciliation if no error occurs.
 	defer func() {
+		if ! r.mux.TryLock() {
+			r.mux.Unlock()
+		}
+
 		kopsControlPlaneHelper := kopsControlPlane.DeepCopy()
 		if err := r.Update(ctx, kopsControlPlane); err != nil {
 			log.Error(rerr, fmt.Sprintf("failed to update kopsControlPlane %s", kopsControlPlane.Name))
@@ -588,7 +592,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	lockFinishTime := time.Now()
-	r.mux.Unlock()
 	log.Info(fmt.Sprintf("UNLOCK for %s %s", kopsControlPlane.Name, lockFinishTime))
 	log.Info(fmt.Sprintf("BATATA - Lock step took %s", lockFinishTime.Sub(lockInitTime)))
 
