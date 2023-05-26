@@ -10,7 +10,7 @@ on:
 
 jobs:
   lint:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
     - name: Checkout repo
       uses: actions/checkout@v2
@@ -27,7 +27,7 @@ jobs:
         args: --timeout 10m0s
 
   tests:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
     - name: Checkout repo
       uses: actions/checkout@v2
@@ -44,7 +44,7 @@ jobs:
       run: make test-ci
 
   docker-image:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     if: startsWith(github.ref, 'refs/tags/v')
     needs:
     - tests
