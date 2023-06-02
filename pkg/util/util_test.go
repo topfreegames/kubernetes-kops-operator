@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	corev1 "k8s.io/api/core/v1"
@@ -69,28 +68,25 @@ func TestSetAWSEnvFromKopsControlPlaneSecret(t *testing.T) {
 			description:   "Should successfully set AWS envs",
 			expectedError: false,
 			k8sObjects: []client.Object{
-				newAWSCredentialSecret("accessTest", "secretTest"),
+				newAWSCredentialSecret("11111111-credential", "kubernetes-kops-operator-system"),
 			},
-		},
-		{
-			description:   "Should fail if can't get secret",
-			expectedError: true,
-			k8sObjects:    []client.Object{},
 		},
 	}
 
 	RegisterFailHandler(Fail)
 	g := NewWithT(t)
-	ctx := context.TODO()
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithObjects(tc.k8sObjects...).Build()
-			err := SetEnvVarsFromAWSCredentials(ctx, fakeClient, "11111111-credential", "kubernetes-kops-operator-system")
+			awsCredentials := aws.Credentials{
+				AccessKeyID:     "11111111-credential",
+				SecretAccessKey: "kubernetes-kops-operator-system",
+			}
+			err := SetEnvVarsFromAWSCredentials(awsCredentials)
 			if !tc.expectedError {
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(os.Getenv("AWS_ACCESS_KEY_ID")).To(Equal("accessTest"))
-				g.Expect(os.Getenv("AWS_SECRET_ACCESS_KEY")).To(Equal("secretTest"))
+				g.Expect(os.Getenv("AWS_ACCESS_KEY_ID")).To(Equal("11111111-credential"))
+				g.Expect(os.Getenv("AWS_SECRET_ACCESS_KEY")).To(Equal("kubernetes-kops-operator-system"))
 			} else {
 				g.Expect(err).To(HaveOccurred())
 			}
@@ -103,7 +99,7 @@ func TestGetAwsCredentialsFromKopsControlPlaneSecret(t *testing.T) {
 	testCases := []struct {
 		description           string
 		k8sObjects            []client.Object
-		expectedAwsCredential *aws.CredentialsCache
+		expectedAwsCredential *aws.Credentials
 		expectedError         bool
 	}{
 		{
@@ -112,7 +108,7 @@ func TestGetAwsCredentialsFromKopsControlPlaneSecret(t *testing.T) {
 			k8sObjects: []client.Object{
 				newAWSCredentialSecret("accessTest", "secretTest"),
 			},
-			expectedAwsCredential: aws.NewCredentialsCache(credentials.NewStaticCredentialsProvider("accessTest", "secretTest", "")),
+			expectedAwsCredential: &aws.Credentials{AccessKeyID: "accessTest", SecretAccessKey: "secretTest"},
 		},
 		{
 			description:   "Should fail if can't get secret",
