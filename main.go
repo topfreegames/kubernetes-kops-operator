@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/hashicorp/go-version"
@@ -127,7 +128,7 @@ func main() {
 	}
 
 	workerCount, ok := os.LookupEnv("WORKER_COUNT")
-	if ! ok {
+	if !ok {
 		workerCount = "10"
 	}
 
@@ -140,6 +141,7 @@ func main() {
 	if err = (&controlplane.KopsControlPlaneReconciler{
 		Client:                       mgr.GetClient(),
 		Scheme:                       mgr.GetScheme(),
+		Mux:                          new(sync.Mutex),
 		Recorder:                     mgr.GetEventRecorderFor("kopscontrolplane-controller"),
 		TfExecPath:                   tfExecPath,
 		GetKopsClientSetFactory:      utils.GetKopsClientset,

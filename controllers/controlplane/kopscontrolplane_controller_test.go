@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -406,7 +407,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 		expectedRequeue          bool
 		kopsControlPlaneFunction func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane
 		clusterFunction          func(cluster *clusterv1.Cluster) *clusterv1.Cluster
-		getASGByNameFactory      func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.CredentialsCache) (*asgTypes.AutoScalingGroup, error)
+		getASGByNameFactory      func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error)
 		createKubeconfigSecret   bool
 		updateKubeconfigSecret   bool
 	}{
@@ -437,14 +438,14 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 		{
 			description:     "should not fail to if ASG not ready",
 			expectedRequeue: true,
-			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.CredentialsCache) (*asgTypes.AutoScalingGroup, error) {
+			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 				return nil, apierrors.NewNotFound(schema.GroupResource{}, "ASG not ready")
 			},
 		},
 		{
 			description:   "should fail to if can't retrieve ASG",
 			expectedError: true,
-			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.CredentialsCache) (*asgTypes.AutoScalingGroup, error) {
+			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 				return nil, errors.New("error")
 			},
 		},
@@ -505,11 +506,11 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				kopsControlPlaneFunction := tc.kopsControlPlaneFunction
 				kopsControlPlane = kopsControlPlaneFunction(kopsControlPlane)
 			}
-			var getASGByName func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.CredentialsCache) (*asgTypes.AutoScalingGroup, error)
+			var getASGByName func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error)
 			if tc.getASGByNameFactory != nil {
 				getASGByName = tc.getASGByNameFactory
 			} else {
-				getASGByName = func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.CredentialsCache) (*asgTypes.AutoScalingGroup, error) {
+				getASGByName = func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 					return &asgTypes.AutoScalingGroup{
 						Instances: []asgTypes.Instance{
 							{
@@ -547,6 +548,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				GetKopsClientSetFactory: func(configBase string) (simple.Clientset, error) {
 					return fakeKopsClientset, nil
 				},
+				Mux:      new(sync.Mutex),
 				Recorder: record.NewFakeRecorder(5),
 				BuildCloudFactory: func(*kopsapi.Cluster) (fi.Cloud, error) {
 					return nil, nil
@@ -682,7 +684,8 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			description:             "should have an event with the error from ValidateKopsCluster",
 			expectedReconcilerError: true,
 			eventsToAssert: []string{
-				"Normal KopsMachinePoolReconcileSuccess testIG",
+				"ReconciliationStarted",
+				"KopsMachinePoolReconcileSuccess",
 				"dummy error message",
 			},
 			expectedValidateKopsCluster: func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
@@ -692,14 +695,17 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 		{
 			description: "should have an event when the validation succeeds",
 			eventsToAssert: []string{
-				"Normal KopsMachinePoolReconcileSuccess testIG",
-				"Kops validation succeed",
+				"ReconciliationStarted",
+				"KopsMachinePoolReconcileSuccess",
+				"KubernetesClusterValidationSucceed",
+				"ClusterReconciledSuccessfully",
 			},
 		},
 		{
 			description: "should have an event with the failed validation",
 			eventsToAssert: []string{
-				"Normal KopsMachinePoolReconcileSuccess testIG",
+				"ReconciliationStarted",
+				"KopsMachinePoolReconcileSuccess",
 				"failed to validate this test case",
 			},
 			expectedValidateKopsCluster: func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
@@ -716,6 +722,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			description:             "should have an event with the failed validations",
 			expectedReconcilerError: false,
 			eventsToAssert: []string{
+				"ReconciliationStarted",
 				"Normal KopsMachinePoolReconcileSuccess testIG",
 				"test case A",
 				"test case B",
@@ -784,7 +791,8 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			err = createFakeKopsKeyPair(keyStore)
 			g.Expect(err).NotTo(HaveOccurred())
 
-			recorder := record.NewFakeRecorder(5)
+			recorderSize := 10
+			recorder := record.NewFakeRecorder(recorderSize)
 
 			var getClusterStatus func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
 			if tc.expectedErrorGetClusterStatusFactory != nil {
@@ -825,6 +833,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			reconciler := &KopsControlPlaneReconciler{
 				Client:   fakeClient,
 				Recorder: recorder,
+				Mux:      new(sync.Mutex),
 				GetKopsClientSetFactory: func(configBase string) (simple.Clientset, error) {
 					return fakeKopsClientset, nil
 				},
@@ -838,7 +847,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				ApplyTerraformFactory:        applyTerraform,
 				GetClusterStatusFactory:      getClusterStatus,
 				ValidateKopsClusterFactory:   validateKopsCluster,
-				GetASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.CredentialsCache) (*asgTypes.AutoScalingGroup, error) {
+				GetASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 					return &asgTypes.AutoScalingGroup{
 						Instances: []asgTypes.Instance{
 							{
@@ -883,8 +892,28 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			}
 
 			if tc.eventsToAssert != nil {
+				events := []string{}
+				loopEnded := false
+				for {
+					select {
+					case event := <-recorder.Events:
+						events = append(events, event)
+					default:
+						loopEnded = true
+					}
+					if loopEnded {
+						break
+					}
+				}
 				for _, eventMessage := range tc.eventsToAssert {
-					g.Expect(recorder.Events).Should(Receive(ContainSubstring(eventMessage)))
+					foundEvent := false
+					for _, event := range events {
+						if strings.Contains(event, eventMessage) {
+							foundEvent = true
+							break
+						}
+					}
+					g.Expect(foundEvent).To(BeTrue())
 				}
 			}
 		})

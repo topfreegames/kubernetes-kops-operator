@@ -72,10 +72,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/source"
 )
 
-const (
-	eventReasonReconcile = "KopsControlPlaneReconcile"
-)
-
 var (
 	requeue1min   = ctrl.Result{RequeueAfter: 1 * time.Minute}
 	resultDefault = ctrl.Result{RequeueAfter: 20 * time.Minute}
@@ -86,7 +82,7 @@ var (
 type KopsControlPlaneReconciler struct {
 	client.Client
 	Scheme                       *runtime.Scheme
-	mux                          *sync.Mutex
+	Mux                          *sync.Mutex
 	Recorder                     record.EventRecorder
 	TfExecPath                   string
 	GetKopsClientSetFactory      func(configBase string) (simple.Clientset, error)
@@ -445,14 +441,14 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	owner, err := reconciler.getClusterOwnerRef(ctx, kopsControlPlane)
 	if err != nil || owner == nil {
 		if apierrors.IsNotFound(err) {
-			reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "cluster does not exist yet, re-queueing until it is created")
+			reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ClusterDoesNotExistYet", "cluster does not exist yet, re-queueing until it is created")
 			return requeue1min, nil
 		}
 		if err == nil && owner == nil {
-			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "kopscontrolplane/%s does not belong to a cluster yet, waiting until it's part of a cluster", kopsControlPlane.ObjectMeta.Name)
+			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeNormal, "NoClusterYet", "kopscontrolplane/%s does not belong to a cluster yet, waiting until it's part of a cluster", kopsControlPlane.ObjectMeta.Name)
 			return requeue1min, nil
 		}
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "could not get cluster with metadata: %s", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToGetClusterMetadata", "could not get cluster with metadata: %s", err)
 		return resultError, err
 	}
 
@@ -464,29 +460,30 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	// Attempt to Update the KopsControlPlane and KopsMachinePool object and status after each reconciliation if no error occurs.
 	defer func() {
 		if shouldIUnlock {
-			reconciler.mux.Unlock()
-			log.Info(fmt.Sprintf("unexpected Unlock step for %s, took %s", kopsControlPlane.Name, time.Now().Sub(lockInitTime)))
+			reconciler.Mux.Unlock()
+			log.Info(fmt.Sprintf("unexpected Unlock step for %s, took %s", kopsControlPlane.Name, time.Since(lockInitTime)))
 		}
+		failedToUpdateKCPReason := "FailedToUpdate"
 
 		kopsControlPlaneHelper := kopsControlPlane.DeepCopy()
 		if err := reconciler.Update(ctx, kopsControlPlane); err != nil {
-			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to update kopsControlPlane: %s", err)
+			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, failedToUpdateKCPReason, "failed to update kopsControlPlane: %s", err)
 		}
 
 		kopsControlPlane.Status = kopsControlPlaneHelper.Status
 		if err := reconciler.Status().Update(ctx, kopsControlPlane); err != nil {
-			r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to update kopsControlPlane: %s", err)
+			r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, failedToUpdateKCPReason, "failed to update kopsControlPlane: %s", err)
 		}
 
 		for _, kopsMachinePool := range kmps {
 			kopsMachinePoolHelper := kopsMachinePool.DeepCopy()
 			if err := reconciler.Update(ctx, &kopsMachinePool); err != nil {
-				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to update kopsControlPlane: %s", err)
+				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, failedToUpdateKCPReason, "failed to update kopsControlPlane: %s", err)
 			}
 
 			kopsMachinePool.Status = kopsMachinePoolHelper.Status
 			if err := reconciler.Status().Update(ctx, &kopsMachinePool); err != nil {
-				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to update kopsControlPlane: %s", err)
+				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, failedToUpdateKCPReason, "failed to update kopsControlPlane: %s", err)
 			}
 		}
 
@@ -494,27 +491,27 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}()
 
 	if annotations.HasPaused(owner) {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeNormal, eventReasonReconcile, "reconciliation is paused since cluster %s is paused", owner.GetName())
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeNormal, "ClusterPaused", "reconciliation is paused since cluster %s is paused", owner.GetName())
 		kopsControlPlane.Status.Paused = true
 		return resultDefault, nil
 	}
 	kopsControlPlane.Status.Paused = false
 
-	reconciler.mux.Lock()
+	reconciler.Mux.Lock()
 	shouldIUnlock = true
 
 	log.Info(fmt.Sprintf("starting reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
-	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, eventReasonReconcile, "reconciliation started")
+	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ReconciliationStarted", "reconciliation started")
 
 	err = util.SetEnvVarsFromAWSCredentials(reconciler.awsCredentials)
 	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to set AWS environment variables: %s", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToSetAWSEnvVars", "failed to set AWS environment variables: %s", err)
 		return resultError, err
 	}
 
 	kopsClientset, err := reconciler.GetKopsClientSetFactory(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
 	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to instantiate Kops client: %s", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedInstantiateKopsClient", "failed to instantiate Kops client: %s", err)
 		return resultError, err
 	}
 
@@ -543,25 +540,25 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	err = utils.ParseSpotinstFeatureflags(kopsControlPlane)
 	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to parse Kops feature flags: %s", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToParseKopsFeatureFlags", "failed to parse Kops feature flags: %s", err)
 		return resultError, err
 	}
 
 	cloud, err := reconciler.BuildCloudFactory(kopsCluster)
 	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to build Cloud Config: %s", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToBuildCloudConfig", "failed to build Cloud Config: %s", err)
 		return resultError, err
 	}
 
 	fullCluster, err := reconciler.PopulateClusterSpecFactory(kopsCluster, kopsClientset, cloud)
 	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to populate Cluster spec: %s", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToPopulateClusterSpec", "failed to populate Cluster spec: %s", err)
 		return resultError, err
 	}
 
 	err = reconciler.createOrUpdateKopsCluster(ctx, kopsClientset, fullCluster, kopsControlPlane.Spec.SSHPublicKey, cloud)
 	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to manage Kops state: %s", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToManageKopsState", "failed to manage Kops state: %s", err)
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneStateReadyCondition, controlplanev1alpha1.KopsControlPlaneStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		return resultError, err
 	}
@@ -583,7 +580,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	err = reconciler.PrepareCloudResourcesFactory(kopsClientset, r.Client, ctx, kopsCluster, kopsControlPlane, fullCluster.Spec.ConfigBase, terraformOutputDir, cloud, shouldIgnoreSG, &reconciler.awsCredentials)
 	if err != nil {
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to prepare cloud resources: %s", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToPrepareCloudResources", "failed to prepare cloud resources: %s", err)
 		return resultError, err
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition)
@@ -597,17 +594,17 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	err = reconciler.reconcileKubeconfig(ctx, kubeConfig, log, kopsClientset, kopsCluster, owner)
 	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to reconcile kubeconfig: %s", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToReconcileKubeconfig", "failed to reconcile kubeconfig: %s", err)
 		return resultError, err
 	}
 
-	reconciler.mux.Unlock()
+	reconciler.Mux.Unlock()
 	shouldIUnlock = false
 
 	err = reconciler.ApplyTerraformFactory(ctx, terraformOutputDir, r.TfExecPath, reconciler.awsCredentials)
 	if err != nil {
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition, controlplanev1alpha1.TerraformApplyReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed to apply terraform: %s", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToApplyTerraform", "failed to apply terraform: %s", err)
 		return resultError, err
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition)
@@ -622,24 +619,24 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	igList, err := kopsClientset.InstanceGroupsFor(kopsCluster).List(ctx, metav1.ListOptions{})
 	if err != nil || len(igList.Items) == 0 {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "cannot get InstanceGroups: %s", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToGetIGs", "cannot get InstanceGroups: %s", err)
 		return resultError, fmt.Errorf("cannot get InstanceGroups for %q: %w", kopsCluster.ObjectMeta.Name, err)
 	}
 
 	val, err := reconciler.ValidateKopsClusterFactory(kubeConfig, kopsCluster, cloud, igList)
 
 	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed trying to validate Kubernetes cluster: %v", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToValidateKubernetesCluster", "failed trying to validate Kubernetes cluster: %v", err)
 		return resultError, err
 	}
 
 	statusReady, err := utils.KopsClusterValidation(kopsControlPlane, r.Recorder, log, val)
 	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, eventReasonReconcile, "failed trying to validate Kubernetes cluster: %v", err)
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToValidateKubernetesCluster", "failed trying to validate Kubernetes cluster: %v", err)
 		return resultError, err
 	}
 	kopsControlPlane.Status.Ready = statusReady
-	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, eventReasonReconcile, "cluster reconcile finished sucessfully")
+	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ClusterReconciledSuccessfully", "cluster reconcile finished sucessfully")
 	return resultDefault, nil
 }
 
