@@ -71,8 +71,11 @@ func ApplyTerraform(ctx context.Context, workingDir, terraformExecPath string, c
 	env := map[string]string{
 		"AWS_ACCESS_KEY_ID":     credentials.AccessKeyID,
 		"AWS_SECRET_ACCESS_KEY": credentials.SecretAccessKey,
+		"SPOTINST_TOKEN": os.Getenv("SPOTINST_TOKEN"),
+		"SPOTINST_ACCOUNT": os.Getenv("SPOTINST_ACCOUNT"),
 	}
 
+	// this overrides all ENVVARs that are passed to Terraform
 	err = tf.SetEnv(env)
 	if err != nil {
 		return err
