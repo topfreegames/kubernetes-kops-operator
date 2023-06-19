@@ -5357,7 +5357,14 @@ spec:
             memory: 400Mi
         securityContext:
           allowPrivilegeEscalation: false
+      nodeSelector:
+        kops-operator-dedicated: "true"
       securityContext:
         runAsNonRoot: true
       serviceAccountName: kubernetes-kops-operator-controller-manager
       terminationGracePeriodSeconds: 10
+      tolerations:
+      - effect: NoSchedule
+        key: dedicated
+        operator: Equal
+        value: kops-operator
