@@ -24,13 +24,6 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
-      nodeSelector:
-       kops-operator-dedicated: "true"
-      tolerations:
-      - key: "dedicated"
-        operator: "Equal"
-        value: "kops-operator"
-        effect: "NoSchedule"
       containers:
       - command:
         - /manager
@@ -72,5 +65,8 @@ spec:
             cpu: 1
             memory: 400Mi
             ephemeral-storage: 14Gi
+          limits:
+            cpu: 4
+            memory: 10Gi
       serviceAccountName: controller-manager
       terminationGracePeriodSeconds: 10

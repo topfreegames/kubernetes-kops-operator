@@ -5351,20 +5351,16 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 10
         resources:
+          limits:
+            cpu: 4
+            memory: 10Gi
           requests:
             cpu: 1
             ephemeral-storage: 14Gi
             memory: 400Mi
         securityContext:
           allowPrivilegeEscalation: false
-      nodeSelector:
-        kops-operator-dedicated: "true"
       securityContext:
         runAsNonRoot: true
       serviceAccountName: kubernetes-kops-operator-controller-manager
       terminationGracePeriodSeconds: 10
-      tolerations:
-      - effect: NoSchedule
-        key: dedicated
-        operator: Equal
-        value: kops-operator
