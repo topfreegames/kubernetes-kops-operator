@@ -719,8 +719,8 @@ github.com/stretchr/testify v1.8.1 h1:w7B6lhMri9wdJUVmEZPGGhZzrYTPvgJArz7wNPgYKs
 github.com/stretchr/testify v1.8.1/go.mod h1:w2LPCIKwWwSfY2zedu0+kehJoqGctiVI29o6fzry7u4=
 github.com/subosito/gotenv v1.4.1 h1:jyEFiXpy21Wm81FBN71l9VoMMV8H8jG+qIK3GCpY6Qs=
 github.com/subosito/gotenv v1.4.1/go.mod h1:ayKnFf/c6rvx/2iiLrJUk1e6plDbT3edrFNGqEflhK0=
-github.com/topfreegames/kops v1.25.5-karpenter-0.28.1 h1:Ao7AVxlLEM9/FrS65yvS2B2bgWgDE0mkm80JC/DasSI=
-github.com/topfreegames/kops v1.25.5-karpenter-0.28.1/go.mod h1:De2552OtQN9EOiRyUNr82yV45ZKYkQ8xZMJAhtK7jWE=
+github.com/topfreegames/kops v1.25.5-karpenter-0.28.1-fix h1:YYZPk9V+Y1uIeoO8EdE8dQriSrsvNSQPm/DZaVeZh9w=
+github.com/topfreegames/kops v1.25.5-karpenter-0.28.1-fix/go.mod h1:De2552OtQN9EOiRyUNr82yV45ZKYkQ8xZMJAhtK7jWE=
 github.com/tv42/httpunix v0.0.0-20150427012821-b75d8614f926/go.mod h1:9ESjWnEqriFuLhtthL60Sar/7RFoluCcXsuvEwTV5KM=
 github.com/urfave/cli v1.22.4/go.mod h1:Gos4lmkARVdJ6EkW0WaNv/tZAAMe9V7XWyB60NtXRu0=
 github.com/vbatts/tar-split v0.11.2 h1:Via6XqJr0hceW4wff3QRzD5gAk/tatMw/4ZA7cTlIME=
