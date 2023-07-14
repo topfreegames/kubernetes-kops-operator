@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"gopkg.in/yaml.v3"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/predicates"
@@ -32,14 +33,17 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/autoscaling"
 	asgTypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
+	karpenter "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
+	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	kopsutils "github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/util"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
+	"github.com/zclconf/go-cty/cty"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
@@ -158,9 +162,70 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 		return err
 	}
 
+	// do we need to get kmp again?
 	kmps, err := kopsutils.GetKopsMachinePoolsWithLabel(ctx, kubeClient, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
 	if err != nil {
 		return err
+	}
+
+	for _, kmp := range kmps {
+		var provisionersYaml []byte
+		if len(kmp.Spec.KarpenterProvisioners) > 0 {
+			for _, provisioner := range kmp.Spec.KarpenterProvisioners {
+				provisionerMarshal, err := yaml.Marshal(provisioner)
+				if err != nil {
+					return err
+				}
+				provisionersYaml = append(provisionersYaml, provisionerMarshal...)
+				lineMarshal, err := yaml.Marshal("---\n")
+				if err != nil {
+					return err
+				}
+				provisionersYaml = append(provisionersYaml, lineMarshal...)
+			}
+
+			hclFile := hclwrite.NewEmptyFile()
+
+			tfFile, err := os.Create(terraformOutputDir + "/karpenter_provisioner.tf")
+			if err != nil {
+				return err
+			}
+			defer tfFile.Close()
+			rootBody := hclFile.Body()
+			addonResource := rootBody.AppendNewBlock("resource", []string{"aws_s3_object", "custom-addon-bootstrap"})
+			addonResourceBody := addonResource.Body()
+			bucketName, err := utils.GetBucketName(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
+			if err != nil {
+				return err
+			}
+
+			kopsAddonFile :=
+				"kind: Addons\n" +
+					"metadata:\n" +
+					"  name: addons\n" +
+					"spec:\n" +
+					"  addons:\n" +
+					"  - name: karpenter-provisioners.wildlife.io\n" +
+					"    version: 0.0.1\n" +
+					"    selector:\n" +
+					"      k8s-addon: karpenter-provisioners.wildlife.io\n" +
+					"    manifest: karpenter-provisioners.wildlife.io/provisioners.yaml\n"
+
+			addonResourceBody.SetAttributeValue("bucket", cty.StringVal(bucketName))
+			addonResourceBody.SetAttributeValue("content", cty.StringVal(string(kopsAddonFile)))
+			addonResourceBody.SetAttributeValue("key", cty.StringVal(fmt.Sprintf("%s/custom-addons/addon.yaml", kopsCluster.Name)))
+
+			karpenterProvisionerResource := rootBody.AppendNewBlock("resource", []string{"aws_s3_object", "custom-addon-karpenter-provisioners-wildlife-io"})
+			karpenterProvisionerResourceBody := karpenterProvisionerResource.Body()
+			karpenterProvisionerResourceBody.SetAttributeValue("bucket", cty.StringVal(bucketName))
+
+			scheme := runtime.NewScheme()
+			karpenter.SchemeBuilder.AddToScheme(scheme)
+			
+
+			tfFile.Write(hclFile.Bytes())
+		}
+
 	}
 
 	// TODO: Refactor to assert if spot is enabled in a better way

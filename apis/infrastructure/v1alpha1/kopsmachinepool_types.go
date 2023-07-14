@@ -17,6 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	karpenter "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kops "k8s.io/kops/pkg/apis/kops"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -46,6 +47,8 @@ type KopsMachinePoolSpec struct {
 	// ClusterName is the name of the Cluster this object belongs to.
 	// +kubebuilder:validation:MinLength=1
 	ClusterName string `json:"clusterName"`
+
+	KarpenterProvisioners []karpenter.Provisioner `json:"karpenterProvisioners,omitempty"`
 
 	// KopsInstanceGroupSpec declare a desired InstanceGroup Kops resource: https://kops.sigs.k8s.io/instance_groups/
 	KopsInstanceGroupSpec kops.InstanceGroupSpec `json:"kopsInstanceGroupSpec"`

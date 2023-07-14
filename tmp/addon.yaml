@@ -1,0 +1,10 @@
+kind: Addons
+metadata:
+  name: addons
+spec:
+  addons:
+  - name: karpenter-provisioners.wildlife.io
+    version: 0.0.1
+    selector:
+      k8s-addon: karpenter-provisioners.wildlife.io
+    manifest: karpenter-provisioners.wildlife.io/provisioners.yaml
