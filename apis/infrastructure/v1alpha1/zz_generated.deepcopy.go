@@ -22,6 +22,7 @@ limitations under the License.
 package v1alpha1
 
 import (
+	"github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/cluster-api/api/v1beta1"
 )
@@ -92,6 +93,13 @@ func (in *KopsMachinePoolSpec) DeepCopyInto(out *KopsMachinePoolSpec) {
 		in, out := &in.ProviderIDList, &out.ProviderIDList
 		*out = make([]string, len(*in))
 		copy(*out, *in)
+	}
+	if in.KarpenterProvisioners != nil {
+		in, out := &in.KarpenterProvisioners, &out.KarpenterProvisioners
+		*out = make([]v1alpha5.Provisioner, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
 	}
 	in.KopsInstanceGroupSpec.DeepCopyInto(&out.KopsInstanceGroupSpec)
 	if in.SpotInstOptions != nil {
