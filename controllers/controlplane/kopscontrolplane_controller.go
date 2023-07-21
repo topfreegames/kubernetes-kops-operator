@@ -20,7 +20,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync"
 	"time"
@@ -181,7 +180,7 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 				}
 			}
 		}
-		fileData, err := ioutil.ReadFile(karpenterProvisionersContent.Name())
+		fileData, err := os.ReadFile(karpenterProvisionersContent.Name())
 		if err != nil {
 			return err
 		}
