@@ -556,7 +556,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				PopulateClusterSpecFactory: func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error) {
 					return kopsCluster, nil
 				},
-				PrepareCloudResourcesFactory: func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error {
+				PrepareCloudResourcesFactory: func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error {
 					return nil
 				},
 				ApplyTerraformFactory: func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error {
@@ -631,7 +631,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 		conditionsToAssert                   []*clusterv1.Condition
 		eventsToAssert                       []string
 		expectedErrorGetClusterStatusFactory func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
-		expectedErrorPrepareCloudResources   func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error
+		expectedErrorPrepareCloudResources   func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error
 		expectedErrorApplyTerraform          func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error
 		expectedValidateKopsCluster          func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	}{
@@ -663,7 +663,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 		{
 			description:             "should mark false for condition KopsTerraformGenerationReadyCondition",
 			expectedReconcilerError: true,
-			expectedErrorPrepareCloudResources: func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error {
+			expectedErrorPrepareCloudResources: func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error {
 				return errors.New("")
 			},
 			conditionsToAssert: []*clusterv1.Condition{
@@ -803,11 +803,11 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				}
 			}
 
-			var prepareCloudResources func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error
+			var prepareCloudResources func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error
 			if tc.expectedErrorPrepareCloudResources != nil {
 				prepareCloudResources = tc.expectedErrorPrepareCloudResources
 			} else {
-				prepareCloudResources = func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error {
+				prepareCloudResources = func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error {
 					return nil
 				}
 			}

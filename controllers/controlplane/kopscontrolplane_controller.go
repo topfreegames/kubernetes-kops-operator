@@ -18,32 +18,26 @@ package controlplane
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"sync"
 	"time"
-
-	"gopkg.in/yaml.v3"
-	"k8s.io/klog/v2"
-	"sigs.k8s.io/cluster-api/util/annotations"
-	"sigs.k8s.io/cluster-api/util/predicates"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/autoscaling"
 	asgTypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
-	karpenter "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
-	"github.com/hashicorp/hcl/v2/hclwrite"
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	kopsutils "github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/util"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
-	"github.com/zclconf/go-cty/cty"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
@@ -57,6 +51,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/client-go/tools/record"
+	"k8s.io/klog/v2"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/assets"
 	"k8s.io/kops/pkg/client/simple"
@@ -66,14 +61,17 @@ import (
 	"k8s.io/kops/upup/pkg/fi/cloudup"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
+	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/kubeconfig"
+	"sigs.k8s.io/cluster-api/util/predicates"
 	"sigs.k8s.io/cluster-api/util/secret"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/source"
+	"sigs.k8s.io/yaml"
 )
 
 var (
@@ -92,7 +90,7 @@ type KopsControlPlaneReconciler struct {
 	GetKopsClientSetFactory      func(configBase string) (simple.Clientset, error)
 	BuildCloudFactory            func(*kopsapi.Cluster) (fi.Cloud, error)
 	PopulateClusterSpecFactory   func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
-	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error
+	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error
 	ApplyTerraformFactory        func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error
 	ValidateKopsClusterFactory   func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
@@ -137,14 +135,14 @@ func GetClusterStatus(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.Cl
 }
 
 // PrepareCloudResources renders the terraform files and effectively apply them in the cloud provider
-func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error {
+func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error {
 
 	s3Bucket, err := utils.GetBucketName(configBase)
 	if err != nil {
 		return err
 	}
 
-	err = os.MkdirAll(terraformOutputDir, 0755)
+	err = os.MkdirAll(terraformOutputDir+"/data", 0755)
 	if err != nil {
 		return err
 	}
@@ -162,68 +160,46 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 		return err
 	}
 
-	// do we need to get kmp again?
-	kmps, err := kopsutils.GetKopsMachinePoolsWithLabel(ctx, kubeClient, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
-	if err != nil {
-		return err
-	}
+	if shouldEnableKarpenter {
+		karpenterProvisionersContent, err := os.Create(terraformOutputDir + "/data/aws_s3_object_karpenter_provisioners_content")
+		if err != nil {
+			return err
+		}
+		defer karpenterProvisionersContent.Close()
 
-	for _, kmp := range kmps {
-		var provisionersYaml []byte
-		if len(kmp.Spec.KarpenterProvisioners) > 0 {
+		for _, kmp := range kmps {
 			for _, provisioner := range kmp.Spec.KarpenterProvisioners {
-				provisionerMarshal, err := yaml.Marshal(provisioner)
+				if _, err := karpenterProvisionersContent.Write([]byte("---\n")); err != nil {
+					return err
+				}
+				output, err := yaml.Marshal(provisioner)
 				if err != nil {
 					return err
 				}
-				provisionersYaml = append(provisionersYaml, provisionerMarshal...)
-				lineMarshal, err := yaml.Marshal("---\n")
-				if err != nil {
+				if _, err := karpenterProvisionersContent.Write(output); err != nil {
 					return err
 				}
-				provisionersYaml = append(provisionersYaml, lineMarshal...)
 			}
+		}
+		fileData, err := ioutil.ReadFile(karpenterProvisionersContent.Name())
+		if err != nil {
+			return err
+		}
+		contentHash := fmt.Sprintf("%x", sha256.Sum256(fileData))
 
-			hclFile := hclwrite.NewEmptyFile()
+		karpenterTemplate := struct {
+			Bucket       string
+			ClusterName  string
+			ManifestHash string
+		}{
+			s3Bucket,
+			kopsCluster.Name,
+			contentHash,
+		}
 
-			tfFile, err := os.Create(terraformOutputDir + "/karpenter_provisioner.tf")
-			if err != nil {
-				return err
-			}
-			defer tfFile.Close()
-			rootBody := hclFile.Body()
-			addonResource := rootBody.AppendNewBlock("resource", []string{"aws_s3_object", "custom-addon-bootstrap"})
-			addonResourceBody := addonResource.Body()
-			bucketName, err := utils.GetBucketName(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
-			if err != nil {
-				return err
-			}
-
-			kopsAddonFile :=
-				"kind: Addons\n" +
-					"metadata:\n" +
-					"  name: addons\n" +
-					"spec:\n" +
-					"  addons:\n" +
-					"  - name: karpenter-provisioners.wildlife.io\n" +
-					"    version: 0.0.1\n" +
-					"    selector:\n" +
-					"      k8s-addon: karpenter-provisioners.wildlife.io\n" +
-					"    manifest: karpenter-provisioners.wildlife.io/provisioners.yaml\n"
-
-			addonResourceBody.SetAttributeValue("bucket", cty.StringVal(bucketName))
-			addonResourceBody.SetAttributeValue("content", cty.StringVal(string(kopsAddonFile)))
-			addonResourceBody.SetAttributeValue("key", cty.StringVal(fmt.Sprintf("%s/custom-addons/addon.yaml", kopsCluster.Name)))
-
-			karpenterProvisionerResource := rootBody.AppendNewBlock("resource", []string{"aws_s3_object", "custom-addon-karpenter-provisioners-wildlife-io"})
-			karpenterProvisionerResourceBody := karpenterProvisionerResource.Body()
-			karpenterProvisionerResourceBody.SetAttributeValue("bucket", cty.StringVal(bucketName))
-
-			scheme := runtime.NewScheme()
-			karpenter.SchemeBuilder.AddToScheme(scheme)
-			
-
-			tfFile.Write(hclFile.Bytes())
+		err = utils.CreateTerraformFilesFromTemplate("templates/karpenter_custom_addon_boostrap.tf.tpl", "karpenter_custom_addon_boostrap.tf", terraformOutputDir, karpenterTemplate)
+		if err != nil {
+			return err
 		}
 
 	}
@@ -580,12 +556,24 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
+	shouldEnableKarpenter := false
 	for i, kopsMachinePool := range kmps {
 		err = reconciler.reconcileKopsMachinePool(ctx, log, kopsClientset, kopsControlPlane, &kmps[i])
 		if err != nil {
 			reconciler.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeWarning, "KopsMachinePoolReconcileFailed", err.Error())
 		} else {
 			reconciler.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeNormal, "KopsMachinePoolReconcileSuccess", kopsMachinePool.Name)
+		}
+		if len(kopsMachinePool.Spec.KarpenterProvisioners) > 0 {
+			shouldEnableKarpenter = true
+		}
+	}
+
+	if shouldEnableKarpenter {
+		kopsControlPlane.Spec.KopsClusterSpec.Addons = []kopsapi.AddonSpec{
+			{
+				Manifest: kopsControlPlane.Spec.KopsClusterSpec.ConfigBase + "/custom-addons/addon.yaml",
+			},
 		}
 	}
 
@@ -642,7 +630,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		shouldIgnoreSG = true
 	}
 
-	err = reconciler.PrepareCloudResourcesFactory(kopsClientset, r.Client, ctx, kopsCluster, kopsControlPlane, fullCluster.Spec.ConfigBase, terraformOutputDir, cloud, shouldIgnoreSG, &reconciler.awsCredentials)
+	err = reconciler.PrepareCloudResourcesFactory(kopsClientset, r.Client, ctx, kopsCluster, kopsControlPlane, kmps, shouldEnableKarpenter, fullCluster.Spec.ConfigBase, terraformOutputDir, cloud, shouldIgnoreSG, &reconciler.awsCredentials)
 	if err != nil {
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToPrepareCloudResources", "failed to prepare cloud resources: %s", err)
