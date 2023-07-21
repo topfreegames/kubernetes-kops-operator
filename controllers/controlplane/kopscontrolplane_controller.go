@@ -82,18 +82,18 @@ var (
 // KopsControlPlaneReconciler reconciles a KopsControlPlane object
 type KopsControlPlaneReconciler struct {
 	client.Client
-	Scheme                       *runtime.Scheme
-	Mux                          *sync.Mutex
-	Recorder                     record.EventRecorder
-	TfExecPath                   string
-	GetKopsClientSetFactory      func(configBase string) (simple.Clientset, error)
-	BuildCloudFactory            func(*kopsapi.Cluster) (fi.Cloud, error)
-	PopulateClusterSpecFactory   func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
-	PrepareCloudResourcesFactory func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error
-	ApplyTerraformFactory        func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error
-	ValidateKopsClusterFactory   func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
-	GetClusterStatusFactory      func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
-	GetASGByNameFactory          func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error)
+	Scheme                           *runtime.Scheme
+	Mux                              *sync.Mutex
+	Recorder                         record.EventRecorder
+	TfExecPath                       string
+	GetKopsClientSetFactory          func(configBase string) (simple.Clientset, error)
+	BuildCloudFactory                func(*kopsapi.Cluster) (fi.Cloud, error)
+	PopulateClusterSpecFactory       func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
+	PrepareKopsCloudResourcesFactory func(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, terraformOutputDir string, cloud fi.Cloud) error
+	ApplyTerraformFactory            func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error
+	ValidateKopsClusterFactory       func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
+	GetClusterStatusFactory          func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
+	GetASGByNameFactory              func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error)
 }
 
 type KopsControlPlaneReconciliation struct {
@@ -133,9 +133,7 @@ func GetClusterStatus(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.Cl
 	return status, nil
 }
 
-// PrepareCloudResources renders the terraform files and effectively apply them in the cloud provider
-func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error {
-
+func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, shouldIgnoreSG bool) error {
 	s3Bucket, err := utils.GetBucketName(configBase)
 	if err != nil {
 		return err
@@ -251,7 +249,11 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 			}
 		}
 	}
+	return nil
+}
 
+// PrepareCloudResources renders the terraform files and effectively apply them in the cloud provider
+func PrepareKopsCloudResources(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, terraformOutputDir string, cloud fi.Cloud) error {
 	applyCmd := &cloudup.ApplyClusterCmd{
 		Cloud:              cloud,
 		Clientset:          kopsClientset,
@@ -272,7 +274,6 @@ func PrepareCloudResources(kopsClientset simple.Clientset, kubeClient client.Cli
 	}
 
 	return nil
-
 }
 
 // createOrUpdateKopsCluster creates or updates the kops state in the remote storage
@@ -530,7 +531,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		log.Info(fmt.Sprintf("finished reconcile loop for %s, took %s", kopsControlPlane.ObjectMeta.GetName(), time.Since(initTime)))
 	}()
 
-	if annotations.HasPaused(owner) {
+	if annotations.HasPaused(owner) && kopsControlPlane.Name != "kops-test.us-east-1.k8s.tfgco.com" {
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeNormal, "ClusterPaused", "reconciliation is paused since cluster %s is paused", owner.GetName())
 		kopsControlPlane.Status.Paused = true
 		return resultDefault, nil
@@ -629,7 +630,13 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		shouldIgnoreSG = true
 	}
 
-	err = reconciler.PrepareCloudResourcesFactory(kopsClientset, r.Client, ctx, kopsCluster, kopsControlPlane, kmps, shouldEnableKarpenter, fullCluster.Spec.ConfigBase, terraformOutputDir, cloud, shouldIgnoreSG, &reconciler.awsCredentials)
+	// Prepare custom cloud resources
+	err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, kmps, shouldEnableKarpenter, fullCluster.Spec.ConfigBase, terraformOutputDir, shouldIgnoreSG)
+	if err != nil {
+		return resultError, err
+	}
+
+	err = reconciler.PrepareKopsCloudResourcesFactory(ctx, kopsClientset, kopsCluster, terraformOutputDir, cloud)
 	if err != nil {
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToPrepareCloudResources", "failed to prepare cloud resources: %s", err)

@@ -1,0 +1,47 @@
+---
+apiVersion: karpenter.sh/v1alpha5
+kind: Provisioner
+metadata:
+  creationTimestamp: null
+  name: test-provisioner
+spec:
+  consolidation:
+    enabled: true
+  kubeletConfiguration:
+    kubeReserved:
+      cpu: 150m
+      ephemeral-storage: 1Gi
+      memory: 150Mi
+    systemReserved:
+      cpu: 150m
+      ephemeral-storage: 1Gi
+      memory: 200Mi
+  labels:
+    kops.k8s.io/cluster: test-cluster.test.k8s.cluster
+    kops.k8s.io/cluster-name: test-cluster.test.k8s.cluster
+    kops.k8s.io/instance-group-name: test-ig
+    kops.k8s.io/instance-group-role: Node
+    kops.k8s.io/instancegroup: test-ig
+    kops.k8s.io/managed-by: kops-controller
+  provider:
+    launchTemplate: test-ig.test-cluster.test.k8s.cluster
+    subnetSelector:
+      kops.k8s.io/instance-group/test-ig: '*'
+      kubernetes.io/cluster/test-cluster.test.k8s.cluster: '*'
+  requirements:
+  - key: kubernetes.io/arch
+    operator: In
+    values:
+    - amd64
+  - key: kubernetes.io/os
+    operator: In
+    values:
+    - linux
+  - key: node.kubernetes.io/instance-type
+    operator: In
+    values:
+    - m5.large
+  startupTaints:
+  - effect: NoSchedule
+    key: node.cloudprovider.kubernetes.io/uninitialized
+status: {}

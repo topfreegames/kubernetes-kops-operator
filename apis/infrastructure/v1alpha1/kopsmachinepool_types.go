@@ -48,6 +48,8 @@ type KopsMachinePoolSpec struct {
 	// +kubebuilder:validation:MinLength=1
 	ClusterName string `json:"clusterName"`
 
+	// KarpenterProvisioners is the list of provisioners to be applied.
+	// +optional
 	KarpenterProvisioners []karpenter.Provisioner `json:"karpenterProvisioners,omitempty"`
 
 	// KopsInstanceGroupSpec declare a desired InstanceGroup Kops resource: https://kops.sigs.k8s.io/instance_groups/
