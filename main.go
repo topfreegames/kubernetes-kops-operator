@@ -139,19 +139,19 @@ func main() {
 	}
 
 	if err = (&controlplane.KopsControlPlaneReconciler{
-		Client:                       mgr.GetClient(),
-		Scheme:                       mgr.GetScheme(),
-		Mux:                          new(sync.Mutex),
-		Recorder:                     mgr.GetEventRecorderFor("kopscontrolplane-controller"),
-		TfExecPath:                   tfExecPath,
-		GetKopsClientSetFactory:      utils.GetKopsClientset,
-		BuildCloudFactory:            utils.BuildCloud,
-		PopulateClusterSpecFactory:   controlplane.PopulateClusterSpec,
-		PrepareCloudResourcesFactory: controlplane.PrepareCloudResources,
-		ApplyTerraformFactory:        controlplane.ApplyTerraform,
-		ValidateKopsClusterFactory:   utils.ValidateKopsCluster,
-		GetClusterStatusFactory:      controlplane.GetClusterStatus,
-		GetASGByNameFactory:          controlplane.GetASGByName,
+		Client:                           mgr.GetClient(),
+		Scheme:                           mgr.GetScheme(),
+		Mux:                              new(sync.Mutex),
+		Recorder:                         mgr.GetEventRecorderFor("kopscontrolplane-controller"),
+		TfExecPath:                       tfExecPath,
+		GetKopsClientSetFactory:          utils.GetKopsClientset,
+		BuildCloudFactory:                utils.BuildCloud,
+		PopulateClusterSpecFactory:       controlplane.PopulateClusterSpec,
+		PrepareKopsCloudResourcesFactory: controlplane.PrepareKopsCloudResources,
+		ApplyTerraformFactory:            controlplane.ApplyTerraform,
+		ValidateKopsClusterFactory:       utils.ValidateKopsCluster,
+		GetClusterStatusFactory:          controlplane.GetClusterStatus,
+		GetASGByNameFactory:              controlplane.GetASGByName,
 	}).SetupWithManager(ctx, mgr, workers); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsControlPlane")
 		os.Exit(1)

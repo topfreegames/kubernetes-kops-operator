@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 
 	asgTypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
@@ -20,6 +22,7 @@ import (
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -556,7 +559,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				PopulateClusterSpecFactory: func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error) {
 					return kopsCluster, nil
 				},
-				PrepareCloudResourcesFactory: func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error {
+				PrepareKopsCloudResourcesFactory: func(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, terraformOutputDir string, cloud fi.Cloud) error {
 					return nil
 				},
 				ApplyTerraformFactory: func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error {
@@ -624,16 +627,16 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 func TestKopsControlPlaneStatus(t *testing.T) {
 
 	testCases := []struct {
-		description                          string
-		expectedReconcilerError              bool
-		clusterFunction                      func(cluster *clusterv1.Cluster) *clusterv1.Cluster
-		expectedStatus                       *controlplanev1alpha1.KopsControlPlaneStatus
-		conditionsToAssert                   []*clusterv1.Condition
-		eventsToAssert                       []string
-		expectedErrorGetClusterStatusFactory func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
-		expectedErrorPrepareCloudResources   func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error
-		expectedErrorApplyTerraform          func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error
-		expectedValidateKopsCluster          func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
+		description                            string
+		expectedReconcilerError                bool
+		clusterFunction                        func(cluster *clusterv1.Cluster) *clusterv1.Cluster
+		expectedStatus                         *controlplanev1alpha1.KopsControlPlaneStatus
+		conditionsToAssert                     []*clusterv1.Condition
+		eventsToAssert                         []string
+		expectedErrorGetClusterStatusFactory   func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
+		expectedErrorPrepareKopsCloudResources func(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, terraformOutputDir string, cloud fi.Cloud) error
+		expectedErrorApplyTerraform            func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error
+		expectedValidateKopsCluster            func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	}{
 		{
 			description: "should successfully patch KopsControlPlane",
@@ -663,7 +666,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 		{
 			description:             "should mark false for condition KopsTerraformGenerationReadyCondition",
 			expectedReconcilerError: true,
-			expectedErrorPrepareCloudResources: func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error {
+			expectedErrorPrepareKopsCloudResources: func(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, terraformOutputDir string, cloud fi.Cloud) error {
 				return errors.New("")
 			},
 			conditionsToAssert: []*clusterv1.Condition{
@@ -803,11 +806,11 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				}
 			}
 
-			var prepareCloudResources func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error
-			if tc.expectedErrorPrepareCloudResources != nil {
-				prepareCloudResources = tc.expectedErrorPrepareCloudResources
+			var prepareKopsCloudResources func(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, terraformOutputDir string, cloud fi.Cloud) error
+			if tc.expectedErrorPrepareKopsCloudResources != nil {
+				prepareKopsCloudResources = tc.expectedErrorPrepareKopsCloudResources
 			} else {
-				prepareCloudResources = func(kopsClientset simple.Clientset, kubeClient client.Client, ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, cloud fi.Cloud, shouldIgnoreSG bool, credentials *aws.Credentials) error {
+				prepareKopsCloudResources = func(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, terraformOutputDir string, cloud fi.Cloud) error {
 					return nil
 				}
 			}
@@ -843,10 +846,10 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				PopulateClusterSpecFactory: func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error) {
 					return kopsCluster, nil
 				},
-				PrepareCloudResourcesFactory: prepareCloudResources,
-				ApplyTerraformFactory:        applyTerraform,
-				GetClusterStatusFactory:      getClusterStatus,
-				ValidateKopsClusterFactory:   validateKopsCluster,
+				PrepareKopsCloudResourcesFactory: prepareKopsCloudResources,
+				ApplyTerraformFactory:            applyTerraform,
+				GetClusterStatusFactory:          getClusterStatus,
+				ValidateKopsClusterFactory:       validateKopsCluster,
 				GetASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 					return &asgTypes.AutoScalingGroup{
 						Instances: []asgTypes.Instance{
@@ -1262,6 +1265,160 @@ func TestGetRegionBySubnet(t *testing.T) {
 			} else {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(tc.expectedRes).To(Equal(region))
+			}
+		})
+	}
+}
+
+func TestPrepareCustomCloudResources(t *testing.T) {
+	var testCases = []struct {
+		description     string
+		spotInstEnabled bool
+		expectedError   bool
+	}{
+		{
+			description:     "Should generate files based on template",
+			spotInstEnabled: false,
+			expectedError:   false,
+		},
+		{
+			description:     "Should generate files based on with spotinst enabled",
+			spotInstEnabled: true,
+			expectedError:   false,
+		},
+	}
+
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	ctx := context.TODO()
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			fakeKopsClientset := newFakeKopsClientset()
+			vfs.Context.ResetMemfsContext(true)
+			bareKopsCluster := newKopsCluster("test-cluster")
+			kopsCluster, err := fakeKopsClientset.CreateCluster(ctx, bareKopsCluster)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(kopsCluster).NotTo(BeNil())
+			kcp := &controlplanev1alpha1.KopsControlPlane{}
+			kcp.Spec.SpotInst.Enabled = tc.spotInstEnabled
+
+			kmp := newKopsMachinePool("test-ig", metav1.NamespaceDefault, "test-cluster")
+			kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
+				"kops.k8s.io/instance-group-role": "Node",
+			}
+			kmp.Spec.KarpenterProvisioners = []v1alpha5.Provisioner{
+				{
+					TypeMeta: metav1.TypeMeta{
+						Kind:       "Provisioner",
+						APIVersion: "karpenter.sh/v1alpha5",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name: "test-provisioner",
+					},
+					Spec: v1alpha5.ProvisionerSpec{
+						Consolidation: &v1alpha5.Consolidation{
+							Enabled: aws.Bool(true),
+						},
+						KubeletConfiguration: &v1alpha5.KubeletConfiguration{
+							KubeReserved: corev1.ResourceList{
+								corev1.ResourceCPU:              resource.MustParse("150m"),
+								corev1.ResourceMemory:           resource.MustParse("150Mi"),
+								corev1.ResourceEphemeralStorage: resource.MustParse("1Gi"),
+							},
+							SystemReserved: corev1.ResourceList{
+								corev1.ResourceCPU:              resource.MustParse("150m"),
+								corev1.ResourceMemory:           resource.MustParse("200Mi"),
+								corev1.ResourceEphemeralStorage: resource.MustParse("1Gi"),
+							},
+						},
+						Labels: map[string]string{
+							"kops.k8s.io/cluster":             kopsCluster.Name,
+							"kops.k8s.io/cluster-name":        kopsCluster.Name,
+							"kops.k8s.io/instance-group-name": kmp.Name,
+							"kops.k8s.io/instance-group-role": "Node",
+							"kops.k8s.io/instancegroup":       kmp.Name,
+							"kops.k8s.io/managed-by":          "kops-controller",
+						},
+						Provider: &v1alpha5.Provider{
+							Raw: []byte("{\"launchTemplate\":\"" + kmp.Name + "." + kopsCluster.Name + "\",\"subnetSelector\":{\"kops.k8s.io/instance-group/" + kmp.Name + "\":\"*\",\"kubernetes.io/cluster/" + kopsCluster.Name + "\":\"*\"}}"),
+						},
+						Requirements: []corev1.NodeSelectorRequirement{
+							{
+								Key:      "kubernetes.io/arch",
+								Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+								Values:   []string{"amd64"},
+							},
+							{
+								Key:      "kubernetes.io/os",
+								Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+								Values:   []string{"linux"},
+							},
+							{
+								Key:      "node.kubernetes.io/instance-type",
+								Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+								Values:   []string{"m5.large"},
+							},
+						},
+						StartupTaints: []corev1.Taint{
+							{
+								Key:    "node.cloudprovider.kubernetes.io/uninitialized",
+								Effect: corev1.TaintEffect(corev1.TaintEffectNoSchedule),
+							},
+						},
+					},
+				},
+			}
+
+			if tc.spotInstEnabled {
+				kcp.Spec.SpotInst.Enabled = true
+				kmp.Spec.SpotInstOptions = map[string]string{
+					"spotinst.io/hybrid": "true",
+				}
+			}
+
+			reconciler := &KopsControlPlaneReconciler{}
+			terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
+			err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kcp, []infrastructurev1alpha1.KopsMachinePool{*kmp}, true, kopsCluster.Spec.ConfigBase, terraformOutputDir, true)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			templateTestDir := "../../utils/templates/tests"
+			generatedBackendTF, err := os.ReadFile(terraformOutputDir + "/backend.tf")
+			g.Expect(err).NotTo(HaveOccurred())
+			templatedBackendTF, err := os.ReadFile(templateTestDir + "/backend.tf")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(generatedBackendTF).To(BeEquivalentTo(templatedBackendTF))
+
+			generatedKarpenterBoostrapTF, err := os.ReadFile(terraformOutputDir + "/karpenter_custom_addon_boostrap.tf")
+			g.Expect(err).NotTo(HaveOccurred())
+			templatedKarpenterBoostrapTF, err := os.ReadFile(templateTestDir + "/karpenter_custom_addon_boostrap.tf")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(generatedKarpenterBoostrapTF).To(BeEquivalentTo(templatedKarpenterBoostrapTF))
+
+			generatedLaunchTemplateTF, err := os.ReadFile(terraformOutputDir + "/launch_template_override.tf")
+			g.Expect(err).NotTo(HaveOccurred())
+			templatedLaunchTemplateTF, err := os.ReadFile(templateTestDir + "/launch_template_override.tf")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(generatedLaunchTemplateTF).To(BeEquivalentTo(templatedLaunchTemplateTF))
+
+			generatedProvisionerContentTF, err := os.ReadFile(terraformOutputDir + "/data/aws_s3_object_karpenter_provisioners_content")
+			g.Expect(err).NotTo(HaveOccurred())
+			templatedProvisionerContentTF, err := os.ReadFile(templateTestDir + "/data/aws_s3_object_karpenter_provisioners_content")
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(generatedProvisionerContentTF).To(BeEquivalentTo(templatedProvisionerContentTF))
+
+			if tc.spotInstEnabled {
+				generatedSpotinstLaunchSpecTF, err := os.ReadFile(terraformOutputDir + "/spotinst_launch_spec_override.tf")
+				g.Expect(err).NotTo(HaveOccurred())
+				templatedSpotinstLaunchSpecTF, err := os.ReadFile(templateTestDir + "/spotinst_launch_spec_override.tf")
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(generatedSpotinstLaunchSpecTF).To(BeEquivalentTo(templatedSpotinstLaunchSpecTF))
+
+				generatedSpotinstOceanAWSTF, err := os.ReadFile(terraformOutputDir + "/spotinst_ocean_aws_override.tf")
+				g.Expect(err).NotTo(HaveOccurred())
+				templatedSpotinstOceanAWSTF, err := os.ReadFile(templateTestDir + "/spotinst_ocean_aws_override.tf")
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(generatedSpotinstOceanAWSTF).To(BeEquivalentTo(templatedSpotinstOceanAWSTF))
 			}
 		})
 	}
