@@ -14,12 +14,14 @@ spec:
     manifestHash: "785169a7d4ba0221779cd95ad7701652642e46b8408e641d54bacc100ab5fe9e"
 EOF
   key = "test-cluster.test.k8s.cluster/custom-addons/addon.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "custom-addon-karpenter-provisioners" {
   bucket  = "tests"
   content = file("${path.module}/data/aws_s3_object_karpenter_provisioners_content")
   key = "test-cluster.test.k8s.cluster/custom-addons/karpenter-provisioners.wildlife.io/provisioners.yaml"
+  provider = aws.files
 }
 
 

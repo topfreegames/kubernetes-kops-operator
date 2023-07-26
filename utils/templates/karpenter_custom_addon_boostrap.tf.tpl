@@ -14,12 +14,14 @@ spec:
     manifestHash: "{{ .ManifestHash }}"
 EOF
   key = "{{ .ClusterName }}/custom-addons/addon.yaml"
+  provider = aws.files
 }
 
 resource "aws_s3_object" "custom-addon-karpenter-provisioners" {
   bucket  = "{{ .Bucket }}"
   content = file("${path.module}/data/aws_s3_object_karpenter_provisioners_content")
   key = "{{ .ClusterName }}/custom-addons/karpenter-provisioners.wildlife.io/provisioners.yaml"
+  provider = aws.files
 }
 
 
