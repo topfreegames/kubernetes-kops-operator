@@ -806,7 +806,7 @@ func GetASGByName(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsC
 	return nil, apierrors.NewNotFound(schema.GroupResource{}, "ASG not ready")
 }
 
-func regionBySubnet(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) (string, error) {
+func RegionBySubnet(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) (string, error) {
 	subnets := kopsControlPlane.Spec.KopsClusterSpec.Subnets
 	if len(subnets) == 0 {
 		return "", errors.New("kopsControlPlane with no subnets")
