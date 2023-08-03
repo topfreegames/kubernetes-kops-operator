@@ -1255,7 +1255,7 @@ func TestGetRegionBySubnet(t *testing.T) {
 	for _, tc := range testCases {
 		kcp := &controlplanev1alpha1.KopsControlPlane{}
 		kcp.Spec.KopsClusterSpec.Subnets = tc.input
-		region, err := regionBySubnet(kcp)
+		region, err := RegionBySubnet(kcp)
 
 		t.Run(tc.description, func(t *testing.T) {
 			if tc.expectedError {
