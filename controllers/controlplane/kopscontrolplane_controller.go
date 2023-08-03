@@ -763,7 +763,7 @@ func (r *KopsControlPlaneReconciler) reconcileKopsMachinePool(ctx context.Contex
 // GetASGByName returns the existing ASG or nothing if it doesn't exist.
 func GetASGByName(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, creds *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 	ctx := context.TODO()
-	region, err := regionBySubnet(kopsControlPlane)
+	region, err := RegionBySubnet(kopsControlPlane)
 	if err != nil {
 		return nil, err
 	}
