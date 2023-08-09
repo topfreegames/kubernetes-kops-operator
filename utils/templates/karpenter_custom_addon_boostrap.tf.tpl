@@ -12,6 +12,11 @@ spec:
       k8s-addon: karpenter-provisioners.wildlife.io
     manifest: karpenter-provisioners.wildlife.io/provisioners.yaml
     manifestHash: "{{ .ManifestHash }}"
+    prune:
+      kinds:
+      - group: karpenter.sh
+        kind: Provisioner
+        labelSelector: "kops.k8s.io/managed-by=kops-controller"
 EOF
   key = "{{ .ClusterName }}/custom-addons/addon.yaml"
   provider = aws.files
