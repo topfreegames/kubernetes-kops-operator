@@ -164,8 +164,36 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 		}
 		defer karpenterProvisionersContent.Close()
 
+		// This is needed because the apply will fail if the file is empty
+		placeholder := corev1.ConfigMap{
+			TypeMeta: metav1.TypeMeta{
+				Kind:       "ConfigMap",
+				APIVersion: "v1",
+			},
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "placeholder-karpenter-provisioners",
+				Namespace: "kube-system",
+			},
+		}
+
+		output, err := yaml.Marshal(placeholder)
+		if err != nil {
+			return err
+		}
+
+		if _, err := karpenterProvisionersContent.Write([]byte("---\n")); err != nil {
+			return err
+		}
+
+		if _, err := karpenterProvisionersContent.Write(output); err != nil {
+			return err
+		}
+
 		for _, kmp := range kmps {
 			for _, provisioner := range kmp.Spec.KarpenterProvisioners {
+				provisioner.SetLabels(map[string]string{
+					"kops.k8s.io/managed-by": "kops-controller",
+				})
 				if _, err := karpenterProvisionersContent.Write([]byte("---\n")); err != nil {
 					return err
 				}

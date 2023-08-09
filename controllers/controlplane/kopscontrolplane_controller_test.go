@@ -1386,38 +1386,38 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			g.Expect(err).NotTo(HaveOccurred())
 			templatedBackendTF, err := os.ReadFile(templateTestDir + "/backend.tf")
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(generatedBackendTF).To(BeEquivalentTo(templatedBackendTF))
+			g.Expect(string(generatedBackendTF)).To(BeEquivalentTo(string(templatedBackendTF)))
 
 			generatedKarpenterBoostrapTF, err := os.ReadFile(terraformOutputDir + "/karpenter_custom_addon_boostrap.tf")
 			g.Expect(err).NotTo(HaveOccurred())
 			templatedKarpenterBoostrapTF, err := os.ReadFile(templateTestDir + "/karpenter_custom_addon_boostrap.tf")
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(generatedKarpenterBoostrapTF).To(BeEquivalentTo(templatedKarpenterBoostrapTF))
+			g.Expect(string(generatedKarpenterBoostrapTF)).To(BeEquivalentTo(string(templatedKarpenterBoostrapTF)))
 
 			generatedLaunchTemplateTF, err := os.ReadFile(terraformOutputDir + "/launch_template_override.tf")
 			g.Expect(err).NotTo(HaveOccurred())
 			templatedLaunchTemplateTF, err := os.ReadFile(templateTestDir + "/launch_template_override.tf")
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(generatedLaunchTemplateTF).To(BeEquivalentTo(templatedLaunchTemplateTF))
+			g.Expect(string(generatedLaunchTemplateTF)).To(BeEquivalentTo(string(templatedLaunchTemplateTF)))
 
 			generatedProvisionerContentTF, err := os.ReadFile(terraformOutputDir + "/data/aws_s3_object_karpenter_provisioners_content")
 			g.Expect(err).NotTo(HaveOccurred())
 			templatedProvisionerContentTF, err := os.ReadFile(templateTestDir + "/data/aws_s3_object_karpenter_provisioners_content")
 			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(generatedProvisionerContentTF).To(BeEquivalentTo(templatedProvisionerContentTF))
+			g.Expect(string(generatedProvisionerContentTF)).To(BeEquivalentTo(string(templatedProvisionerContentTF)))
 
 			if tc.spotInstEnabled {
 				generatedSpotinstLaunchSpecTF, err := os.ReadFile(terraformOutputDir + "/spotinst_launch_spec_override.tf")
 				g.Expect(err).NotTo(HaveOccurred())
 				templatedSpotinstLaunchSpecTF, err := os.ReadFile(templateTestDir + "/spotinst_launch_spec_override.tf")
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(generatedSpotinstLaunchSpecTF).To(BeEquivalentTo(templatedSpotinstLaunchSpecTF))
+				g.Expect(string(generatedSpotinstLaunchSpecTF)).To(BeEquivalentTo(string(templatedSpotinstLaunchSpecTF)))
 
 				generatedSpotinstOceanAWSTF, err := os.ReadFile(terraformOutputDir + "/spotinst_ocean_aws_override.tf")
 				g.Expect(err).NotTo(HaveOccurred())
 				templatedSpotinstOceanAWSTF, err := os.ReadFile(templateTestDir + "/spotinst_ocean_aws_override.tf")
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(generatedSpotinstOceanAWSTF).To(BeEquivalentTo(templatedSpotinstOceanAWSTF))
+				g.Expect(string(generatedSpotinstOceanAWSTF)).To(BeEquivalentTo(string(templatedSpotinstOceanAWSTF)))
 			}
 		})
 	}
