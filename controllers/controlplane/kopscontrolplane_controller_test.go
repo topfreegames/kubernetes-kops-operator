@@ -551,7 +551,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 					return fakeKopsClientset, nil
 				},
 				Mux:      new(sync.Mutex),
-				Recorder: record.NewFakeRecorder(5),
+				Recorder: record.NewFakeRecorder(10),
 				BuildCloudFactory: func(*kopsapi.Cluster) (fi.Cloud, error) {
 					return nil, nil
 				},
@@ -1000,9 +1000,9 @@ func TestClusterToInfrastructureMapFunc(t *testing.T) {
 		t.Run(tc.description, func(t *testing.T) {
 
 			if tc.expectedPanic {
-				g.Expect(func() { clusterToInfrastructureMapFunc(tc.input) }).To(Panic())
+				g.Expect(func() { clusterToInfrastructureMapFunc(context.TODO(), tc.input) }).To(Panic())
 			} else {
-				req := clusterToInfrastructureMapFunc(tc.input)
+				req := clusterToInfrastructureMapFunc(context.TODO(), tc.input)
 				g.Expect(req).To(Equal(tc.expectedOutput))
 			}
 		})
@@ -1142,9 +1142,9 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 				Client: fakeClient,
 			}
 			if tc.expectedPanic {
-				g.Expect(func() { reconciler.kopsMachinePoolToInfrastructureMapFunc(tc.input) }).To(Panic())
+				g.Expect(func() { reconciler.kopsMachinePoolToInfrastructureMapFunc(context.TODO(), tc.input) }).To(Panic())
 			} else {
-				req := reconciler.kopsMachinePoolToInfrastructureMapFunc(tc.input)
+				req := reconciler.kopsMachinePoolToInfrastructureMapFunc(context.TODO(), tc.input)
 				g.Expect(req).To(Equal(tc.expectedOutput))
 			}
 		})
