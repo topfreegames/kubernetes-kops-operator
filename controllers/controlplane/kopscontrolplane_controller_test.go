@@ -584,7 +584,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				if tc.expectedRequeue {
 					g.Expect(result.RequeueAfter).To(Equal(time.Duration(1 * time.Minute)))
 				} else {
-					g.Expect(result.RequeueAfter).To(Equal(time.Duration(20 * time.Minute)))
+					g.Expect(result.RequeueAfter).To(Equal(time.Duration(60 * time.Minute)))
 				}
 
 				kopsCluster, err := fakeKopsClientset.GetCluster(ctx, cluster.GetObjectMeta().GetName())
@@ -870,7 +870,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			if !tc.expectedReconcilerError {
 				g.Expect(err).ToNot(HaveOccurred())
 				g.Expect(result.Requeue).To(BeFalse())
-				g.Expect(result.RequeueAfter).To(Equal(time.Duration(20 * time.Minute)))
+				g.Expect(result.RequeueAfter).To(Equal(time.Duration(60 * time.Minute)))
 			} else {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(result.RequeueAfter).To(Equal(time.Duration(5 * time.Minute)))
