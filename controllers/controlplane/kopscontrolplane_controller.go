@@ -69,7 +69,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
-	"sigs.k8s.io/controller-runtime/pkg/source"
 	"sigs.k8s.io/yaml"
 )
 
@@ -878,17 +877,17 @@ func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr c
 		WithOptions(controller.Options{MaxConcurrentReconciles: workerCount}).
 		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
 		Watches(
-			&source.Kind{Type: &clusterv1.Cluster{}},
+			&clusterv1.Cluster{},
 			handler.EnqueueRequestsFromMapFunc(clusterToInfrastructureMapFunc),
 		).
 		Watches(
-			&source.Kind{Type: &infrastructurev1alpha1.KopsMachinePool{}},
+			&infrastructurev1alpha1.KopsMachinePool{},
 			handler.EnqueueRequestsFromMapFunc(r.kopsMachinePoolToInfrastructureMapFunc),
 		).
 		Complete(r)
 }
 
-func clusterToInfrastructureMapFunc(o client.Object) []ctrl.Request {
+func clusterToInfrastructureMapFunc(_ context.Context, o client.Object) []ctrl.Request {
 	c, ok := o.(*clusterv1.Cluster)
 	if !ok {
 		panic(fmt.Sprintf("Expected a Cluster but got a %T", o))
@@ -903,7 +902,7 @@ func clusterToInfrastructureMapFunc(o client.Object) []ctrl.Request {
 	return result
 }
 
-func (r *KopsControlPlaneReconciler) kopsMachinePoolToInfrastructureMapFunc(o client.Object) []ctrl.Request {
+func (r *KopsControlPlaneReconciler) kopsMachinePoolToInfrastructureMapFunc(_ context.Context, o client.Object) []ctrl.Request {
 	kmp, ok := o.(*infrastructurev1alpha1.KopsMachinePool)
 	if !ok {
 		panic(fmt.Sprintf("expected a KopsMachinePool but got a %T", o))
