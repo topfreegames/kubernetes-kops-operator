@@ -69,6 +69,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
+	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/yaml"
 )
 
@@ -534,12 +535,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 		failedToUpdateKCPReason := "FailedToUpdate"
 
-		kopsControlPlaneHelper := kopsControlPlane.DeepCopy()
-		if err := reconciler.Update(ctx, kopsControlPlane); err != nil {
-			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, failedToUpdateKCPReason, "failed to update kopsControlPlane: %s", err)
-		}
-
-		kopsControlPlane.Status = kopsControlPlaneHelper.Status
 		if err := reconciler.Status().Update(ctx, kopsControlPlane); err != nil {
 			r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, failedToUpdateKCPReason, "failed to update kopsControlPlane: %s", err)
 		}
@@ -875,32 +870,15 @@ func (r *KopsControlPlaneReconciler) createOrUpdateInstanceGroup(ctx context.Con
 func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, workerCount int) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1alpha1.KopsControlPlane{}).
-		WithOptions(controller.Options{MaxConcurrentReconciles: workerCount}).
-		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
-		Watches(
-			&clusterv1.Cluster{},
-			handler.EnqueueRequestsFromMapFunc(clusterToInfrastructureMapFunc),
-		).
 		Watches(
 			&infrastructurev1alpha1.KopsMachinePool{},
 			handler.EnqueueRequestsFromMapFunc(r.kopsMachinePoolToInfrastructureMapFunc),
 		).
+		WithOptions(controller.Options{MaxConcurrentReconciles: workerCount}).
+		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
+		// This is needed to ensure that we don't process a KopsControlPlane because of Status updates.
+		WithEventFilter(predicate.GenerationChangedPredicate{}).
 		Complete(r)
-}
-
-func clusterToInfrastructureMapFunc(_ context.Context, o client.Object) []ctrl.Request {
-	c, ok := o.(*clusterv1.Cluster)
-	if !ok {
-		panic(fmt.Sprintf("Expected a Cluster but got a %T", o))
-	}
-
-	var result []ctrl.Request
-	if c.Spec.InfrastructureRef != nil && c.Spec.InfrastructureRef.GroupVersionKind() == controlplanev1alpha1.GroupVersion.WithKind("KopsControlPlane") {
-		name := client.ObjectKey{Namespace: c.Spec.InfrastructureRef.Namespace, Name: c.Spec.InfrastructureRef.Name}
-		result = append(result, ctrl.Request{NamespacedName: name})
-	}
-
-	return result
 }
 
 func (r *KopsControlPlaneReconciler) kopsMachinePoolToInfrastructureMapFunc(_ context.Context, o client.Object) []ctrl.Request {

@@ -772,7 +772,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			}
 			kopsMachinePool := helpers.NewKopsMachinePool("testIG", kopsControlPlane.Namespace, cluster.Name)
 
-			fakeClient := fake.NewClientBuilder().WithObjects(kopsControlPlane, kopsControlPlaneSecret, cluster, kopsMachinePool).WithScheme(scheme.Scheme).Build()
+			fakeClient := fake.NewClientBuilder().WithStatusSubresource(kopsControlPlane).WithObjects(kopsControlPlane, kopsControlPlaneSecret, cluster, kopsMachinePool).WithScheme(scheme.Scheme).Build()
 
 			fakeKopsClientset := helpers.NewFakeKopsClientset()
 
@@ -917,93 +917,6 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 					}
 					g.Expect(foundEvent).To(BeTrue())
 				}
-			}
-		})
-	}
-}
-
-func TestClusterToInfrastructureMapFunc(t *testing.T) {
-	testCases := []struct {
-		description    string
-		input          client.Object
-		expectedOutput []ctrl.Request
-		expectedPanic  bool
-	}{
-		{
-			description: "should return objectKey for KopsControlPlane",
-			input: &clusterv1.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testCluster",
-					Namespace: metav1.NamespaceDefault,
-				},
-				Spec: clusterv1.ClusterSpec{
-					InfrastructureRef: &corev1.ObjectReference{
-						Name:       "testKopsControlPlane",
-						Namespace:  metav1.NamespaceDefault,
-						Kind:       "KopsControlPlane",
-						APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
-					},
-				},
-			},
-			expectedOutput: []ctrl.Request{
-				{
-					NamespacedName: client.ObjectKey{
-						Namespace: metav1.NamespaceDefault,
-						Name:      "testKopsControlPlane",
-					},
-				},
-			},
-		},
-		{
-			description: "should panic with an object different from kopsMachinePool",
-			input: &clusterv1.Machine{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testMachine",
-					Namespace: metav1.NamespaceDefault,
-				},
-			},
-			expectedPanic: true,
-		},
-		{
-			description: "should return a empty list of requests when input don't have InfrastructureRef",
-			input: &clusterv1.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testCluster",
-					Namespace: metav1.NamespaceDefault,
-				},
-				Spec: clusterv1.ClusterSpec{},
-			},
-		},
-		{
-			description: "should return a empty list of requests when Cluster's InfrastructureRef isn't a KopsControlPlane",
-			input: &clusterv1.Cluster{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testCluster",
-					Namespace: metav1.NamespaceDefault,
-				},
-				Spec: clusterv1.ClusterSpec{
-					InfrastructureRef: &corev1.ObjectReference{
-						Name:       "testKubeAdmControlPlane",
-						Namespace:  metav1.NamespaceDefault,
-						Kind:       "KubeAdmControlPlane",
-						APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
-					},
-				},
-			},
-		},
-	}
-
-	RegisterFailHandler(Fail)
-	g := NewWithT(t)
-
-	for _, tc := range testCases {
-		t.Run(tc.description, func(t *testing.T) {
-
-			if tc.expectedPanic {
-				g.Expect(func() { clusterToInfrastructureMapFunc(context.TODO(), tc.input) }).To(Panic())
-			} else {
-				req := clusterToInfrastructureMapFunc(context.TODO(), tc.input)
-				g.Expect(req).To(Equal(tc.expectedOutput))
 			}
 		})
 	}
