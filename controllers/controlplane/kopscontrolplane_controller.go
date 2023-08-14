@@ -76,7 +76,7 @@ import (
 // TODO: fetch reconciliation configs from a configMap using kube API on each reconciliation
 var (
 	requeue1min   = ctrl.Result{RequeueAfter: 1 * time.Minute}
-	resultDefault = ctrl.Result{RequeueAfter: 60 * time.Minute}
+	resultDefault = ctrl.Result{RequeueAfter: 20 * time.Minute}
 	resultError   = ctrl.Result{RequeueAfter: 5 * time.Minute}
 )
 

@@ -129,7 +129,7 @@ func main() {
 
 	workerCount, ok := os.LookupEnv("WORKER_COUNT")
 	if !ok {
-		workerCount = "10"
+		workerCount = "5"
 	}
 
 	workers, err := strconv.Atoi(workerCount)
