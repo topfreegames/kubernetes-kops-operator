@@ -41,6 +41,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
 func TestEvaluateKopsValidationResult(t *testing.T) {
@@ -924,11 +925,11 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 
 func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 	testCases := []struct {
-		description    string
-		input          client.Object
-		objects        []client.Object
-		expectedOutput []ctrl.Request
-		expectedPanic  bool
+		description     string
+		input           client.Object
+		objects         []client.Object
+		controllerClass string
+		expectedOutput  []ctrl.Request
 	}{
 		{
 			description: "should return objectKey for KopsControlPlane",
@@ -956,6 +957,12 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 						},
 					},
 				},
+				&controlplanev1alpha1.KopsControlPlane{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "testKopsControlPlane",
+						Namespace: metav1.NamespaceDefault,
+					},
+				},
 			},
 			expectedOutput: []ctrl.Request{
 				{
@@ -967,17 +974,7 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 			},
 		},
 		{
-			description: "should panic with an object different from kopsMachinePool",
-			input: &clusterv1.Machine{
-				ObjectMeta: metav1.ObjectMeta{
-					Name:      "testMachine",
-					Namespace: metav1.NamespaceDefault,
-				},
-			},
-			expectedPanic: true,
-		},
-		{
-			description: "should panic when Cluster isn't found",
+			description: "should return objectKey for KopsControlPlane configured with the same controlleClass as the controller",
 			input: &infrastructurev1alpha1.KopsMachinePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "testKopsMachinePool",
@@ -987,7 +984,63 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 					ClusterName: "testCluster",
 				},
 			},
-			expectedPanic: true,
+			controllerClass: "bar",
+			objects: []client.Object{
+				&clusterv1.Cluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: metav1.NamespaceDefault,
+						Name:      "testCluster",
+					},
+					Spec: clusterv1.ClusterSpec{
+						InfrastructureRef: &corev1.ObjectReference{
+							Name:       "testKopsControlPlane",
+							Namespace:  metav1.NamespaceDefault,
+							Kind:       "KopsControlPlane",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
+						},
+					},
+				},
+				&controlplanev1alpha1.KopsControlPlane{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "testKopsControlPlane",
+						Namespace: metav1.NamespaceDefault,
+					},
+					Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+						ControllerClass: "bar",
+					},
+				},
+			},
+			expectedOutput: []ctrl.Request{
+				{
+					NamespacedName: client.ObjectKey{
+						Namespace: metav1.NamespaceDefault,
+						Name:      "testKopsControlPlane",
+					},
+				},
+			},
+		},
+		{
+			description: "should return empty list with an object different from kopsMachinePool",
+			input: &clusterv1.Machine{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testMachine",
+					Namespace: metav1.NamespaceDefault,
+				},
+			},
+			expectedOutput: []ctrl.Request{},
+		},
+		{
+			description: "should return empty list when Cluster isn't found",
+			input: &infrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testKopsMachinePool",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: "testCluster",
+				},
+			},
+			expectedOutput: []ctrl.Request{},
 		},
 		{
 			description: "should return a empty list of requests when Cluster don't have InfrastructureRef",
@@ -1009,6 +1062,7 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 					Spec: clusterv1.ClusterSpec{},
 				},
 			},
+			expectedOutput: []ctrl.Request{},
 		},
 		{
 			description: "should return a empty list of requests when Cluster's InfrastructureRef isn't a KopsControlPlane",
@@ -1037,6 +1091,74 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 					},
 				},
 			},
+			expectedOutput: []ctrl.Request{},
+		},
+		{
+			description: "should return empty list when KopsControlPlane isn't found",
+			input: &infrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testKopsMachinePool",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: "testCluster",
+				},
+			},
+			objects: []client.Object{
+				&clusterv1.Cluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: metav1.NamespaceDefault,
+						Name:      "testCluster",
+					},
+					Spec: clusterv1.ClusterSpec{
+						InfrastructureRef: &corev1.ObjectReference{
+							Name:       "testKopsControlPlane",
+							Namespace:  metav1.NamespaceDefault,
+							Kind:       "KopsControlPlane",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
+						},
+					},
+				},
+			},
+			expectedOutput: []ctrl.Request{},
+		},
+		{
+			description: "should return empty list when KopsControlPlane is configured with a different controllerClass",
+			input: &infrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "testKopsMachinePool",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: "testCluster",
+				},
+			},
+			objects: []client.Object{
+				&clusterv1.Cluster{
+					ObjectMeta: metav1.ObjectMeta{
+						Namespace: metav1.NamespaceDefault,
+						Name:      "testCluster",
+					},
+					Spec: clusterv1.ClusterSpec{
+						InfrastructureRef: &corev1.ObjectReference{
+							Name:       "testKopsControlPlane",
+							Namespace:  metav1.NamespaceDefault,
+							Kind:       "KopsControlPlane",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
+						},
+					},
+				},
+				&controlplanev1alpha1.KopsControlPlane{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "testKopsControlPlane",
+						Namespace: metav1.NamespaceDefault,
+					},
+					Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+						ControllerClass: "differentClass",
+					},
+				},
+			},
+			expectedOutput: []ctrl.Request{},
 		},
 	}
 
@@ -1044,6 +1166,9 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 	g := NewWithT(t)
 
 	err := clusterv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	err = controlplanev1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	for _, tc := range testCases {
@@ -1054,12 +1179,9 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 			reconciler := &KopsControlPlaneReconciler{
 				Client: fakeClient,
 			}
-			if tc.expectedPanic {
-				g.Expect(func() { reconciler.kopsMachinePoolToInfrastructureMapFunc(context.TODO(), tc.input) }).To(Panic())
-			} else {
-				req := reconciler.kopsMachinePoolToInfrastructureMapFunc(context.TODO(), tc.input)
-				g.Expect(req).To(Equal(tc.expectedOutput))
-			}
+			kopsMachinePoolToKopsControlPlaneMapper := reconciler.kopsMachinePoolToInfrastructureMapFunc(tc.controllerClass)
+			req := kopsMachinePoolToKopsControlPlaneMapper(context.TODO(), tc.input)
+			g.Expect(tc.expectedOutput).To(Equal(req))
 		})
 	}
 }
@@ -1332,6 +1454,80 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(string(generatedSpotinstOceanAWSTF)).To(BeEquivalentTo(string(templatedSpotinstOceanAWSTF)))
 			}
+		})
+	}
+}
+
+func TestControllerClassPredicate(t *testing.T) {
+	var testCases = []struct {
+		description     string
+		input           client.Object
+		controllerClass string
+		expectedOutput  bool
+	}{
+		{
+			description:    "should return true when controller and object don't have any class defined",
+			input:          &controlplanev1alpha1.KopsControlPlane{},
+			expectedOutput: true,
+		},
+		{
+			description:     "should return true when controller and object have the same class defined",
+			controllerClass: "foo",
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					ControllerClass: "foo",
+				},
+			},
+			expectedOutput: true,
+		},
+		{
+			description:     "should return false when controller and object have different classes defined",
+			controllerClass: "foo",
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					ControllerClass: "bar",
+				},
+			},
+		},
+		{
+			description:     "should return false when only controller has class defined",
+			controllerClass: "foo",
+			input:           &controlplanev1alpha1.KopsControlPlane{},
+		},
+		{
+			description: "should return false when only object has class defined",
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					ControllerClass: "foo",
+				},
+			},
+		},
+		{
+			description: "should return false when the object isn't a KopsControlPlane",
+			input:       &infrastructurev1alpha1.KopsMachinePool{},
+		},
+	}
+
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			predicateFunc := controllerClassPredicate(tc.controllerClass)
+
+			g.Expect(predicateFunc.Create(event.CreateEvent{
+				Object: tc.input,
+			})).To(BeEquivalentTo(tc.expectedOutput))
+			g.Expect(predicateFunc.Update(event.UpdateEvent{
+				ObjectNew: tc.input,
+			})).To(BeEquivalentTo(tc.expectedOutput))
+			g.Expect(predicateFunc.Delete(event.DeleteEvent{
+				Object: tc.input,
+			})).To(BeEquivalentTo(tc.expectedOutput))
+			g.Expect(predicateFunc.Generic(event.GenericEvent{
+				Object: tc.input,
+			})).To(BeEquivalentTo(tc.expectedOutput))
+
 		})
 	}
 }

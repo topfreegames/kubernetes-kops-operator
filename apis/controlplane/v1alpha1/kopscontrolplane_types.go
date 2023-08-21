@@ -64,6 +64,9 @@ type SpotInstSpec struct {
 
 // KopsControlPlaneSpec defines the desired state of KopsControlPlane
 type KopsControlPlaneSpec struct {
+	// ControllerClass is the identifier associated with the controllers that defines which controller will reconcile the resource.
+	// +optional
+	ControllerClass string `json:"controllerClass"`
 	// IdentityRef is a reference to a identity to be used when reconciling this cluster
 	IdentityRef IdentityRefSpec `json:"identityRef"`
 	// SSHPublicKey is the SSH public key added in the nodes; required on AWS

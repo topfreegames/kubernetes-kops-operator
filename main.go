@@ -66,11 +66,13 @@ func main() {
 	var metricsAddr string
 	var enableLeaderElection bool
 	var probeAddr string
+	var controllerClass string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
+	flag.StringVar(&controllerClass, "controller-class", "", "The name of the controller class to associate with the controller.")
 
 	opts := zap.Options{
 		Development: true,
@@ -152,7 +154,7 @@ func main() {
 		ValidateKopsClusterFactory:       utils.ValidateKopsCluster,
 		GetClusterStatusFactory:          controlplane.GetClusterStatus,
 		GetASGByNameFactory:              controlplane.GetASGByName,
-	}).SetupWithManager(ctx, mgr, workers); err != nil {
+	}).SetupWithManager(ctx, mgr, workers, controllerClass); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsControlPlane")
 		os.Exit(1)
 	}

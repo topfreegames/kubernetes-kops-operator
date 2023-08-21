@@ -66,6 +66,7 @@ import (
 	"sigs.k8s.io/cluster-api/util/predicates"
 	"sigs.k8s.io/cluster-api/util/secret"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
@@ -867,12 +868,14 @@ func (r *KopsControlPlaneReconciler) createOrUpdateInstanceGroup(ctx context.Con
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, workerCount int) error {
+func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, workerCount int, controllerClass string) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		For(&controlplanev1alpha1.KopsControlPlane{}).
+		For(&controlplanev1alpha1.KopsControlPlane{},
+			builder.WithPredicates(controllerClassPredicate(controllerClass)),
+		).
 		Watches(
 			&infrastructurev1alpha1.KopsMachinePool{},
-			handler.EnqueueRequestsFromMapFunc(r.kopsMachinePoolToInfrastructureMapFunc),
+			handler.EnqueueRequestsFromMapFunc(r.kopsMachinePoolToInfrastructureMapFunc(controllerClass)),
 		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: workerCount}).
 		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
@@ -881,23 +884,48 @@ func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr c
 		Complete(r)
 }
 
-func (r *KopsControlPlaneReconciler) kopsMachinePoolToInfrastructureMapFunc(_ context.Context, o client.Object) []ctrl.Request {
-	kmp, ok := o.(*infrastructurev1alpha1.KopsMachinePool)
-	if !ok {
-		panic(fmt.Sprintf("expected a KopsMachinePool but got a %T", o))
-	}
+func (r *KopsControlPlaneReconciler) kopsMachinePoolToInfrastructureMapFunc(controllerClass string) handler.MapFunc {
+	return func(ctx context.Context, o client.Object) []ctrl.Request {
+		kmp, ok := o.(*infrastructurev1alpha1.KopsMachinePool)
+		if !ok {
+			return []ctrl.Request{}
+		}
 
-	var result []ctrl.Request
-	cluster, err := util.GetClusterByName(context.TODO(), r.Client, kmp.GetNamespace(), kmp.Spec.ClusterName)
-	if err != nil {
-		panic(err)
-	}
-	if cluster.Spec.InfrastructureRef != nil && cluster.Spec.InfrastructureRef.GroupVersionKind() == controlplanev1alpha1.GroupVersion.WithKind("KopsControlPlane") {
-		name := client.ObjectKey{Namespace: cluster.Spec.InfrastructureRef.Namespace, Name: cluster.Spec.InfrastructureRef.Name}
-		result = append(result, ctrl.Request{NamespacedName: name})
-	}
+		result := []ctrl.Request{}
+		cluster, err := util.GetClusterByName(context.TODO(), r.Client, kmp.GetNamespace(), kmp.Spec.ClusterName)
+		if err != nil {
+			return result
+		}
+		if cluster.Spec.InfrastructureRef == nil {
+			return result
+		}
 
-	return result
+		if cluster.Spec.InfrastructureRef.GroupVersionKind() != controlplanev1alpha1.GroupVersion.WithKind("KopsControlPlane") {
+			return result
+		}
+
+		kcp := &controlplanev1alpha1.KopsControlPlane{}
+		if err := r.Get(ctx, client.ObjectKey{Namespace: cluster.Spec.InfrastructureRef.Namespace, Name: cluster.Spec.InfrastructureRef.Name}, kcp); err != nil {
+			return result
+		}
+
+		if kcp.Spec.ControllerClass == controllerClass {
+			name := client.ObjectKey{Namespace: kcp.Namespace, Name: kcp.Name}
+			result = append(result, ctrl.Request{NamespacedName: name})
+		}
+
+		return result
+	}
+}
+
+func controllerClassPredicate(controllerClass string) predicate.Funcs {
+	return predicate.NewPredicateFuncs(func(obj client.Object) bool {
+		kcp, ok := obj.(*controlplanev1alpha1.KopsControlPlane)
+		if !ok {
+			return false
+		}
+		return kcp.Spec.ControllerClass == controllerClass
+	})
 }
 
 // this needs to be better named
