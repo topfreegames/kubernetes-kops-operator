@@ -50,6 +50,9 @@ spec:
               SSHPublicKey:
                 description: SSHPublicKey is the SSH public key added in the nodes; required on AWS
                 type: string
+              controllerClass:
+                description: ControllerClass is the identifier associated with the controllers that defines which controller will reconcile the resource.
+                type: string
               identityRef:
                 description: IdentityRef is a reference to a identity to be used when reconciling this cluster
                 properties:
