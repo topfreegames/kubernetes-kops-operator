@@ -355,6 +355,12 @@ spec:
                   autoscale:
                     description: Autoscale determines if autoscaling will be enabled for this instance group if cluster autoscaler is enabled
                     type: boolean
+                  autoscalePriority:
+                    description: AutoscalePriority determines the InstanceGroup priority for scaling when cluster autoscaler uses the priority expander.
+                    type: integer
+                  capacityRebalance:
+                    description: CapacityRebalance makes ASGs proactively replace spot instances when the ASG receives a rebalance recommendation (AWS Only).
+                    type: boolean
                   cloudLabels:
                     additionalProperties:
                       type: string
@@ -378,6 +384,13 @@ spec:
                       nvidiaGPU:
                         description: NvidiaGPU configures the Nvidia GPU runtime.
                         properties:
+                          dcgmExporter:
+                            description: DCGMExporterConfig configures the DCGM exporter
+                            properties:
+                              enabled:
+                                description: Enabled determines if kOps will install the DCGM exporter
+                                type: boolean
+                            type: object
                           enabled:
                             description: Enabled determines if kOps will install the Nvidia GPU runtime and drivers. They will only be installed on intances that has an Nvidia GPU.
                             type: boolean
@@ -486,7 +499,7 @@ spec:
                         roles:
                           description: Roles is a list of roles the file asset should be applied, defaults to all
                           items:
-                            description: InstanceGroupRole describes the roles of the nodes in this InstanceGroup (master or nodes)
+                            description: InstanceGroupRole describes the roles of the nodes in this InstanceGroup.
                             type: string
                           type: array
                       type: object
@@ -550,7 +563,7 @@ spec:
                         roles:
                           description: Roles is an optional list of roles the hook should be rolled out to, defaults to all
                           items:
-                            description: InstanceGroupRole describes the roles of the nodes in this InstanceGroup (master or nodes)
+                            description: InstanceGroupRole describes the roles of the nodes in this InstanceGroup.
                             type: string
                           type: array
                         useRawManifest:
@@ -757,6 +770,9 @@ spec:
                         description: MaxPods is the number of pods that can run on this Kubelet.
                         format: int32
                         type: integer
+                      memorySwapBehavior:
+                        description: 'MemorySwapBehavior defines how swap is used by container workloads. Supported values: LimitedSwap, "UnlimitedSwap.'
+                        type: string
                       networkPluginMTU:
                         description: NetworkPluginMTU is the MTU to be passed to the network plugin, and overrides the default MTU for cases where it cannot be automatically computed (such as IPSEC).
                         format: int32
@@ -981,7 +997,7 @@ spec:
                       type: string
                     type: array
                   role:
-                    description: 'Type determines the role of instances in this instance group: masters or nodes'
+                    description: Role determines the role of instances in this instance group.
                     type: string
                   rollingUpdate:
                     description: RollingUpdate defines the rolling-update behavior
@@ -1002,30 +1018,34 @@ spec:
                         description: 'MaxUnavailable is the maximum number of nodes that can be unavailable during the update. The value can be an absolute number (for example 5) or a percentage of desired nodes (for example 10%). The absolute number is calculated from a percentage by rounding down. Defaults to 1 if MaxSurge is 0, otherwise defaults to 0. Example: when this is set to 30%, the InstanceGroup can be scaled down to 70% of desired nodes immediately when the rolling update starts. Once new nodes are ready, more old nodes can be drained, ensuring that the total number of nodes available at all times during the update is at least 70% of desired nodes.'
                         x-kubernetes-int-or-string: true
                     type: object
-                  rootVolumeEncryption:
-                    description: RootVolumeEncryption enables EBS root volume encryption for an instance
-                    type: boolean
-                  rootVolumeEncryptionKey:
-                    description: RootVolumeEncryptionKey provides the key identifier for root volume encryption
-                    type: string
-                  rootVolumeIOPS:
-                    description: RootVolumeIOPS is the provisioned IOPS when the volume type is io1, io2 or gp3 (AWS only).
-                    format: int32
-                    type: integer
-                  rootVolumeOptimization:
-                    description: RootVolumeOptimization enables EBS optimization for an instance
-                    type: boolean
-                  rootVolumeSize:
-                    description: RootVolumeSize is the size of the EBS root volume to use, in GB
-                    format: int32
-                    type: integer
-                  rootVolumeThroughput:
-                    description: RootVolumeThroughput is the volume throughput in MBps when the volume type is gp3 (AWS only).
-                    format: int32
-                    type: integer
-                  rootVolumeType:
-                    description: RootVolumeType is the type of the EBS root volume to use (e.g. gp2)
-                    type: string
+                  rootVolume:
+                    description: RootVolume specifies options for the instances' root volumes.
+                    properties:
+                      encryption:
+                        description: Encryption enables EBS root volume encryption for an instance.
+                        type: boolean
+                      encryptionKey:
+                        description: EncryptionKey provides the key identifier for root volume encryption.
+                        type: string
+                      iops:
+                        description: IOPS is the provisioned IOPS when the volume type is io1, io2 or gp3 (AWS only).
+                        format: int32
+                        type: integer
+                      optimization:
+                        description: Optimization enables EBS optimization for an instance.
+                        type: boolean
+                      size:
+                        description: Size is the size of the EBS root volume to use, in GB.
+                        format: int32
+                        type: integer
+                      throughput:
+                        description: Throughput is the volume throughput in MBps when the volume type is gp3 (AWS only).
+                        format: int32
+                        type: integer
+                      type:
+                        description: Type is the type of the EBS root volume to use (for example gp2).
+                        type: string
+                    type: object
                   securityGroupOverride:
                     description: SecurityGroupOverride overrides the default security group created by Kops for this IG (AWS only).
                     type: string

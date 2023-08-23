@@ -192,7 +192,7 @@ func NewKopsIG(name, clusterName string) *kopsapi.InstanceGroup {
 			Name: name,
 		},
 		Spec: kopsapi.InstanceGroupSpec{
-			Role: "Master",
+			Role: "ControlPlane",
 			Subnets: []string{
 				"dummy-subnet",
 			},
@@ -214,7 +214,7 @@ func NewKopsMachinePool(name, namespace, clusterName string) *infrastructurev1al
 		Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 			ClusterName: clusterName,
 			KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
-				Role: "Master",
+				Role: "ControlPlane",
 				Subnets: []string{
 					"dummy-subnet",
 				},

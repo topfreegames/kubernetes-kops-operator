@@ -63,21 +63,11 @@ spec:
               kopsClusterSpec:
                 description: 'KopsClusterSpec declare the desired Cluster Kops resource: https://kops.sigs.k8s.io/cluster_spec/'
                 properties:
-                  additionalNetworkCIDRs:
-                    description: AdditionalNetworkCIDRs is a list of additional CIDR used for the AWS VPC or otherwise allocated to k8s. This is a real CIDR, not the internal k8s network On AWS, it maps to any additional CIDRs added to a VPC.
-                    items:
-                      type: string
-                    type: array
                   additionalPolicies:
                     additionalProperties:
                       type: string
                     description: Additional policies to add for roles
                     type: object
-                  additionalSANs:
-                    description: AdditionalSANs adds additional Subject Alternate Names to apiserver cert that kops generates
-                    items:
-                      type: string
-                    type: array
                   addons:
                     description: Additional addons that should be installed on the cluster
                     items:
@@ -89,13 +79,23 @@ spec:
                       type: object
                     type: array
                   api:
-                    description: API field controls how the API is exposed outside the cluster
+                    description: API controls how the Kubernetes API is exposed.
                     properties:
+                      access:
+                        description: Access is a list of the CIDRs that can access the Kubernetes API endpoint.
+                        items:
+                          type: string
+                        type: array
+                      additionalSANs:
+                        description: AdditionalSANs adds additional Subject Alternate Names to the Kubernetes API certificate.
+                        items:
+                          type: string
+                        type: array
                       dns:
-                        description: DNS will be used to provide config on kube-apiserver ELB DNS
+                        description: DNS will be used to provide configuration for the Kubernetes API's DNS server.
                         type: object
                       loadBalancer:
-                        description: LoadBalancer is the configuration for the kube-apiserver ELB
+                        description: LoadBalancer is the configuration for the Kubernetes API load balancer.
                         properties:
                           accessLog:
                             description: AccessLog is the configuration of access logs.
@@ -157,6 +157,9 @@ spec:
                             description: UseForInternalAPI indicates whether the LB should be used by the kubelet
                             type: boolean
                         type: object
+                      publicName:
+                        description: PublicName is the external DNS name for the Kubernetes API.
+                        type: string
                     type: object
                   assets:
                     description: Assets is alternative locations for files and containers; the API under construction, will remove this comment once this API is fully functional.
@@ -233,6 +236,34 @@ spec:
                         type: object
                       kopeio:
                         type: object
+                      oidc:
+                        properties:
+                          clientID:
+                            description: ClientID is the client ID for the OpenID Connect client. Must be set if issuerURL is set.
+                            type: string
+                          groupsClaims:
+                            description: GroupsClaims are the names of the custom OpenID Connect claims for specifying user groups (optional).
+                            items:
+                              type: string
+                            type: array
+                          groupsPrefix:
+                            description: GroupsPrefix is the prefix prepended to group claims to prevent clashes with existing names (such as 'system:' groups).
+                            type: string
+                          issuerURL:
+                            description: IssuerURL is the URL of the OpenID issuer. Only the HTTPS scheme will be accepted. If set, will be used to verify the OIDC JSON Web Token (JWT).
+                            type: string
+                          requiredClaims:
+                            additionalProperties:
+                              type: string
+                            description: RequiredClaims are key/value pairs that describe required claims in the ID Token. If set, the claims are verified to be present in the ID Token with corresponding values.
+                            type: object
+                          usernameClaim:
+                            description: UsernameClaim is the OpenID claim to use as the username. Note that claims other than the default ('sub') are not guaranteed to be unique and immutable.
+                            type: string
+                          usernamePrefix:
+                            description: UsernamePrefix is the prefix prepended to username claims to prevent clashes with existing names (such as 'system:' users).
+                            type: string
+                        type: object
                     type: object
                   authorization:
                     description: Authorization field controls how the cluster is configured for authorization
@@ -241,25 +272,6 @@ spec:
                         type: object
                       rbac:
                         type: object
-                    type: object
-                  awsLoadBalancerController:
-                    description: AWSLoadbalancerControllerConfig determines the AWS LB controller configuration.
-                    properties:
-                      enableShield:
-                        description: 'EnableShield specifies whether the controller can enable Shield Advanced. Default: false'
-                        type: boolean
-                      enableWAF:
-                        description: 'EnableWAF specifies whether the controller can use WAFs (Classic Regional). Default: false'
-                        type: boolean
-                      enableWAFv2:
-                        description: 'EnableWAFv2 specifies whether the controller can use WAFs (V2). Default: false'
-                        type: boolean
-                      enabled:
-                        description: 'Enabled enables the loadbalancer controller. Default: false'
-                        type: boolean
-                      version:
-                        description: Version is the container image tag used.
-                        type: string
                     type: object
                   certManager:
                     description: CertManager determines the metrics server configuration.
@@ -293,62 +305,9 @@ spec:
                   cloudConfig:
                     description: CloudConfiguration defines the cloud provider configuration
                     properties:
-                      awsEBSCSIDriver:
-                        description: AWSEBSCSIDriver is the config for the AWS EBS CSI driver
-                        properties:
-                          enabled:
-                            description: 'Enabled enables the AWS EBS CSI driver Default: false'
-                            type: boolean
-                          managed:
-                            description: Managed controls if aws-ebs-csi-driver is manged and deployed by kOps. The deployment of aws-ebs-csi-driver is skipped if this is set to false.
-                            type: boolean
-                          podAnnotations:
-                            additionalProperties:
-                              type: string
-                            description: 'PodAnnotations are the annotations added to AWS EBS CSI node and controller Pods. Default: none'
-                            type: object
-                          version:
-                            description: 'Version is the container image tag used. Default: The latest stable release which is compatible with your Kubernetes version'
-                            type: string
-                          volumeAttachLimit:
-                            description: 'VolumeAttachLimit is the maximum number of volumes attachable per node. If specified, the limit applies to all nodes. If not specified, the value is approximated from the instance type. Default: -'
-                            type: integer
-                        type: object
-                      disableSecurityGroupIngress:
-                        description: AWS cloud-config options
-                        type: boolean
-                      elbSecurityGroup:
-                        type: string
-                      gceServiceAccount:
-                        description: GCEServiceAccount specifies the service account with which the GCE VM runs
-                        type: string
-                      gcpPDCSIDriver:
-                        description: GCPPDCSIDriver is the config for the GCP PD CSI driver
-                        properties:
-                          enabled:
-                            description: Enabled enables the GCP PD CSI driver
-                            type: boolean
-                        type: object
                       manageStorageClasses:
                         description: ManageStorageClasses specifies whether kOps should create and maintain a set of StorageClasses, one of which it nominates as the default class for the cluster.
                         type: boolean
-                      multizone:
-                        description: GCE cloud-config options
-                        type: boolean
-                      nodeIPFamilies:
-                        description: NodeIPFamilies controls the IP families reported for each node (AWS only).
-                        items:
-                          type: string
-                        type: array
-                      nodeInstancePrefix:
-                        type: string
-                      nodeTags:
-                        type: string
-                      spotinstOrientation:
-                        type: string
-                      spotinstProduct:
-                        description: Spotinst cloud-config specs
-                        type: string
                     type: object
                   cloudControllerManager:
                     description: CloudControllerManagerConfig is the configuration of the cloud controller
@@ -424,6 +383,9 @@ spec:
                       master:
                         description: Master is the url for the kube api master.
                         type: string
+                      nodeStatusUpdateFrequency:
+                        description: 'NodeStatusUpdateFrequency is the duration between node status updates. (default: 5m)'
+                        type: string
                       useServiceAccountCredentials:
                         description: UseServiceAccountCredentials controls whether we use individual service account credentials for each controller.
                         type: boolean
@@ -438,6 +400,137 @@ spec:
                     properties:
                       aws:
                         description: AWS configures the AWS cloud provider.
+                        properties:
+                          binaryLocation:
+                            description: BinariesLocation is the location of the AWS cloud provider binaries.
+                            type: string
+                          disableSecurityGroupIngress:
+                            description: DisableSecurityGroupIngress disables the Cloud Controller Manager's creation of an AWS Security Group for each load balancer provisioned for a Service.
+                            type: boolean
+                          ebsCSIDriver:
+                            description: EBSCSIDriverSpec is the config for the EBS CSI driver.
+                            properties:
+                              enabled:
+                                description: 'Enabled enables the AWS EBS CSI driver Default: false'
+                                type: boolean
+                              managed:
+                                description: Managed controls if aws-ebs-csi-driver is manged and deployed by kOps. The deployment of aws-ebs-csi-driver is skipped if this is set to false.
+                                type: boolean
+                              podAnnotations:
+                                additionalProperties:
+                                  type: string
+                                description: 'PodAnnotations are the annotations added to AWS EBS CSI node and controller Pods. Default: none'
+                                type: object
+                              version:
+                                description: 'Version is the container image tag used. Default: The latest stable release which is compatible with your Kubernetes version'
+                                type: string
+                              volumeAttachLimit:
+                                description: 'VolumeAttachLimit is the maximum number of volumes attachable per node. If specified, the limit applies to all nodes. If not specified, the value is approximated from the instance type. Default: -'
+                                type: integer
+                            type: object
+                          elbSecurityGroup:
+                            description: ElbSecurityGroup specifies an existing AWS Security group for the Cloud Controller Manager to assign to each ELB provisioned for a Service, instead of creating one per ELB.
+                            type: string
+                          loadBalancerController:
+                            description: LoadbalancerController determines the Load Balancer Controller configuration.
+                            properties:
+                              enableShield:
+                                description: 'EnableShield specifies whether the controller can enable Shield Advanced. Default: false'
+                                type: boolean
+                              enableWAF:
+                                description: 'EnableWAF specifies whether the controller can use WAFs (Classic Regional). Default: false'
+                                type: boolean
+                              enableWAFv2:
+                                description: 'EnableWAFv2 specifies whether the controller can use WAFs (V2). Default: false'
+                                type: boolean
+                              enabled:
+                                description: 'Enabled enables the loadbalancer controller. Default: false'
+                                type: boolean
+                              version:
+                                description: Version is the container image tag used.
+                                type: string
+                            type: object
+                          nodeIPFamilies:
+                            description: NodeIPFamilies control the IP families reported for each node.
+                            items:
+                              type: string
+                            type: array
+                          nodeTerminationHandler:
+                            description: NodeTerminationHandler determines the node termination handler configuration.
+                            properties:
+                              cpuRequest:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: 'CPURequest of NodeTerminationHandler container. Default: 50m'
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              enableRebalanceDraining:
+                                description: 'EnableRebalanceDraining makes node termination handler drain nodes when the rebalance recommendation notice is received. Default: false'
+                                type: boolean
+                              enableRebalanceMonitoring:
+                                description: 'EnableRebalanceMonitoring makes node termination handler cordon nodes when the rebalance recommendation notice is received. In queue-processor mode, cannot be enabled without rebalance draining. Default: false'
+                                type: boolean
+                              enableSQSTerminationDraining:
+                                description: 'EnableSQSTerminationDraining enables queue-processor mode which drains nodes when an SQS termination event is received. Default: true'
+                                type: boolean
+                              enableScheduledEventDraining:
+                                description: 'EnableScheduledEventDraining makes node termination handler drain nodes before the maintenance window starts for an EC2 instance scheduled event. Cannot be disabled in queue-processor mode. Default: true'
+                                type: boolean
+                              enableSpotInterruptionDraining:
+                                description: 'EnableSpotInterruptionDraining makes node termination handler drain nodes when spot interruption termination notice is received. Cannot be disabled in queue-processor mode. Default: true'
+                                type: boolean
+                              enabled:
+                                description: 'Enabled enables the node termination handler. Default: true'
+                                type: boolean
+                              excludeFromLoadBalancers:
+                                description: 'ExcludeFromLoadBalancers makes node termination handler will mark for exclusion from load balancers before node are cordoned. Default: true'
+                                type: boolean
+                              managedASGTag:
+                                description: ManagedASGTag is the tag used to determine which nodes NTH can take action on This field has kept its name even though it now maps to the --managed-tag flag due to keeping the API stable. Node termination handler does no longer check the ASG for this tag, but the actual EC2 instances.
+                                type: string
+                              memoryRequest:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: 'MemoryRequest of NodeTerminationHandler container. Default: 64Mi'
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
+                              prometheusEnable:
+                                description: 'EnablePrometheusMetrics enables the "/metrics" endpoint. Default: false'
+                                type: boolean
+                              version:
+                                description: Version is the container image tag used.
+                                type: string
+                            type: object
+                          podIdentityWebhook:
+                            description: PodIdentityWebhook determines the EKS Pod Identity Webhook configuration.
+                            properties:
+                              enabled:
+                                type: boolean
+                              replicas:
+                                type: integer
+                            type: object
+                          spotinstOrientation:
+                            type: string
+                          spotinstProduct:
+                            description: Spotinst cloud-config specs
+                            type: string
+                          warmPool:
+                            description: WarmPool defines the default warm pool settings for instance groups.
+                            properties:
+                              enableLifecycleHook:
+                                description: EnableLifecyleHook determines if an ASG lifecycle hook will be added ensuring that nodeup runs to completion. Note that the metadata API must be protected from arbitrary Pods when this is enabled.
+                                type: boolean
+                              maxSize:
+                                description: MaxSize is the maximum size of the warm pool. The desired size of the instance group is subtracted from this number to determine the desired size of the warm pool (unless the resulting number is smaller than MinSize). The default is the instance group's MaxSize.
+                                format: int64
+                                type: integer
+                              minSize:
+                                description: MinSize is the minimum size of the warm pool.
+                                format: int64
+                                type: integer
+                            type: object
                         type: object
                       azure:
                         description: Azure configures the Azure cloud provider.
@@ -465,6 +558,28 @@ spec:
                         type: object
                       gce:
                         description: GCE configures the GCE cloud provider.
+                        properties:
+                          multizone:
+                            type: boolean
+                          nodeInstancePrefix:
+                            type: string
+                          nodeTags:
+                            type: string
+                          pdCSIDriver:
+                            description: PDCSIDriver is the config for the PD CSI driver.
+                            properties:
+                              enabled:
+                                description: Enabled enables the GCP PD CSI driver
+                                type: boolean
+                            type: object
+                          project:
+                            description: Project is the cloud project we should use.
+                            type: string
+                          serviceAccount:
+                            description: ServiceAccount specifies the service account with which the GCE VM runs.
+                            type: string
+                        required:
+                        - project
                         type: object
                       hetzner:
                         description: Hetzner configures the Hetzner cloud provider.
@@ -476,6 +591,9 @@ spec:
                             properties:
                               bs-version:
                                 type: string
+                              clusterName:
+                                description: ClusterName sets the --cluster flag for the cinder-csi-plugin to the provided name
+                                type: string
                               createStorageClass:
                                 description: CreateStorageClass provisions a default class for the Cinder plugin
                                 type: boolean
@@ -484,6 +602,10 @@ spec:
                               csiTopologySupport:
                                 type: boolean
                               ignore-volume-az:
+                                type: boolean
+                              ignore-volume-microversion:
+                                type: boolean
+                              metricsEnabled:
                                 type: boolean
                               override-volume-az:
                                 type: string
@@ -495,6 +617,8 @@ spec:
                             properties:
                               enableIngressHostname:
                                 type: boolean
+                              flavorID:
+                                type: string
                               floatingNetwork:
                                 type: string
                               floatingNetworkID:
@@ -534,6 +658,8 @@ spec:
                           network:
                             description: OpenstackNetwork defines the config for a network
                             properties:
+                              addressSortOrder:
+                                type: string
                               availabilityZoneHints:
                                 items:
                                   type: string
@@ -564,6 +690,9 @@ spec:
                                 type: string
                             type: object
                         type: object
+                      scaleway:
+                        description: Scaleway configures the Scaleway cloud provider.
+                        type: object
                     type: object
                   clusterAutoscaler:
                     description: ClusterAutoscaler defines the cluster autoscaler configuration.
@@ -572,7 +701,7 @@ spec:
                         description: 'AWSUseStaticInstanceList makes cluster autoscaler to use statically defined set of AWS EC2 Instance List. Default: false'
                         type: boolean
                       balanceSimilarNodeGroups:
-                        description: 'BalanceSimilarNodeGroups makes cluster autoscaler treat similar node groups as one. Default: false'
+                        description: 'BalanceSimilarNodeGroups makes the cluster autoscaler treat similar node groups as one. Default: false'
                         type: boolean
                       cordonNodeBeforeTerminating:
                         description: 'CordonNodeBeforeTerminating should CA cordon nodes before terminating during downscale process Default: false'
@@ -584,12 +713,25 @@ spec:
                         description: 'CPURequest of cluster autoscaler container. Default: 100m'
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
+                      createPriorityExpanderConfig:
+                        description: 'CreatePriorityExpenderConfig makes kOps create the priority-expander ConfigMap Default: true'
+                        type: boolean
+                      customPriorityExpanderConfig:
+                        additionalProperties:
+                          items:
+                            type: string
+                          type: array
+                        description: CustomPriorityExpanderConfig overides the priority-expander ConfigMap with the provided configuration. Any InstanceGroup configuration will be ignored if this is set. This could be useful in order to use regex on priorities configuration
+                        type: object
                       enabled:
                         description: 'Enabled enables the cluster autoscaler. Default: false'
                         type: boolean
                       expander:
-                        description: 'Expander determines the strategy for which instance group gets expanded. Supported values: least-waste, most-pods, random, price, priority. The price expander is only supported on GCE. The priority expander requires additional configuration via a ConfigMap. Default: least-waste'
+                        description: 'Expander determines the strategy for which instance group gets expanded. Supported values: least-waste, most-pods, random, price, priority. The price expander is only supported on GCE. By default, kOps will generate the priority expander ConfigMap based on the `autoscale` and `autoscalePriority` fields in the InstanceGroup specs. Default: least-waste'
                         type: string
+                      ignoreDaemonSetsUtilization:
+                        description: 'IgnoreDaemonSetsUtilization causes the cluster autoscaler to ignore DaemonSet-managed pods when calculating resource utilization for scaling down. Default: false'
+                        type: boolean
                       image:
                         description: 'Image is the docker container used. Default: the latest supported image for the specified kubernetes version.'
                         type: string
@@ -604,7 +746,7 @@ spec:
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
                       newPodScaleUpDelay:
-                        description: 'NewPodScaleUpDelay causes cluster autoscaler to ignore unschedulable pods until they are a certain "age", regardless of the scan-interval Default: 0s'
+                        description: 'NewPodScaleUpDelay causes the cluster autoscaler to ignore unschedulable pods until they are a certain "age", regardless of the scan-interval Default: 0s'
                         type: string
                       podAnnotations:
                         additionalProperties:
@@ -624,10 +766,10 @@ spec:
                         description: 'ScaleDownUtilizationThreshold determines the utilization threshold for node scale-down. Default: 0.5'
                         type: string
                       skipNodesWithLocalStorage:
-                        description: 'SkipNodesWithLocalStorage makes cluster autoscaler skip scale-down of nodes with local storage. Default: true'
+                        description: 'SkipNodesWithLocalStorage makes the cluster autoscaler skip scale-down of nodes with local storage. Default: true'
                         type: boolean
                       skipNodesWithSystemPods:
-                        description: 'SkipNodesWithSystemPods makes cluster autoscaler skip scale-down of nodes with non-DaemonSet pods in the kube-system namespace. Default: true'
+                        description: 'SkipNodesWithSystemPods makes the cluster autoscaler skip scale-down of nodes with non-DaemonSet pods in the kube-system namespace. Default: true'
                         type: boolean
                     type: object
                   clusterDNSDomain:
@@ -657,6 +799,13 @@ spec:
                       nvidiaGPU:
                         description: NvidiaGPU configures the Nvidia GPU runtime.
                         properties:
+                          dcgmExporter:
+                            description: DCGMExporterConfig configures the DCGM exporter
+                            properties:
+                              enabled:
+                                description: Enabled determines if kOps will install the DCGM exporter
+                                type: boolean
+                            type: object
                           enabled:
                             description: Enabled determines if kOps will install the Nvidia GPU runtime and drivers. They will only be installed on intances that has an Nvidia GPU.
                             type: boolean
@@ -723,6 +872,313 @@ spec:
                         description: Version used to pick the containerd package.
                         type: string
                     type: object
+                  controlPlaneKubelet:
+                    description: ControlPlaneKubelet is the kubelet configuration for nodes belonging to the control plane It can be overridden by the kubelet configuration specified in the instance group.
+                    properties:
+                      allowPrivileged:
+                        description: AllowPrivileged enables containers to request privileged mode (defaults to false)
+                        type: boolean
+                      allowedUnsafeSysctls:
+                        description: AllowedUnsafeSysctls are passed to the kubelet config to whitelist allowable sysctls
+                        items:
+                          type: string
+                        type: array
+                      anonymousAuth:
+                        description: AnonymousAuth permits you to control auth to the kubelet api
+                        type: boolean
+                      apiServers:
+                        description: APIServers is not used for clusters version 1.6 and later - flag removed
+                        type: string
+                      authenticationTokenWebhook:
+                        description: AuthenticationTokenWebhook uses the TokenReview API to determine authentication for bearer tokens.
+                        type: boolean
+                      authenticationTokenWebhookCacheTTL:
+                        description: AuthenticationTokenWebhook sets the duration to cache responses from the webhook token authenticator. Default is 2m. (default 2m0s)
+                        type: string
+                      authorizationMode:
+                        description: AuthorizationMode is the authorization mode the kubelet is running in
+                        type: string
+                      babysitDaemons:
+                        description: The node has babysitter process monitoring docker and kubelet. Removed as of 1.7
+                        type: boolean
+                      bootstrapKubeconfig:
+                        description: BootstrapKubeconfig is the path to a kubeconfig file that will be used to get client certificate for kubelet
+                        type: string
+                      cgroupDriver:
+                        description: CgroupDriver allows the explicit setting of the kubelet cgroup driver. If omitted, defaults to cgroupfs.
+                        type: string
+                      cgroupRoot:
+                        description: cgroupRoot is the root cgroup to use for pods. This is handled by the container runtime on a best effort basis.
+                        type: string
+                      clientCAFile:
+                        description: ClientCAFile is the path to a CA certificate
+                        type: string
+                      cloudProvider:
+                        description: CloudProvider is the provider for cloud services.
+                        type: string
+                      clusterDNS:
+                        description: ClusterDNS is the IP address for a cluster DNS server
+                        type: string
+                      clusterDomain:
+                        description: ClusterDomain is the DNS domain for this cluster
+                        type: string
+                      configureCbr0:
+                        description: configureCBR0 enables the kubelet to configure cbr0 based on Node.Spec.PodCIDR.
+                        type: boolean
+                      containerLogMaxFiles:
+                        description: ContainerLogMaxFiles is the maximum number of container log files that can be present for a container. The number must be >= 2.
+                        format: int32
+                        type: integer
+                      containerLogMaxSize:
+                        description: ContainerLogMaxSize is the maximum size (e.g. 10Mi) of container log file before it is rotated.
+                        type: string
+                      cpuCFSQuota:
+                        description: CPUCFSQuota enables CPU CFS quota enforcement for containers that specify CPU limits
+                        type: boolean
+                      cpuCFSQuotaPeriod:
+                        description: CPUCFSQuotaPeriod sets CPU CFS quota period value, cpu.cfs_period_us, defaults to Linux Kernel default
+                        type: string
+                      cpuManagerPolicy:
+                        description: CpuManagerPolicy allows for changing the default policy of None to static
+                        type: string
+                      dockerDisableSharedPID:
+                        description: DockerDisableSharedPID uses a shared PID namespace for containers in a pod.
+                        type: boolean
+                      enableCadvisorJsonEndpoints:
+                        description: EnableCadvisorJsonEndpoints enables cAdvisor json `/spec` and `/stats/*` endpoints. Defaults to False.
+                        type: boolean
+                      enableCustomMetrics:
+                        description: Enable gathering custom metrics.
+                        type: boolean
+                      enableDebuggingHandlers:
+                        description: EnableDebuggingHandlers enables server endpoints for log collection and local running of containers and commands
+                        type: boolean
+                      enforceNodeAllocatable:
+                        description: Enforce Allocatable across pods whenever the overall usage across all pods exceeds Allocatable.
+                        type: string
+                      eventBurst:
+                        description: EventBurst temporarily allows event records to burst to this number, while still not exceeding EventQPS. Only used if EventQPS > 0.
+                        format: int32
+                        type: integer
+                      eventQPS:
+                        description: EventQPS if > 0, limit event creations per second to this value.  If 0, unlimited.
+                        format: int32
+                        type: integer
+                      evictionHard:
+                        description: Comma-delimited list of hard eviction expressions.  For example, 'memory.available<300Mi'.
+                        type: string
+                      evictionMaxPodGracePeriod:
+                        description: Maximum allowed grace period (in seconds) to use when terminating pods in response to a soft eviction threshold being met.
+                        format: int32
+                        type: integer
+                      evictionMinimumReclaim:
+                        description: Comma-delimited list of minimum reclaims (e.g. imagefs.available=2Gi) that describes the minimum amount of resource the kubelet will reclaim when performing a pod eviction if that resource is under pressure.
+                        type: string
+                      evictionPressureTransitionPeriod:
+                        description: Duration for which the kubelet has to wait before transitioning out of an eviction pressure condition.
+                        type: string
+                      evictionSoft:
+                        description: Comma-delimited list of soft eviction expressions.  For example, 'memory.available<300Mi'.
+                        type: string
+                      evictionSoftGracePeriod:
+                        description: Comma-delimited list of grace periods for each soft eviction signal.  For example, 'memory.available=30s'.
+                        type: string
+                      experimentalAllowedUnsafeSysctls:
+                        description: ExperimentalAllowedUnsafeSysctls are passed to the kubelet config to whitelist allowable sysctls Was promoted to beta and renamed. https://github.com/kubernetes/kubernetes/pull/63717
+                        items:
+                          type: string
+                        type: array
+                      failSwapOn:
+                        description: Tells the Kubelet to fail to start if swap is enabled on the node.
+                        type: boolean
+                      featureGates:
+                        additionalProperties:
+                          type: string
+                        description: FeatureGates is set of key=value pairs that describe feature gates for alpha/experimental features.
+                        type: object
+                      hairpinMode:
+                        description: 'How should the kubelet configure the container bridge for hairpin packets. Setting this flag allows endpoints in a Service to loadbalance back to themselves if they should try to access their own Service. Values: "promiscuous-bridge": make the container bridge promiscuous. "hairpin-veth":       set the hairpin flag on container veth interfaces. "none":               do nothing. Setting --configure-cbr0 to false implies that to achieve hairpin NAT one must set --hairpin-mode=veth-flag, because bridge assumes the existence of a container bridge named cbr0.'
+                        type: string
+                      hostnameOverride:
+                        description: HostnameOverride is the hostname used to identify the kubelet instead of the actual hostname.
+                        type: string
+                      housekeepingInterval:
+                        description: HousekeepingInterval allows to specify interval between container housekeepings.
+                        type: string
+                      imageGCHighThresholdPercent:
+                        description: ImageGCHighThresholdPercent is the percent of disk usage after which image garbage collection is always run.
+                        format: int32
+                        type: integer
+                      imageGCLowThresholdPercent:
+                        description: ImageGCLowThresholdPercent is the percent of disk usage before which image garbage collection is never run. Lowest disk usage to garbage collect to.
+                        format: int32
+                        type: integer
+                      imagePullProgressDeadline:
+                        description: ImagePullProgressDeadline is the timeout for image pulls If no pulling progress is made before this deadline, the image pulling will be cancelled. (default 1m0s)
+                        type: string
+                      kernelMemcgNotification:
+                        description: Integrate with the kernel memcg notification to determine if memory eviction thresholds are crossed rather than polling.
+                        type: boolean
+                      kubeReserved:
+                        additionalProperties:
+                          type: string
+                        description: Resource reservation for kubernetes system daemons like the kubelet, container runtime, node problem detector, etc.
+                        type: object
+                      kubeReservedCgroup:
+                        description: Control group for kube daemons.
+                        type: string
+                      kubeconfigPath:
+                        description: KubeconfigPath is the path of kubeconfig for the kubelet
+                        type: string
+                      kubeletCgroups:
+                        description: KubeletCgroups is the absolute name of cgroups to isolate the kubelet in.
+                        type: string
+                      logFormat:
+                        description: 'LogFormat is the logging format of the kubelet. Supported values: text, json. Default: text'
+                        type: string
+                      logLevel:
+                        description: LogLevel is the logging level of the kubelet
+                        format: int32
+                        type: integer
+                      maxPods:
+                        description: MaxPods is the number of pods that can run on this Kubelet.
+                        format: int32
+                        type: integer
+                      memorySwapBehavior:
+                        description: 'MemorySwapBehavior defines how swap is used by container workloads. Supported values: LimitedSwap, "UnlimitedSwap.'
+                        type: string
+                      networkPluginMTU:
+                        description: NetworkPluginMTU is the MTU to be passed to the network plugin, and overrides the default MTU for cases where it cannot be automatically computed (such as IPSEC).
+                        format: int32
+                        type: integer
+                      networkPluginName:
+                        description: NetworkPluginName is the name of the network plugin to be invoked for various events in kubelet/pod lifecycle
+                        type: string
+                      nodeLabels:
+                        additionalProperties:
+                          type: string
+                        description: NodeLabels to add when registering the node in the cluster.
+                        type: object
+                      nodeStatusUpdateFrequency:
+                        description: NodeStatusUpdateFrequency Specifies how often kubelet posts node status to master (default 10s) must work with nodeMonitorGracePeriod in KubeControllerManagerConfig.
+                        type: string
+                      nonMasqueradeCIDR:
+                        description: 'NonMasqueradeCIDR configures masquerading: traffic to IPs outside this range will use IP masquerade.'
+                        type: string
+                      nvidiaGPUs:
+                        description: NvidiaGPUs is the number of NVIDIA GPU devices on this node.
+                        format: int32
+                        type: integer
+                      podCIDR:
+                        description: PodCIDR is the CIDR to use for pod IP addresses, only used in standalone mode. In cluster mode, this is obtained from the master.
+                        type: string
+                      podInfraContainerImage:
+                        description: PodInfraContainerImage is the image whose network/ipc containers in each pod will use.
+                        type: string
+                      podManifestPath:
+                        description: config is the path to the config file or directory of files
+                        type: string
+                      podPidsLimit:
+                        description: PodPidsLimit is the maximum number of pids in any pod.
+                        format: int64
+                        type: integer
+                      protectKernelDefaults:
+                        description: 'Default kubelet behaviour for kernel tuning. If set, kubelet errors if any of kernel tunables is different than kubelet defaults. (DEPRECATED: This parameter should be set via the config file specified by the Kubelet''s --config flag.'
+                        type: boolean
+                      readOnlyPort:
+                        description: ReadOnlyPort is the port used by the kubelet api for read-only access (default 10255)
+                        format: int32
+                        type: integer
+                      reconcileCIDR:
+                        description: ReconcileCIDR is Reconcile node CIDR with the CIDR specified by the API server. No-op if register-node or configure-cbr0 is false.
+                        type: boolean
+                      registerNode:
+                        description: RegisterNode enables automatic registration with the apiserver.
+                        type: boolean
+                      registerSchedulable:
+                        description: registerSchedulable tells the kubelet to register the node as schedulable. No-op if register-node is false.
+                        type: boolean
+                      registryBurst:
+                        description: RegistryBurst Maximum size of a bursty pulls, temporarily allows pulls to burst to this number, while still not exceeding registry-qps. Only used if --registry-qps > 0 (default 10)
+                        format: int32
+                        type: integer
+                      registryPullQPS:
+                        description: RegistryPullQPS if > 0, limit registry pull QPS to this value.  If 0, unlimited. (default 5)
+                        format: int32
+                        type: integer
+                      requireKubeconfig:
+                        description: RequireKubeconfig indicates a kubeconfig is required
+                        type: boolean
+                      resolvConf:
+                        description: ResolverConfig is the resolver configuration file used as the basis for the container DNS resolution configuration."), []
+                        type: string
+                      rootDir:
+                        description: RootDir is the directory path for managing kubelet files (volume mounts,etc)
+                        type: string
+                      rotateCertificates:
+                        description: rotateCertificates enables client certificate rotation.
+                        type: boolean
+                      runtimeCgroups:
+                        description: Cgroups that container runtime is expected to be isolated in.
+                        type: string
+                      runtimeRequestTimeout:
+                        description: RuntimeRequestTimeout is timeout for runtime requests on - pull, logs, exec and attach
+                        type: string
+                      seccompProfileRoot:
+                        description: SeccompProfileRoot is the directory path for seccomp profiles.
+                        type: string
+                      serializeImagePulls:
+                        description: '// SerializeImagePulls when enabled, tells the Kubelet to pull images one // at a time. We recommend *not* changing the default value on nodes that // run docker daemon with version  < 1.9 or an Aufs storage backend. // Issue #10959 has more details.'
+                        type: boolean
+                      shutdownGracePeriod:
+                        description: 'ShutdownGracePeriod specifies the total duration that the node should delay the shutdown by. Default: 30s'
+                        type: string
+                      shutdownGracePeriodCriticalPods:
+                        description: 'ShutdownGracePeriodCriticalPods specifies the duration used to terminate critical pods during a node shutdown. Default: 10s'
+                        type: string
+                      streamingConnectionIdleTimeout:
+                        description: StreamingConnectionIdleTimeout is the maximum time a streaming connection can be idle before the connection is automatically closed
+                        type: string
+                      systemCgroups:
+                        description: SystemCgroups is absolute name of cgroups in which to place all non-kernel processes that are not already in a container. Empty for no container. Rolling back the flag requires a reboot.
+                        type: string
+                      systemReserved:
+                        additionalProperties:
+                          type: string
+                        description: Capture resource reservation for OS system daemons like sshd, udev, etc.
+                        type: object
+                      systemReservedCgroup:
+                        description: Parent control group for OS system daemons.
+                        type: string
+                      taints:
+                        description: Taints to add when registering a node in the cluster
+                        items:
+                          type: string
+                        type: array
+                      tlsCertFile:
+                        description: 'TODO: Remove unused TLSCertFile'
+                        type: string
+                      tlsCipherSuites:
+                        description: TLSCipherSuites indicates the allowed TLS cipher suite
+                        items:
+                          type: string
+                        type: array
+                      tlsMinVersion:
+                        description: TLSMinVersion indicates the minimum TLS version allowed
+                        type: string
+                      tlsPrivateKeyFile:
+                        description: 'TODO: Remove unused TLSPrivateKeyFile'
+                        type: string
+                      topologyManagerPolicy:
+                        description: TopologyManagerPolicy determines the allocation policy for the topology manager.
+                        type: string
+                      volumePluginDirectory:
+                        description: The full path of the directory in which to search for additional third party volume plugins (this path must be writeable, dependent on your choice of OS)
+                        type: string
+                      volumeStatsAggPeriod:
+                        description: VolumeStatsAggPeriod is the interval for kubelet to calculate and cache the volume disk usage for all pods and volumes
+                        type: string
+                    type: object
                   dnsControllerGossipConfig:
                     description: DNSControllerGossipConfig for the cluster assuming the use of gossip DNS
                     properties:
@@ -747,7 +1203,7 @@ spec:
                         type: string
                     type: object
                   dnsZone:
-                    description: DNSZone is the DNS zone we should use when configuring DNS This is because some clouds let us define a managed zone foo.bar, and then have kubernetes.dev.foo.bar, without needing to define dev.foo.bar as a hosted zone. DNSZone will probably be a suffix of the MasterPublicName and MasterInternalName Note that DNSZone can either by the host name of the zone (containing dots), or can be an identifier for the zone.
+                    description: DNSZone is the DNS zone we should use when configuring DNS This is because some clouds let us define a managed zone foo.bar, and then have kubernetes.dev.foo.bar, without needing to define dev.foo.bar as a hosted zone. DNSZone will probably be a suffix of the MasterPublicName. Note that DNSZone can either by the host name of the zone (containing dots), or can be an identifier for the zone.
                     type: string
                   docker:
                     description: DockerConfig is the configuration for docker
@@ -892,19 +1348,6 @@ spec:
                         description: Version is consumed by the nodeup and used to pick the docker version
                         type: string
                     type: object
-                  egressProxy:
-                    description: HTTPProxy defines connection information to support use of a private cluster behind an forward HTTP Proxy
-                    properties:
-                      excludes:
-                        type: string
-                      httpProxy:
-                        properties:
-                          host:
-                            type: string
-                          port:
-                            type: integer
-                        type: object
-                    type: object
                   encryptionConfig:
                     description: EncryptionConfig controls if encryption is enabled
                     type: boolean
@@ -979,6 +1422,10 @@ spec:
                             backupInterval:
                               description: BackupInterval which is used for backups. The default is 15 minutes.
                               type: string
+                            backupRetentionDays:
+                              description: BackupRetentionDays which is used for backups. The default is 90 days.
+                              format: int32
+                              type: integer
                             discoveryPollInterval:
                               description: DiscoveryPollInterval which is used for discovering other cluster members. The default is 60 seconds.
                               type: string
@@ -1066,7 +1513,7 @@ spec:
                         roles:
                           description: Roles is a list of roles the file asset should be applied, defaults to all
                           items:
-                            description: InstanceGroupRole describes the roles of the nodes in this InstanceGroup (master or nodes)
+                            description: InstanceGroupRole describes the roles of the nodes in this InstanceGroup.
                             type: string
                           type: array
                       type: object
@@ -1134,7 +1581,7 @@ spec:
                         roles:
                           description: Roles is an optional list of roles the hook should be rolled out to, defaults to all
                           items:
-                            description: InstanceGroupRole describes the roles of the nodes in this InstanceGroup (master or nodes)
+                            description: InstanceGroupRole describes the roles of the nodes in this InstanceGroup.
                             type: string
                           type: array
                         useRawManifest:
@@ -1185,9 +1632,6 @@ spec:
                     required:
                     - legacy
                     type: object
-                  isolateMasters:
-                    description: 'IsolateMasters determines whether we should lock down masters so that they are not on the pod network. true is the kube-up behaviour, but it is very surprising: it means that daemonsets only work on the master if they have hostNetwork=true. false is now the default, and it will: * give the master a normal PodCIDR * run kube-proxy on the master * enable debugging handlers on the master, so kubectl logs works'
-                    type: boolean
                   karpenter:
                     description: Karpenter defines the Karpenter configuration.
                     properties:
@@ -1473,29 +1917,6 @@ spec:
                         type: integer
                       oidcCAFile:
                         description: OIDCCAFile if set, the OpenID server's certificate will be verified by one of the authorities in the oidc-ca-file
-                        type: string
-                      oidcClientID:
-                        description: OIDCClientID is the client ID for the OpenID Connect client, must be set if oidc-issuer-url is set.
-                        type: string
-                      oidcGroupsClaim:
-                        description: OIDCGroupsClaim if provided, the name of a custom OpenID Connect claim for specifying user groups. The claim value is expected to be a string or array of strings.
-                        type: string
-                      oidcGroupsPrefix:
-                        description: OIDCGroupsPrefix is the prefix prepended to group claims to prevent clashes with existing names (such as 'system:' groups)
-                        type: string
-                      oidcIssuerURL:
-                        description: OIDCIssuerURL is the URL of the OpenID issuer, only HTTPS scheme will be accepted. If set, it will be used to verify the OIDC JSON Web Token (JWT).
-                        type: string
-                      oidcRequiredClaim:
-                        description: A key=value pair that describes a required claim in the ID Token. If set, the claim is verified to be present in the ID Token with a matching value. Repeat this flag to specify multiple claims.
-                        items:
-                          type: string
-                        type: array
-                      oidcUsernameClaim:
-                        description: OIDCUsernameClaim is the OpenID claim to use as the user name. Note that claims other than the default ('sub') is not guaranteed to be unique and immutable.
-                        type: string
-                      oidcUsernamePrefix:
-                        description: OIDCUsernamePrefix is the prefix prepended to username claims to prevent clashes with existing names (such as 'system:' users).
                         type: string
                       proxyClientCertFile:
                         description: The apiserver's client certificate used for outbound requests.
@@ -2313,6 +2734,9 @@ spec:
                       nodeLocalDNS:
                         description: NodeLocalDNS specifies the configuration for the node-local-dns addon
                         properties:
+                          additionalConfig:
+                            description: AdditionalConfig is used to provide additional config for node local dns by the user - it will include the original CoreFile made by kOps.
+                            type: string
                           cpuRequest:
                             anyOf:
                             - type: integer
@@ -2323,6 +2747,9 @@ spec:
                           enabled:
                             description: Enabled activates the node-local-dns addon.
                             type: boolean
+                          externalCoreFile:
+                            description: ExternalCoreFile is used to provide a complete NodeLocalDNS CoreFile by the user - ignores other provided flags which modify the CoreFile.
+                            type: string
                           forwardToKubeDNS:
                             description: If enabled, nodelocal dns will use kubedns as a default upstream
                             type: boolean
@@ -2730,6 +3157,9 @@ spec:
                         description: MaxPods is the number of pods that can run on this Kubelet.
                         format: int32
                         type: integer
+                      memorySwapBehavior:
+                        description: 'MemorySwapBehavior defines how swap is used by container workloads. Supported values: LimitedSwap, "UnlimitedSwap.'
+                        type: string
                       networkPluginMTU:
                         description: NetworkPluginMTU is the MTU to be passed to the network plugin, and overrides the default MTU for cases where it cannot be automatically computed (such as IPSEC).
                         format: int32
@@ -2862,323 +3292,8 @@ spec:
                         description: VolumeStatsAggPeriod is the interval for kubelet to calculate and cache the volume disk usage for all pods and volumes
                         type: string
                     type: object
-                  kubernetesAPIAccess:
-                    description: KubernetesAPIAccess is a list of the CIDRs that can access the Kubernetes API endpoint (master HTTPS)
-                    items:
-                      type: string
-                    type: array
                   kubernetesVersion:
                     description: The version of kubernetes to install (optional, and can be a "spec" like stable)
-                    type: string
-                  masterInternalName:
-                    description: MasterInternalName is the internal DNS name for the master nodes
-                    type: string
-                  masterKubelet:
-                    description: MasterKubelet is the kubelet configuration for nodes belonging to the control plane It can be overridden by the kubelet configuration specified in the instance group.
-                    properties:
-                      allowPrivileged:
-                        description: AllowPrivileged enables containers to request privileged mode (defaults to false)
-                        type: boolean
-                      allowedUnsafeSysctls:
-                        description: AllowedUnsafeSysctls are passed to the kubelet config to whitelist allowable sysctls
-                        items:
-                          type: string
-                        type: array
-                      anonymousAuth:
-                        description: AnonymousAuth permits you to control auth to the kubelet api
-                        type: boolean
-                      apiServers:
-                        description: APIServers is not used for clusters version 1.6 and later - flag removed
-                        type: string
-                      authenticationTokenWebhook:
-                        description: AuthenticationTokenWebhook uses the TokenReview API to determine authentication for bearer tokens.
-                        type: boolean
-                      authenticationTokenWebhookCacheTTL:
-                        description: AuthenticationTokenWebhook sets the duration to cache responses from the webhook token authenticator. Default is 2m. (default 2m0s)
-                        type: string
-                      authorizationMode:
-                        description: AuthorizationMode is the authorization mode the kubelet is running in
-                        type: string
-                      babysitDaemons:
-                        description: The node has babysitter process monitoring docker and kubelet. Removed as of 1.7
-                        type: boolean
-                      bootstrapKubeconfig:
-                        description: BootstrapKubeconfig is the path to a kubeconfig file that will be used to get client certificate for kubelet
-                        type: string
-                      cgroupDriver:
-                        description: CgroupDriver allows the explicit setting of the kubelet cgroup driver. If omitted, defaults to cgroupfs.
-                        type: string
-                      cgroupRoot:
-                        description: cgroupRoot is the root cgroup to use for pods. This is handled by the container runtime on a best effort basis.
-                        type: string
-                      clientCAFile:
-                        description: ClientCAFile is the path to a CA certificate
-                        type: string
-                      cloudProvider:
-                        description: CloudProvider is the provider for cloud services.
-                        type: string
-                      clusterDNS:
-                        description: ClusterDNS is the IP address for a cluster DNS server
-                        type: string
-                      clusterDomain:
-                        description: ClusterDomain is the DNS domain for this cluster
-                        type: string
-                      configureCbr0:
-                        description: configureCBR0 enables the kubelet to configure cbr0 based on Node.Spec.PodCIDR.
-                        type: boolean
-                      containerLogMaxFiles:
-                        description: ContainerLogMaxFiles is the maximum number of container log files that can be present for a container. The number must be >= 2.
-                        format: int32
-                        type: integer
-                      containerLogMaxSize:
-                        description: ContainerLogMaxSize is the maximum size (e.g. 10Mi) of container log file before it is rotated.
-                        type: string
-                      cpuCFSQuota:
-                        description: CPUCFSQuota enables CPU CFS quota enforcement for containers that specify CPU limits
-                        type: boolean
-                      cpuCFSQuotaPeriod:
-                        description: CPUCFSQuotaPeriod sets CPU CFS quota period value, cpu.cfs_period_us, defaults to Linux Kernel default
-                        type: string
-                      cpuManagerPolicy:
-                        description: CpuManagerPolicy allows for changing the default policy of None to static
-                        type: string
-                      dockerDisableSharedPID:
-                        description: DockerDisableSharedPID uses a shared PID namespace for containers in a pod.
-                        type: boolean
-                      enableCadvisorJsonEndpoints:
-                        description: EnableCadvisorJsonEndpoints enables cAdvisor json `/spec` and `/stats/*` endpoints. Defaults to False.
-                        type: boolean
-                      enableCustomMetrics:
-                        description: Enable gathering custom metrics.
-                        type: boolean
-                      enableDebuggingHandlers:
-                        description: EnableDebuggingHandlers enables server endpoints for log collection and local running of containers and commands
-                        type: boolean
-                      enforceNodeAllocatable:
-                        description: Enforce Allocatable across pods whenever the overall usage across all pods exceeds Allocatable.
-                        type: string
-                      eventBurst:
-                        description: EventBurst temporarily allows event records to burst to this number, while still not exceeding EventQPS. Only used if EventQPS > 0.
-                        format: int32
-                        type: integer
-                      eventQPS:
-                        description: EventQPS if > 0, limit event creations per second to this value.  If 0, unlimited.
-                        format: int32
-                        type: integer
-                      evictionHard:
-                        description: Comma-delimited list of hard eviction expressions.  For example, 'memory.available<300Mi'.
-                        type: string
-                      evictionMaxPodGracePeriod:
-                        description: Maximum allowed grace period (in seconds) to use when terminating pods in response to a soft eviction threshold being met.
-                        format: int32
-                        type: integer
-                      evictionMinimumReclaim:
-                        description: Comma-delimited list of minimum reclaims (e.g. imagefs.available=2Gi) that describes the minimum amount of resource the kubelet will reclaim when performing a pod eviction if that resource is under pressure.
-                        type: string
-                      evictionPressureTransitionPeriod:
-                        description: Duration for which the kubelet has to wait before transitioning out of an eviction pressure condition.
-                        type: string
-                      evictionSoft:
-                        description: Comma-delimited list of soft eviction expressions.  For example, 'memory.available<300Mi'.
-                        type: string
-                      evictionSoftGracePeriod:
-                        description: Comma-delimited list of grace periods for each soft eviction signal.  For example, 'memory.available=30s'.
-                        type: string
-                      experimentalAllowedUnsafeSysctls:
-                        description: ExperimentalAllowedUnsafeSysctls are passed to the kubelet config to whitelist allowable sysctls Was promoted to beta and renamed. https://github.com/kubernetes/kubernetes/pull/63717
-                        items:
-                          type: string
-                        type: array
-                      failSwapOn:
-                        description: Tells the Kubelet to fail to start if swap is enabled on the node.
-                        type: boolean
-                      featureGates:
-                        additionalProperties:
-                          type: string
-                        description: FeatureGates is set of key=value pairs that describe feature gates for alpha/experimental features.
-                        type: object
-                      hairpinMode:
-                        description: 'How should the kubelet configure the container bridge for hairpin packets. Setting this flag allows endpoints in a Service to loadbalance back to themselves if they should try to access their own Service. Values: "promiscuous-bridge": make the container bridge promiscuous. "hairpin-veth":       set the hairpin flag on container veth interfaces. "none":               do nothing. Setting --configure-cbr0 to false implies that to achieve hairpin NAT one must set --hairpin-mode=veth-flag, because bridge assumes the existence of a container bridge named cbr0.'
-                        type: string
-                      hostnameOverride:
-                        description: HostnameOverride is the hostname used to identify the kubelet instead of the actual hostname.
-                        type: string
-                      housekeepingInterval:
-                        description: HousekeepingInterval allows to specify interval between container housekeepings.
-                        type: string
-                      imageGCHighThresholdPercent:
-                        description: ImageGCHighThresholdPercent is the percent of disk usage after which image garbage collection is always run.
-                        format: int32
-                        type: integer
-                      imageGCLowThresholdPercent:
-                        description: ImageGCLowThresholdPercent is the percent of disk usage before which image garbage collection is never run. Lowest disk usage to garbage collect to.
-                        format: int32
-                        type: integer
-                      imagePullProgressDeadline:
-                        description: ImagePullProgressDeadline is the timeout for image pulls If no pulling progress is made before this deadline, the image pulling will be cancelled. (default 1m0s)
-                        type: string
-                      kernelMemcgNotification:
-                        description: Integrate with the kernel memcg notification to determine if memory eviction thresholds are crossed rather than polling.
-                        type: boolean
-                      kubeReserved:
-                        additionalProperties:
-                          type: string
-                        description: Resource reservation for kubernetes system daemons like the kubelet, container runtime, node problem detector, etc.
-                        type: object
-                      kubeReservedCgroup:
-                        description: Control group for kube daemons.
-                        type: string
-                      kubeconfigPath:
-                        description: KubeconfigPath is the path of kubeconfig for the kubelet
-                        type: string
-                      kubeletCgroups:
-                        description: KubeletCgroups is the absolute name of cgroups to isolate the kubelet in.
-                        type: string
-                      logFormat:
-                        description: 'LogFormat is the logging format of the kubelet. Supported values: text, json. Default: text'
-                        type: string
-                      logLevel:
-                        description: LogLevel is the logging level of the kubelet
-                        format: int32
-                        type: integer
-                      maxPods:
-                        description: MaxPods is the number of pods that can run on this Kubelet.
-                        format: int32
-                        type: integer
-                      networkPluginMTU:
-                        description: NetworkPluginMTU is the MTU to be passed to the network plugin, and overrides the default MTU for cases where it cannot be automatically computed (such as IPSEC).
-                        format: int32
-                        type: integer
-                      networkPluginName:
-                        description: NetworkPluginName is the name of the network plugin to be invoked for various events in kubelet/pod lifecycle
-                        type: string
-                      nodeLabels:
-                        additionalProperties:
-                          type: string
-                        description: NodeLabels to add when registering the node in the cluster.
-                        type: object
-                      nodeStatusUpdateFrequency:
-                        description: NodeStatusUpdateFrequency Specifies how often kubelet posts node status to master (default 10s) must work with nodeMonitorGracePeriod in KubeControllerManagerConfig.
-                        type: string
-                      nonMasqueradeCIDR:
-                        description: 'NonMasqueradeCIDR configures masquerading: traffic to IPs outside this range will use IP masquerade.'
-                        type: string
-                      nvidiaGPUs:
-                        description: NvidiaGPUs is the number of NVIDIA GPU devices on this node.
-                        format: int32
-                        type: integer
-                      podCIDR:
-                        description: PodCIDR is the CIDR to use for pod IP addresses, only used in standalone mode. In cluster mode, this is obtained from the master.
-                        type: string
-                      podInfraContainerImage:
-                        description: PodInfraContainerImage is the image whose network/ipc containers in each pod will use.
-                        type: string
-                      podManifestPath:
-                        description: config is the path to the config file or directory of files
-                        type: string
-                      podPidsLimit:
-                        description: PodPidsLimit is the maximum number of pids in any pod.
-                        format: int64
-                        type: integer
-                      protectKernelDefaults:
-                        description: 'Default kubelet behaviour for kernel tuning. If set, kubelet errors if any of kernel tunables is different than kubelet defaults. (DEPRECATED: This parameter should be set via the config file specified by the Kubelet''s --config flag.'
-                        type: boolean
-                      readOnlyPort:
-                        description: ReadOnlyPort is the port used by the kubelet api for read-only access (default 10255)
-                        format: int32
-                        type: integer
-                      reconcileCIDR:
-                        description: ReconcileCIDR is Reconcile node CIDR with the CIDR specified by the API server. No-op if register-node or configure-cbr0 is false.
-                        type: boolean
-                      registerNode:
-                        description: RegisterNode enables automatic registration with the apiserver.
-                        type: boolean
-                      registerSchedulable:
-                        description: registerSchedulable tells the kubelet to register the node as schedulable. No-op if register-node is false.
-                        type: boolean
-                      registryBurst:
-                        description: RegistryBurst Maximum size of a bursty pulls, temporarily allows pulls to burst to this number, while still not exceeding registry-qps. Only used if --registry-qps > 0 (default 10)
-                        format: int32
-                        type: integer
-                      registryPullQPS:
-                        description: RegistryPullQPS if > 0, limit registry pull QPS to this value.  If 0, unlimited. (default 5)
-                        format: int32
-                        type: integer
-                      requireKubeconfig:
-                        description: RequireKubeconfig indicates a kubeconfig is required
-                        type: boolean
-                      resolvConf:
-                        description: ResolverConfig is the resolver configuration file used as the basis for the container DNS resolution configuration."), []
-                        type: string
-                      rootDir:
-                        description: RootDir is the directory path for managing kubelet files (volume mounts,etc)
-                        type: string
-                      rotateCertificates:
-                        description: rotateCertificates enables client certificate rotation.
-                        type: boolean
-                      runtimeCgroups:
-                        description: Cgroups that container runtime is expected to be isolated in.
-                        type: string
-                      runtimeRequestTimeout:
-                        description: RuntimeRequestTimeout is timeout for runtime requests on - pull, logs, exec and attach
-                        type: string
-                      seccompProfileRoot:
-                        description: SeccompProfileRoot is the directory path for seccomp profiles.
-                        type: string
-                      serializeImagePulls:
-                        description: '// SerializeImagePulls when enabled, tells the Kubelet to pull images one // at a time. We recommend *not* changing the default value on nodes that // run docker daemon with version  < 1.9 or an Aufs storage backend. // Issue #10959 has more details.'
-                        type: boolean
-                      shutdownGracePeriod:
-                        description: 'ShutdownGracePeriod specifies the total duration that the node should delay the shutdown by. Default: 30s'
-                        type: string
-                      shutdownGracePeriodCriticalPods:
-                        description: 'ShutdownGracePeriodCriticalPods specifies the duration used to terminate critical pods during a node shutdown. Default: 10s'
-                        type: string
-                      streamingConnectionIdleTimeout:
-                        description: StreamingConnectionIdleTimeout is the maximum time a streaming connection can be idle before the connection is automatically closed
-                        type: string
-                      systemCgroups:
-                        description: SystemCgroups is absolute name of cgroups in which to place all non-kernel processes that are not already in a container. Empty for no container. Rolling back the flag requires a reboot.
-                        type: string
-                      systemReserved:
-                        additionalProperties:
-                          type: string
-                        description: Capture resource reservation for OS system daemons like sshd, udev, etc.
-                        type: object
-                      systemReservedCgroup:
-                        description: Parent control group for OS system daemons.
-                        type: string
-                      taints:
-                        description: Taints to add when registering a node in the cluster
-                        items:
-                          type: string
-                        type: array
-                      tlsCertFile:
-                        description: 'TODO: Remove unused TLSCertFile'
-                        type: string
-                      tlsCipherSuites:
-                        description: TLSCipherSuites indicates the allowed TLS cipher suite
-                        items:
-                          type: string
-                        type: array
-                      tlsMinVersion:
-                        description: TLSMinVersion indicates the minimum TLS version allowed
-                        type: string
-                      tlsPrivateKeyFile:
-                        description: 'TODO: Remove unused TLSPrivateKeyFile'
-                        type: string
-                      topologyManagerPolicy:
-                        description: TopologyManagerPolicy determines the allocation policy for the topology manager.
-                        type: string
-                      volumePluginDirectory:
-                        description: The full path of the directory in which to search for additional third party volume plugins (this path must be writeable, dependent on your choice of OS)
-                        type: string
-                      volumeStatsAggPeriod:
-                        description: VolumeStatsAggPeriod is the interval for kubelet to calculate and cache the volume disk usage for all pods and volumes
-                        type: string
-                    type: object
-                  masterPublicName:
-                    description: MasterPublicName is the external DNS name for the master nodes
                     type: string
                   metricsServer:
                     description: MetricsServer determines the metrics server configuration.
@@ -3193,16 +3308,15 @@ spec:
                         description: 'Insecure determines if API server will validate metrics server TLS cert. Default: true'
                         type: boolean
                     type: object
-                  networkCIDR:
-                    description: NetworkCIDR is the CIDR used for the AWS VPC / DO/ GCE Network, or otherwise allocated to k8s This is a real CIDR, not the internal k8s network On AWS, it maps to the VPC CIDR.  It is not required on GCE. On DO, it maps to the VPC CIDR.
-                    type: string
-                  networkID:
-                    description: NetworkID is an identifier of a network, if we want to reuse/share an existing network (e.g. an AWS VPC)
-                    type: string
                   networking:
-                    description: Networking configuration
+                    description: Networking configures networking.
                     properties:
-                      amazonvpc:
+                      additionalNetworkCIDRs:
+                        description: AdditionalNetworkCIDRs is a list of additional CIDR used for the AWS VPC or otherwise allocated to k8s. This is a real CIDR, not the internal k8s network On AWS, it maps to any additional CIDRs added to a VPC.
+                        items:
+                          type: string
+                        type: array
+                      amazonVPC:
                         description: AmazonVPCNetworkingSpec declares that we want Amazon VPC CNI networking
                         properties:
                           env:
@@ -3234,7 +3348,7 @@ spec:
                             description: 'AllowIPForwarding enable ip_forwarding setting within the container namespace. (default: false)'
                             type: boolean
                           awsSrcDstCheck:
-                            description: 'AWSSrcDstCheck enables/disables ENI source/destination checks (AWS only) Options: Disable (default), Enable, or DoNothing'
+                            description: 'AWSSrcDstCheck enables/disables ENI source/destination checks (AWS IPv4 only) Options: Disable (default for IPv4), Enable, or DoNothing'
                             type: string
                           bpfEnabled:
                             description: BPFEnabled enables the eBPF dataplane mode.
@@ -3467,6 +3581,9 @@ spec:
                           enableServiceTopology:
                             description: EnableServiceTopology determine if cilium should use topology aware hints.
                             type: boolean
+                          enableUnreachableRoutes:
+                            description: 'EnableUnreachableRoutes enables unreachable routes on pod deletion. Default: false'
+                            type: boolean
                           encryptionType:
                             description: 'EncryptionType specifies Cilium Encryption method ("ipsec", "wireguard"). Default: ipsec'
                             type: string
@@ -3515,6 +3632,11 @@ spec:
                           monitorAggregation:
                             description: 'MonitorAggregation sets the level of packet monitoring. Possible values are "low", "medium", or "maximum". Default: medium'
                             type: string
+                          operatorPodAnnotations:
+                            additionalProperties:
+                              type: string
+                            description: 'OperatorPodAnnotations makes possible to add additional annotations to cilium operator. Default: none'
+                            type: object
                           preallocateBPFMaps:
                             description: 'PreallocateBPFMaps reduces the per-packet latency at the expense of up-front memory allocation. Default: true'
                             type: boolean
@@ -3543,6 +3665,19 @@ spec:
                           usesSecondaryIP:
                             type: boolean
                         type: object
+                      egressProxy:
+                        description: HTTPProxy defines connection information to support use of a private cluster behind an forward HTTP Proxy
+                        properties:
+                          excludes:
+                            type: string
+                          httpProxy:
+                            properties:
+                              host:
+                                type: string
+                              port:
+                                type: integer
+                            type: object
+                        type: object
                       external:
                         description: ExternalNetworkingSpec is the specification for networking that is implemented by a user-provided Daemonset that uses the Kubenet kubelet networking plugin.
                         type: object
@@ -3560,14 +3695,17 @@ spec:
                       gce:
                         description: GCENetworkingSpec is the specification of GCE's native networking mode, using IP aliases
                         type: object
+                      isolateControlPlane:
+                        description: 'IsolateControlPlane determines whether we should lock down masters so that they are not on the pod network. true is the kube-up behaviour, but it is very surprising: it means that daemonsets only work on the master if they have hostNetwork=true. false is now the default, and it will: * give the master a normal PodCIDR * run kube-proxy on the master * enable debugging handlers on the master, so kubectl logs works'
+                        type: boolean
                       kopeio:
                         description: KopeioNetworkingSpec declares that we want Kopeio networking
                         type: object
+                      kubeRouter:
+                        description: KuberouterNetworkingSpec declares that we want Kube-router networking
+                        type: object
                       kubenet:
                         description: KubenetNetworkingSpec is the specification for kubenet networking, largely integrated but intended to replace classic
-                        type: object
-                      kuberouter:
-                        description: KuberouterNetworkingSpec declares that we want Kube-router networking
                         type: object
                       lyftvpc:
                         description: LyftVPCNetworkingSpec declares that we want to use the cni-ipvlan-vpc-k8s CNI networking. Lyft VPC is deprecated as of kOps 1.22 and removed as of kOps 1.23.
@@ -3577,6 +3715,18 @@ spec:
                               type: string
                             type: object
                         type: object
+                      networkCIDR:
+                        description: NetworkCIDR is the primary IPv4 CIDR used for the cloud provider's network. It is not required on GCE. On DO, it maps to the VPC CIDR.
+                        type: string
+                      networkID:
+                        description: NetworkID is the cloud provider's identifier of the existing network (for example, AWS VPC) the cluster should use. If not specified, kOps will create a new network.
+                        type: string
+                      nonMasqueradeCIDR:
+                        description: NonMasqueradeCIDR is the CIDR for the internal k8s network (on which pods & services live) It cannot overlap ServiceClusterIPRange
+                        type: string
+                      podCIDR:
+                        description: PodCIDR is the CIDR from which we allocate IPs for pods
+                        type: string
                       romana:
                         description: RomanaNetworkingSpec declares that we want Romana networking Romana is deprecated as of kOps 1.18 and removed as of kOps 1.19.
                         properties:
@@ -3585,6 +3735,85 @@ spec:
                             type: string
                           etcdServiceIP:
                             description: EtcdServiceIP is the Kubernetes Service IP for the etcd backend used by Romana
+                            type: string
+                        type: object
+                      serviceClusterIPRange:
+                        description: ServiceClusterIPRange is the CIDR, from the internal network, where we allocate IPs for services
+                        type: string
+                      subnets:
+                        description: Subnets are the subnets that the cluster can use.
+                        items:
+                          description: 'ClusterSubnetSpec defines a subnet TODO: move to networking.go'
+                          properties:
+                            additionalRoutes:
+                              description: AdditionalRoutes to attach to the subnet's route table
+                              items:
+                                properties:
+                                  cidr:
+                                    description: CIDR destination of the route
+                                    type: string
+                                  target:
+                                    description: Target of the route
+                                    type: string
+                                type: object
+                              type: array
+                            cidr:
+                              description: CIDR is the IPv4 CIDR block assigned to the subnet.
+                              type: string
+                            egress:
+                              description: Egress defines the method of traffic egress for this subnet
+                              type: string
+                            id:
+                              description: ID is the cloud provider ID for the objects associated with the zone (the subnet on AWS).
+                              type: string
+                            ipv6CIDR:
+                              description: IPv6CIDR is the IPv6 CIDR block assigned to the subnet.
+                              type: string
+                            name:
+                              description: Name is the name of the subnet
+                              type: string
+                            publicIP:
+                              description: PublicIP to attach to NatGateway
+                              type: string
+                            region:
+                              description: Region is the region the subnet is in, set for subnets that are regionally scoped
+                              type: string
+                            type:
+                              description: Type define which one if the internal types (public, utility, private) the network is
+                              type: string
+                            zone:
+                              description: Zone is the zone the subnet is in, set for subnets that are zonally scoped
+                              type: string
+                          type: object
+                        type: array
+                      tagSubnets:
+                        description: 'TagSubnets controls if tags are added to subnets to enable use by load balancers (AWS only). Default: true.'
+                        type: boolean
+                      topology:
+                        description: Topology defines the type of network topology to use on the cluster - default public This is heavily weighted towards AWS for the time being, but should also be agnostic enough to port out to GCE later if needed
+                        properties:
+                          bastion:
+                            description: Bastion provide an external facing point of entry into a network containing private network instances. This host can provide a single point of fortification or audit and can be started and stopped to enable or disable inbound SSH communication from the Internet. Some call the bastion the "jump server".
+                            properties:
+                              loadBalancer:
+                                description: LoadBalancer contains settings for the load balancer fronting bastion instances.
+                                properties:
+                                  type:
+                                    description: Type of load balancer to create, it can be Public or Internal.
+                                    type: string
+                                type: object
+                              publicName:
+                                description: PublicName is the domain name for the bastion load balancer.
+                                type: string
+                            type: object
+                          controlPlane:
+                            description: ControlPlane specifies the environment for launching the control plane nodes. (public, private)
+                            type: string
+                          dns:
+                            description: DNS specifies the environment for hosted DNS zones. (Public, Private, None)
+                            type: string
+                          nodes:
+                            description: Nodes specifies the environment for launching the worker nodes. (public, private)
                             type: string
                         type: object
                       weave:
@@ -3743,57 +3972,6 @@ spec:
                         pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                         x-kubernetes-int-or-string: true
                     type: object
-                  nodeTerminationHandler:
-                    description: NodeTerminationHandler determines the node termination handler configuration.
-                    properties:
-                      cpuRequest:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        description: 'CPURequest of NodeTerminationHandler container. Default: 50m'
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                        x-kubernetes-int-or-string: true
-                      enableRebalanceDraining:
-                        description: 'EnableRebalanceDraining makes node termination handler drain nodes when the rebalance recommendation notice is received Default: false'
-                        type: boolean
-                      enableRebalanceMonitoring:
-                        description: 'EnableRebalanceMonitoring makes node termination handler cordon nodes when the rebalance recommendation notice is received Default: false'
-                        type: boolean
-                      enableSQSTerminationDraining:
-                        description: EnableSQSTerminationDraining enables queue-processor mode which drains nodes when an SQS termination event is received.
-                        type: boolean
-                      enableScheduledEventDraining:
-                        description: 'EnableScheduledEventDraining makes node termination handler drain nodes before the maintenance window starts for an EC2 instance scheduled event. Default: false'
-                        type: boolean
-                      enableSpotInterruptionDraining:
-                        description: 'EnableSpotInterruptionDraining makes node termination handler drain nodes when spot interruption termination notice is received. Default: true'
-                        type: boolean
-                      enabled:
-                        description: 'Enabled enables the node termination handler. Default: true'
-                        type: boolean
-                      excludeFromLoadBalancers:
-                        description: 'ExcludeFromLoadBalancers makes node termination handler will mark for exclusion from load balancers before node are cordoned. Default: true'
-                        type: boolean
-                      managedASGTag:
-                        description: ManagedASGTag is the tag used to determine which nodes NTH can take action on This field has kept its name even though it now maps to the --managed-tag flag due to keeping the API stable. Node termination handler does no longer check the ASG for this tag, but the actual EC2 instances.
-                        type: string
-                      memoryRequest:
-                        anyOf:
-                        - type: integer
-                        - type: string
-                        description: 'MemoryRequest of NodeTerminationHandler container. Default: 64Mi'
-                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                        x-kubernetes-int-or-string: true
-                      prometheusEnable:
-                        description: EnablePrometheusMetrics enables the "/metrics" endpoint.
-                        type: boolean
-                      version:
-                        description: Version is the container image tag used.
-                        type: string
-                    type: object
-                  nonMasqueradeCIDR:
-                    description: NonMasqueradeCIDR is the CIDR for the internal k8s network (on which pods & services live) It cannot overlap ServiceClusterIPRange
-                    type: string
                   ntp:
                     description: NTPConfig is the configuration for NTP.
                     properties:
@@ -3801,20 +3979,6 @@ spec:
                         description: Managed controls if the NTP configuration is managed by kOps. The NTP configuration task is skipped if this is set to false.
                         type: boolean
                     type: object
-                  podCIDR:
-                    description: PodCIDR is the CIDR from which we allocate IPs for pods
-                    type: string
-                  podIdentityWebhook:
-                    description: PodIdentityWebhook determines the EKS Pod Identity Webhook configuration.
-                    properties:
-                      enabled:
-                        type: boolean
-                      replicas:
-                        type: integer
-                    type: object
-                  project:
-                    description: Project is the cloud project we should use, required on GCE
-                    type: string
                   rollingUpdate:
                     description: RollingUpdate defines the default rolling-update settings for instance groups.
                     properties:
@@ -3852,9 +4016,6 @@ spec:
                         description: EnableAWSOIDCProvider will provision an AWS OIDC provider that trusts the ServiceAccount Issuer
                         type: boolean
                     type: object
-                  serviceClusterIPRange:
-                    description: ServiceClusterIPRange is the CIDR, from the internal network, where we allocate IPs for services
-                    type: string
                   snapshotController:
                     description: SnapshotController defines the CSI Snapshot Controller configuration.
                     properties:
@@ -3873,60 +4034,11 @@ spec:
                   sshKeyName:
                     description: SSHKeyName specifies a preexisting SSH key to use
                     type: string
-                  subnets:
-                    description: Configuration of subnets we are targeting
-                    items:
-                      description: ClusterSubnetSpec defines a subnet
-                      properties:
-                        additionalRoutes:
-                          description: AdditionalRoutes to attach to the subnet's route table
-                          items:
-                            properties:
-                              cidr:
-                                description: CIDR destination of the route
-                                type: string
-                              target:
-                                description: Target of the route
-                                type: string
-                            type: object
-                          type: array
-                        cidr:
-                          description: CIDR is the IPv4 CIDR block assigned to the subnet.
-                          type: string
-                        egress:
-                          description: Egress defines the method of traffic egress for this subnet
-                          type: string
-                        id:
-                          description: ProviderID is the cloud provider id for the objects associated with the zone (the subnet on AWS)
-                          type: string
-                        ipv6CIDR:
-                          description: IPv6CIDR is the IPv6 CIDR block assigned to the subnet.
-                          type: string
-                        name:
-                          description: Name is the name of the subnet
-                          type: string
-                        publicIP:
-                          description: PublicIP to attach to NatGateway
-                          type: string
-                        region:
-                          description: Region is the region the subnet is in, set for subnets that are regionally scoped
-                          type: string
-                        type:
-                          description: Type define which one if the internal types (public, utility, private) the network is
-                          type: string
-                        zone:
-                          description: Zone is the zone the subnet is in, set for subnets that are zonally scoped
-                          type: string
-                      type: object
-                    type: array
                   sysctlParameters:
                     description: SysctlParameters will configure kernel parameters using sysctl(8). When specified, each parameter must follow the form variable=value, the way it would appear in sysctl.conf.
                     items:
                       type: string
                     type: array
-                  tagSubnets:
-                    description: 'TagSubnets controls if tags are added to subnets to enable use by load balancers (AWS only). Default: true.'
-                    type: boolean
                   target:
                     description: Target allows for us to nest extra config for targets such as terraform
                     properties:
@@ -3945,65 +4057,12 @@ spec:
                             type: object
                         type: object
                     type: object
-                  topology:
-                    description: Topology defines the type of network topology to use on the cluster - default public This is heavily weighted towards AWS for the time being, but should also be agnostic enough to port out to GCE later if needed
-                    properties:
-                      bastion:
-                        description: Bastion provide an external facing point of entry into a network containing private network instances. This host can provide a single point of fortification or audit and can be started and stopped to enable or disable inbound SSH communication from the Internet, some call bastion as the "jump server".
-                        properties:
-                          idleTimeoutSeconds:
-                            description: IdleTimeoutSeconds is the bastion's load balancer idle timeout.
-                            format: int64
-                            type: integer
-                          loadBalancer:
-                            description: LoadBalancer contains settings for the load balancer fronting bastion instances.
-                            properties:
-                              additionalSecurityGroups:
-                                items:
-                                  type: string
-                                type: array
-                              type:
-                                description: Type of load balancer to create, it can be Public or Internal.
-                                type: string
-                            type: object
-                          publicName:
-                            description: PublicName is the domain name for the bastion load balancer.
-                            type: string
-                        type: object
-                      dns:
-                        description: DNS configures options relating to DNS, in particular whether we use a public or a private hosted zone
-                        properties:
-                          type:
-                            type: string
-                        type: object
-                      masters:
-                        description: The environment to launch the Kubernetes masters in public|private
-                        type: string
-                      nodes:
-                        description: The environment to launch the Kubernetes nodes in public|private
-                        type: string
-                    type: object
                   updatePolicy:
                     description: 'UpdatePolicy determines the policy for applying upgrades automatically. Valid values: ''automatic'' (default): apply updates automatically (apply OS security upgrades, avoiding rebooting when possible) ''external'': do not apply updates automatically; they are applied manually or by an external system'
                     type: string
                   useHostCertificates:
                     description: UseHostCertificates will mount /etc/ssl/certs to inside needed containers. This is needed if some APIs do have self-signed certs
                     type: boolean
-                  warmPool:
-                    description: WarmPool defines the default warm pool settings for instance groups (AWS only).
-                    properties:
-                      enableLifecycleHook:
-                        description: EnableLifecyleHook determines if an ASG lifecycle hook will be added ensuring that nodeup runs to completion. Note that the metadata API must be protected from arbitrary Pods when this is enabled.
-                        type: boolean
-                      maxSize:
-                        description: MaxSize is the maximum size of the warm pool. The desired size of the instance group is subtracted from this number to determine the desired size of the warm pool (unless the resulting number is smaller than MinSize). The default is the instance group's MaxSize.
-                        format: int64
-                        type: integer
-                      minSize:
-                        description: MinSize is the minimum size of the warm pool.
-                        format: int64
-                        type: integer
-                    type: object
                 type: object
               kopsSecret:
                 description: KopsSecret is a reference to the Kubernetes Secret that holds a list of Kops Secrets
