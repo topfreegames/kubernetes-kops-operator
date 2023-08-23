@@ -406,8 +406,8 @@ func TestCreateOrUpdateKopsCluster(t *testing.T) {
 func TestKopsControlPlaneReconciler(t *testing.T) {
 	testCases := []struct {
 		description              string
+		expectedResult           ctrl.Result
 		expectedError            bool
-		expectedRequeue          bool
 		kopsControlPlaneFunction func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane
 		clusterFunction          func(cluster *clusterv1.Cluster) *clusterv1.Cluster
 		getASGByNameFactory      func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error)
@@ -415,7 +415,8 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 		updateKubeconfigSecret   bool
 	}{
 		{
-			description: "should successfully create Kops Cluster",
+			description:    "should successfully create Kops Cluster",
+			expectedResult: resultDefault,
 		},
 		{
 			description: "should successfully create a Kops Cluster that belongs a mesh",
@@ -425,9 +426,19 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				}
 				return cluster
 			},
+			expectedResult: resultDefault,
 		},
 		{
-			description: "should successfully create Kops Cluster with a custom Kops Secret",
+			description:    "should not requeue a KopsControlPlane that don't match the controllerClass",
+			expectedResult: resultNotRequeue,
+			kopsControlPlaneFunction: func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane {
+				kopsControlPlane.Spec.ControllerClass = "foo"
+				return kopsControlPlane
+			},
+		},
+		{
+			description:    "should successfully create Kops Cluster with a custom Kops Secret",
+			expectedResult: resultDefault,
 			kopsControlPlaneFunction: func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane {
 				kopsControlPlane.Spec.KopsSecret = &corev1.ObjectReference{
 					Namespace:  corev1.NamespaceDefault,
@@ -439,22 +450,24 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			},
 		},
 		{
-			description:     "should not fail to if ASG not ready",
-			expectedRequeue: true,
+			description:    "should not fail to if ASG not ready",
+			expectedResult: requeue1min,
 			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 				return nil, apierrors.NewNotFound(schema.GroupResource{}, "ASG not ready")
 			},
 		},
 		{
-			description:   "should fail to if can't retrieve ASG",
-			expectedError: true,
+			description:    "should fail to if can't retrieve ASG",
+			expectedError:  true,
+			expectedResult: resultError,
 			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 				return nil, errors.New("error")
 			},
 		},
 		{
-			description:   "should fail to create Kops Cluster",
-			expectedError: true,
+			description:    "should fail to create Kops Cluster",
+			expectedError:  true,
+			expectedResult: resultError,
 			kopsControlPlaneFunction: func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane {
 				kopsControlPlane.Spec.KopsClusterSpec.KubernetesVersion = ""
 				return kopsControlPlane
@@ -463,10 +476,12 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 		{
 			description:            "should successfully create secret with Kubeconfig",
 			createKubeconfigSecret: true,
+			expectedResult:         resultDefault,
 		},
 		{
 			description:            "should successfully update Kubeconfig secret",
 			updateKubeconfigSecret: true,
+			expectedResult:         resultDefault,
 		},
 	}
 	RegisterFailHandler(Fail)
@@ -579,22 +594,17 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 					Name:      helpers.GetFQDN("testCluster"),
 				},
 			})
-			if !tc.expectedError {
-				g.Expect(err).ToNot(HaveOccurred())
-				g.Expect(result.Requeue).To(BeFalse())
-				if tc.expectedRequeue {
-					g.Expect(result.RequeueAfter).To(Equal(time.Duration(1 * time.Minute)))
-				} else {
-					g.Expect(result.RequeueAfter).To(Equal(time.Duration(20 * time.Minute)))
-				}
 
+			g.Expect(result).To(Equal(tc.expectedResult))
+			if tc.expectedError {
+				g.Expect(err).To(HaveOccurred())
+			} else if result != resultNotRequeue {
+				g.Expect(err).ToNot(HaveOccurred())
 				kopsCluster, err := fakeKopsClientset.GetCluster(ctx, cluster.GetObjectMeta().GetName())
 				g.Expect(kopsCluster).ToNot(BeNil())
 				g.Expect(err).ToNot(HaveOccurred())
-			} else {
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(result.RequeueAfter).To(Equal(time.Duration(5 * time.Minute)))
 			}
+
 			if tc.createKubeconfigSecret {
 				secretKubeconfig := corev1.Secret{
 					ObjectMeta: metav1.ObjectMeta{

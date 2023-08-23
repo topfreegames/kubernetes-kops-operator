@@ -143,6 +143,7 @@ func main() {
 	if err = (&controlplane.KopsControlPlaneReconciler{
 		Client:                           mgr.GetClient(),
 		Scheme:                           mgr.GetScheme(),
+		ControllerClass:                  controllerClass,
 		Mux:                              new(sync.Mutex),
 		Recorder:                         mgr.GetEventRecorderFor("kopscontrolplane-controller"),
 		TfExecPath:                       tfExecPath,
@@ -154,7 +155,7 @@ func main() {
 		ValidateKopsClusterFactory:       utils.ValidateKopsCluster,
 		GetClusterStatusFactory:          controlplane.GetClusterStatus,
 		GetASGByNameFactory:              controlplane.GetASGByName,
-	}).SetupWithManager(ctx, mgr, workers, controllerClass); err != nil {
+	}).SetupWithManager(ctx, mgr, workers); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsControlPlane")
 		os.Exit(1)
 	}

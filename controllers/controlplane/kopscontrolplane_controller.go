@@ -76,9 +76,10 @@ import (
 
 // TODO: fetch reconciliation configs from a configMap using kube API on each reconciliation
 var (
-	requeue1min   = ctrl.Result{RequeueAfter: 1 * time.Minute}
-	resultDefault = ctrl.Result{RequeueAfter: 20 * time.Minute}
-	resultError   = ctrl.Result{RequeueAfter: 5 * time.Minute}
+	requeue1min      = ctrl.Result{RequeueAfter: 1 * time.Minute}
+	resultDefault    = ctrl.Result{RequeueAfter: 20 * time.Minute}
+	resultError      = ctrl.Result{RequeueAfter: 5 * time.Minute}
+	resultNotRequeue = ctrl.Result{}
 )
 
 // KopsControlPlaneReconciler reconciles a KopsControlPlane object
@@ -86,6 +87,7 @@ type KopsControlPlaneReconciler struct {
 	client.Client
 	Scheme                           *runtime.Scheme
 	Mux                              *sync.Mutex
+	ControllerClass                  string
 	Recorder                         record.EventRecorder
 	TfExecPath                       string
 	GetKopsClientSetFactory          func(configBase string) (simple.Clientset, error)
@@ -485,7 +487,7 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ku
 
 func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	var lockInitTime time.Time
-	var shouldIUnlock bool
+	var shouldUnlock bool
 
 	log := ctrl.LoggerFrom(ctx)
 
@@ -495,18 +497,16 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, client.IgnoreNotFound(err)
 	}
 
-	awsCredentials, err := util.GetAWSCredentialsFromKopsControlPlaneSecret(ctx, r.Client, kopsControlPlane.Spec.IdentityRef.Name, kopsControlPlane.Spec.IdentityRef.Namespace)
-	if err != nil {
-		log.Error(err, "failed to get AWS credentials")
-		return resultError, err
-	}
-
 	reconciler := &KopsControlPlaneReconciliation{
 		KopsControlPlaneReconciler: *r,
 		log:                        log,
 		start:                      time.Now(),
-		awsCredentials:             *awsCredentials,
 		kcp:                        kopsControlPlane,
+	}
+
+	if kopsControlPlane.Spec.ControllerClass != r.ControllerClass {
+		reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ClusterManagedByDifferentControllerClass", "cluster is managed by a different controller class, removing it from queue")
+		return resultNotRequeue, nil
 	}
 
 	owner, err := reconciler.getClusterOwnerRef(ctx, kopsControlPlane)
@@ -523,14 +523,11 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	kmps, err := kopsutils.GetKopsMachinePoolsWithLabel(ctx, reconciler.Client, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
-	if err != nil {
-		return resultError, err
-	}
+	var kmps []infrastructurev1alpha1.KopsMachinePool
 
 	// Attempt to Update the KopsControlPlane and KopsMachinePool object and status after each reconciliation if no error occurs.
 	defer func() {
-		if shouldIUnlock {
+		if shouldUnlock {
 			reconciler.Mux.Unlock()
 			log.Info(fmt.Sprintf("unexpected Unlock step for %s, took %s", kopsControlPlane.Name, time.Since(lockInitTime)))
 		}
@@ -562,8 +559,20 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	kopsControlPlane.Status.Paused = false
 
+	awsCredentials, err := util.GetAWSCredentialsFromKopsControlPlaneSecret(ctx, r.Client, kopsControlPlane.Spec.IdentityRef.Name, kopsControlPlane.Spec.IdentityRef.Namespace)
+	if err != nil {
+		log.Error(err, "failed to get AWS credentials")
+		return resultError, err
+	}
+	reconciler.awsCredentials = *awsCredentials
+
+	kmps, err = kopsutils.GetKopsMachinePoolsWithLabel(ctx, reconciler.Client, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
+	if err != nil {
+		return resultError, err
+	}
+
 	reconciler.Mux.Lock()
-	shouldIUnlock = true
+	shouldUnlock = true
 
 	log.Info(fmt.Sprintf("starting reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
 	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ReconciliationStarted", "reconciliation started")
@@ -682,7 +691,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	reconciler.Mux.Unlock()
-	shouldIUnlock = false
+	shouldUnlock = false
 
 	err = reconciler.ApplyTerraformFactory(ctx, terraformOutputDir, r.TfExecPath, reconciler.awsCredentials)
 	if err != nil {
@@ -868,14 +877,14 @@ func (r *KopsControlPlaneReconciler) createOrUpdateInstanceGroup(ctx context.Con
 }
 
 // SetupWithManager sets up the controller with the Manager.
-func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, workerCount int, controllerClass string) error {
+func (r *KopsControlPlaneReconciler) SetupWithManager(ctx context.Context, mgr ctrl.Manager, workerCount int) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&controlplanev1alpha1.KopsControlPlane{},
-			builder.WithPredicates(controllerClassPredicate(controllerClass)),
+			builder.WithPredicates(controllerClassPredicate(r.ControllerClass)),
 		).
 		Watches(
 			&infrastructurev1alpha1.KopsMachinePool{},
-			handler.EnqueueRequestsFromMapFunc(r.kopsMachinePoolToInfrastructureMapFunc(controllerClass)),
+			handler.EnqueueRequestsFromMapFunc(r.kopsMachinePoolToInfrastructureMapFunc(r.ControllerClass)),
 		).
 		WithOptions(controller.Options{MaxConcurrentReconciles: workerCount}).
 		WithEventFilter(predicates.ResourceNotPaused(ctrl.LoggerFrom(ctx))).
