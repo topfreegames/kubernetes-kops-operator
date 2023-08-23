@@ -16,4 +16,4 @@ images:
   newTag: latest
 - name: manager
   newName: tfgco/kubernetes-kops-operator
-  newTag: v0.5.3-alpha
+  newTag: 0.6.0-alpha
