@@ -92,7 +92,7 @@ type KopsControlPlaneReconciler struct {
 	TfExecPath                       string
 	GetKopsClientSetFactory          func(configBase string) (simple.Clientset, error)
 	BuildCloudFactory                func(*kopsapi.Cluster) (fi.Cloud, error)
-	PopulateClusterSpecFactory       func(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
+	PopulateClusterSpecFactory       func(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
 	PrepareKopsCloudResourcesFactory func(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, terraformOutputDir string, cloud fi.Cloud) error
 	ApplyTerraformFactory            func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error
 	ValidateKopsClusterFactory       func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
@@ -317,7 +317,7 @@ func (r *KopsControlPlaneReconciler) createOrUpdateKopsCluster(ctx context.Conte
 		if err != nil {
 			return err
 		}
-		err = addSSHCredential(kopsCluster, kopsClientset, SSHPublicKey)
+		err = addSSHCredential(ctx, kopsCluster, kopsClientset, SSHPublicKey)
 		if err != nil {
 			return err
 		}
@@ -342,15 +342,15 @@ func (r *KopsControlPlaneReconciler) createOrUpdateKopsCluster(ctx context.Conte
 }
 
 // PopulateClusterSpec populates the full cluster spec with some values it fetchs from provider
-func PopulateClusterSpec(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error) {
+func PopulateClusterSpec(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error) {
 
 	err := cloudup.PerformAssignments(kopsCluster, cloud)
 	if err != nil {
 		return nil, err
 	}
 
-	assetBuilder := assets.NewAssetBuilder(kopsCluster, true)
-	fullCluster, err := cloudup.PopulateClusterSpec(kopsClientset, kopsCluster, cloud, assetBuilder)
+	assetBuilder := assets.NewAssetBuilder(kopsCluster.Spec.Assets, kopsCluster.Spec.KubernetesVersion, true)
+	fullCluster, err := cloudup.PopulateClusterSpec(ctx, kopsClientset, kopsCluster, cloud, assetBuilder)
 	if err != nil {
 		return nil, err
 	}
@@ -359,7 +359,7 @@ func PopulateClusterSpec(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clie
 }
 
 // addSSHCredential creates a SSHCredential using the PublicKey retrieved from the KopsControlPlane
-func addSSHCredential(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, SSHPublicKey string) error {
+func addSSHCredential(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, SSHPublicKey string) error {
 	sshCredential := kopsapi.SSHCredential{
 		Spec: kopsapi.SSHCredentialSpec{
 			PublicKey: SSHPublicKey,
@@ -371,7 +371,7 @@ func addSSHCredential(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clients
 		return err
 	}
 	sshKeyArr := []byte(sshCredential.Spec.PublicKey)
-	err = sshCredentialStore.AddSSHPublicKey(sshKeyArr)
+	err = sshCredentialStore.AddSSHPublicKey(ctx, sshKeyArr)
 	if err != nil {
 		return err
 	}
@@ -636,7 +636,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	fullCluster, err := reconciler.PopulateClusterSpecFactory(kopsCluster, kopsClientset, cloud)
+	fullCluster, err := reconciler.PopulateClusterSpecFactory(ctx, kopsCluster, kopsClientset, cloud)
 	if err != nil {
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToPopulateClusterSpec", "failed to populate Cluster spec: %s", err)
 		return resultError, err
@@ -679,7 +679,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// TODO: This is needed because we are using a method from kops lib, we should be
 	// we should check alternatives
-	kubeConfig, err := utils.GetKubeconfigFromKopsState(kopsCluster, kopsClientset)
+	kubeConfig, err := utils.GetKubeconfigFromKopsState(ctx, kopsCluster, kopsClientset)
 	if err != nil {
 		return resultError, err
 	}
@@ -840,7 +840,7 @@ func GetASGByName(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsC
 }
 
 func RegionBySubnet(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) (string, error) {
-	subnets := kopsControlPlane.Spec.KopsClusterSpec.Subnets
+	subnets := kopsControlPlane.Spec.KopsClusterSpec.Networking.Subnets
 	if len(subnets) == 0 {
 		return "", errors.New("kopsControlPlane with no subnets")
 	}

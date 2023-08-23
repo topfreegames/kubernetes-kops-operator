@@ -146,7 +146,7 @@ func KopsClusterValidation(object runtime.Object, recorder record.EventRecorder,
 	}
 }
 
-func GetKubeconfigFromKopsState(kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*rest.Config, error) {
+func GetKubeconfigFromKopsState(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset) (*rest.Config, error) {
 	builder := kubeconfig.NewKubeconfigBuilder()
 
 	keyStore, err := kopsClientset.KeyStore(kopsCluster)
@@ -156,7 +156,7 @@ func GetKubeconfigFromKopsState(kopsCluster *kopsapi.Cluster, kopsClientset simp
 
 	builder.Context = kopsCluster.ObjectMeta.Name
 	builder.Server = fmt.Sprintf("https://api.%s", kopsCluster.ObjectMeta.Name)
-	keySet, err := keyStore.FindKeyset(fi.CertificateIDCA)
+	keySet, err := keyStore.FindKeyset(ctx, fi.CertificateIDCA)
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func GetKubeconfigFromKopsState(kopsCluster *kopsapi.Cluster, kopsClientset simp
 		},
 		Validity: 64800000000000,
 	}
-	cert, privateKey, _, err := pki.IssueCert(&req, keyStore)
+	cert, privateKey, _, err := pki.IssueCert(ctx, &req, fi.NewPKIKeystoreAdapter(keyStore))
 	if err != nil {
 		return nil, err
 	}
@@ -191,12 +191,16 @@ func GetKubeconfigFromKopsState(kopsCluster *kopsapi.Cluster, kopsClientset simp
 		return nil, err
 	}
 
-	config, err := builder.BuildRestConfig()
-	if err != nil {
-		return nil, err
+	restConfig := &rest.Config{
+		Host: builder.Server,
 	}
+	restConfig.CAData = builder.CACerts
+	restConfig.CertData = builder.ClientCert
+	restConfig.KeyData = builder.ClientKey
+	restConfig.Username = builder.KubeUser
+	restConfig.Password = builder.KubePassword
 
-	return config, nil
+	return restConfig, nil
 }
 
 func reconcileKopsSecretsDelete(secretStore fi.SecretStore, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, k8sSecretData map[string][]byte) error {
@@ -230,14 +234,14 @@ func reconcileKopsSecretsDelete(secretStore fi.SecretStore, kopsControlPlane *co
 	return nil
 }
 
-func reconcileKopsSecretsNormal(secretStore fi.SecretStore, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, k8sSecretData map[string][]byte) error {
+func reconcileKopsSecretsNormal(ctx context.Context, secretStore fi.SecretStore, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, k8sSecretData map[string][]byte) error {
 	for kopsSecretName, data := range k8sSecretData {
 
 		kopsSecret := &fi.Secret{
 			Data: data,
 		}
 
-		stateKopsSecret, created, err := secretStore.GetOrCreateSecret(kopsSecretName, kopsSecret)
+		stateKopsSecret, created, err := secretStore.GetOrCreateSecret(ctx, kopsSecretName, kopsSecret)
 		if err != nil {
 			return err
 		}
@@ -268,7 +272,7 @@ func ReconcileKopsSecrets(ctx context.Context, k8sClient client.Client, secretSt
 		return nil
 	}
 
-	err = reconcileKopsSecretsNormal(secretStore, kopsControlPlane, k8sSecret.Data)
+	err = reconcileKopsSecretsNormal(ctx, secretStore, kopsControlPlane, k8sSecret.Data)
 	if err != nil {
 		return nil
 	}

@@ -3,6 +3,7 @@ package kops
 import (
 	"context"
 	"fmt"
+
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -19,10 +20,10 @@ var (
 )
 
 func GetSubnetFromKopsControlPlane(kcp *kcontrolplanev1alpha1.KopsControlPlane) (*kopsapi.ClusterSubnetSpec, error) {
-	if kcp.Spec.KopsClusterSpec.Subnets == nil {
+	if kcp.Spec.KopsClusterSpec.Networking.Subnets == nil {
 		return nil, errors.Wrap(errors.Errorf("SubnetNotFound"), "subnet not found in KopsControlPlane")
 	}
-	subnet := kcp.Spec.KopsClusterSpec.Subnets[0]
+	subnet := kcp.Spec.KopsClusterSpec.Networking.Subnets[0]
 	return &subnet, nil
 }
 
