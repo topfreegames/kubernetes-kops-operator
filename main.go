@@ -40,11 +40,14 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
+	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
+
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	controlplanev1alpha2 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha2"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
+	infrastructurev1alpha2 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha2"
 	"github.com/topfreegames/kubernetes-kops-operator/controllers/controlplane"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
-	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	//+kubebuilder:scaffold:imports
 )
 
@@ -59,6 +62,8 @@ func init() {
 	utilruntime.Must(infrastructurev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(controlplanev1alpha1.AddToScheme(scheme))
 	utilruntime.Must(clusterv1.AddToScheme(scheme))
+	utilruntime.Must(controlplanev1alpha2.AddToScheme(scheme))
+	utilruntime.Must(infrastructurev1alpha2.AddToScheme(scheme))
 	//+kubebuilder:scaffold:scheme
 }
 

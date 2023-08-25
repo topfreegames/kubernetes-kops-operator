@@ -14,8 +14,8 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	kcontrolplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
-	kinfrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
+	kcontrolplanev1alpha2 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha2"
+	kinfrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 )
@@ -24,12 +24,12 @@ func TestGetSubnetFromKopsControlPlane(t *testing.T) {
 	testCases := []map[string]interface{}{
 		{
 			"description": "should succeed getting subnet from KCP",
-			"input": &kcontrolplanev1alpha1.KopsControlPlane{
+			"input": &kcontrolplanev1alpha2.KopsControlPlane{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: metav1.NamespaceDefault,
 					Name:      "test-kops-control-plane",
 				},
-				Spec: kcontrolplanev1alpha1.KopsControlPlaneSpec{
+				Spec: kcontrolplanev1alpha2.KopsControlPlaneSpec{
 					KopsClusterSpec: kopsapi.ClusterSpec{
 						Subnets: []kopsapi.ClusterSubnetSpec{
 							{
@@ -45,12 +45,12 @@ func TestGetSubnetFromKopsControlPlane(t *testing.T) {
 		},
 		{
 			"description": "should fail when missing subnets",
-			"input": &kcontrolplanev1alpha1.KopsControlPlane{
+			"input": &kcontrolplanev1alpha2.KopsControlPlane{
 				ObjectMeta: metav1.ObjectMeta{
 					Namespace: metav1.NamespaceDefault,
 					Name:      "test-kops-control-plane",
 				},
-				Spec: kcontrolplanev1alpha1.KopsControlPlaneSpec{
+				Spec: kcontrolplanev1alpha2.KopsControlPlaneSpec{
 					KopsClusterSpec: kopsapi.ClusterSpec{},
 				},
 			},
@@ -61,7 +61,7 @@ func TestGetSubnetFromKopsControlPlane(t *testing.T) {
 	g := NewWithT(t)
 	for _, tc := range testCases {
 		t.Run(tc["description"].(string), func(t *testing.T) {
-			subnet, err := GetSubnetFromKopsControlPlane(tc["input"].(*kcontrolplanev1alpha1.KopsControlPlane))
+			subnet, err := GetSubnetFromKopsControlPlane(tc["input"].(*kcontrolplanev1alpha2.KopsControlPlane))
 			if !tc["isErrorExpected"].(bool) {
 				g.Expect(err).To(BeNil())
 				g.Expect(subnet).ToNot(BeNil())
@@ -226,7 +226,7 @@ func TestGetKopsMachinePoolsWithLabel(t *testing.T) {
 		err = kinfrastructurev1alpha1.AddToScheme(sc)
 		Expect(err).NotTo(HaveOccurred())
 
-		err = kcontrolplanev1alpha1.AddToScheme(sc)
+		err = kcontrolplanev1alpha2.AddToScheme(sc)
 		Expect(err).NotTo(HaveOccurred())
 
 		clientBuilder.WithScheme(sc)

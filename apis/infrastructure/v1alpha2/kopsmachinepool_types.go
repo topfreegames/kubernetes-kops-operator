@@ -14,12 +14,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package v1alpha1
+package v1alpha2
 
 import (
 	karpenter "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kops "k8s.io/kops/pkg/apis/kops/v1alpha2"
+	kops "k8s.io/kops/pkg/apis/kops"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
@@ -84,6 +84,7 @@ type KopsMachinePoolStatus struct {
 //+kubebuilder:resource:path=kopsmachinepools,scope=Namespaced,shortName=kmp
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
+//+kubebuilder:storageversion
 
 // KopsMachinePool is the Schema for the kopsmachinepools API
 type KopsMachinePool struct {

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
-	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	controlplanev1alpha2 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -72,7 +72,7 @@ func ValidateKopsCluster(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, 
 	return result, nil
 }
 
-func ParseSpotinstFeatureflags(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) error {
+func ParseSpotinstFeatureflags(kopsControlPlane *controlplanev1alpha2.KopsControlPlane) error {
 	featureflag.ParseFlags("-Spotinst,-SpotinstOcean,-SpotinstHybrid,-SpotinstController")
 	if kopsControlPlane.Spec.SpotInst.Enabled {
 		if _, ok := os.LookupEnv("SPOTINST_TOKEN"); !ok {
@@ -203,7 +203,7 @@ func GetKubeconfigFromKopsState(ctx context.Context, kopsCluster *kopsapi.Cluste
 	return restConfig, nil
 }
 
-func reconcileKopsSecretsDelete(secretStore fi.SecretStore, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, k8sSecretData map[string][]byte) error {
+func reconcileKopsSecretsDelete(secretStore fi.SecretStore, kopsControlPlane *controlplanev1alpha2.KopsControlPlane, k8sSecretData map[string][]byte) error {
 
 	if len(kopsControlPlane.Status.Secrets) == 0 {
 		return nil
@@ -234,7 +234,7 @@ func reconcileKopsSecretsDelete(secretStore fi.SecretStore, kopsControlPlane *co
 	return nil
 }
 
-func reconcileKopsSecretsNormal(ctx context.Context, secretStore fi.SecretStore, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, k8sSecretData map[string][]byte) error {
+func reconcileKopsSecretsNormal(ctx context.Context, secretStore fi.SecretStore, kopsControlPlane *controlplanev1alpha2.KopsControlPlane, k8sSecretData map[string][]byte) error {
 	for kopsSecretName, data := range k8sSecretData {
 
 		kopsSecret := &fi.Secret{
@@ -260,7 +260,7 @@ func reconcileKopsSecretsNormal(ctx context.Context, secretStore fi.SecretStore,
 	return nil
 }
 
-func ReconcileKopsSecrets(ctx context.Context, k8sClient client.Client, secretStore fi.SecretStore, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, k8sSecretKey client.ObjectKey) error {
+func ReconcileKopsSecrets(ctx context.Context, k8sClient client.Client, secretStore fi.SecretStore, kopsControlPlane *controlplanev1alpha2.KopsControlPlane, k8sSecretKey client.ObjectKey) error {
 
 	k8sSecret := &corev1.Secret{}
 	if err := k8sClient.Get(ctx, k8sSecretKey, k8sSecret); err != nil {
