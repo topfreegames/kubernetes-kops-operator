@@ -1,0 +1,12 @@
+apiVersion: infrastructure.cluster.x-k8s.io/v1alpha2
+kind: KopsMachinePool
+metadata:
+  labels:
+    app.kubernetes.io/name: kopsmachinepool
+    app.kubernetes.io/instance: kopsmachinepool-sample
+    app.kubernetes.io/part-of: kubernetes-kops-operator
+    app.kuberentes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: kubernetes-kops-operator
+  name: kopsmachinepool-sample
+spec:
+  # TODO(user): Add fields here

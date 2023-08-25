@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	. "github.com/onsi/gomega"
-	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
-	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
+	controlplanev1alpha2 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha2"
+	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
@@ -103,8 +103,8 @@ func NewKopsCluster(name string) *kopsapi.Cluster {
 	}
 }
 
-func NewKopsControlPlane(name, namespace string) *controlplanev1alpha1.KopsControlPlane {
-	return &controlplanev1alpha1.KopsControlPlane{
+func NewKopsControlPlane(name, namespace string) *controlplanev1alpha2.KopsControlPlane {
+	return &controlplanev1alpha2.KopsControlPlane{
 		ObjectMeta: metav1.ObjectMeta{
 			Namespace: namespace,
 			Name:      GetFQDN(name),
@@ -116,8 +116,8 @@ func NewKopsControlPlane(name, namespace string) *controlplanev1alpha1.KopsContr
 				},
 			},
 		},
-		Spec: controlplanev1alpha1.KopsControlPlaneSpec{
-			IdentityRef: controlplanev1alpha1.IdentityRefSpec{
+		Spec: controlplanev1alpha2.KopsControlPlaneSpec{
+			IdentityRef: controlplanev1alpha2.IdentityRefSpec{
 				Kind:      "Secret",
 				Name:      "11111111-credential",
 				Namespace: "kubernetes-kops-operator-system",
