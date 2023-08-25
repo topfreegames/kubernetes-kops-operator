@@ -548,7 +548,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			keyStore, err := fakeKopsClientset.KeyStore(kopsCluster)
 			g.Expect(err).NotTo(HaveOccurred())
 
-			err = helpers.CreateFakeKopsKeyPair(keyStore)
+			err = helpers.CreateFakeKopsKeyPair(ctx, keyStore)
 			g.Expect(err).NotTo(HaveOccurred())
 
 			reconciler := &KopsControlPlaneReconciler{
@@ -791,7 +791,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			keyStore, err := fakeKopsClientset.KeyStore(kopsCluster)
 			g.Expect(err).NotTo(HaveOccurred())
 
-			err = helpers.CreateFakeKopsKeyPair(keyStore)
+			err = helpers.CreateFakeKopsKeyPair(ctx, keyStore)
 			g.Expect(err).NotTo(HaveOccurred())
 
 			recorderSize := 10
@@ -953,7 +953,7 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 							Name:       "testKopsControlPlane",
 							Namespace:  metav1.NamespaceDefault,
 							Kind:       "KopsControlPlane",
-							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
 						},
 					},
 				},
@@ -996,7 +996,7 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 							Name:       "testKopsControlPlane",
 							Namespace:  metav1.NamespaceDefault,
 							Kind:       "KopsControlPlane",
-							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
 						},
 					},
 				},
@@ -1086,7 +1086,7 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 							Name:       "testKubeAdmControlPlane",
 							Namespace:  metav1.NamespaceDefault,
 							Kind:       "KubeAdmControlPlane",
-							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
 						},
 					},
 				},
@@ -1115,7 +1115,7 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 							Name:       "testKopsControlPlane",
 							Namespace:  metav1.NamespaceDefault,
 							Kind:       "KopsControlPlane",
-							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
 						},
 					},
 				},
@@ -1144,7 +1144,7 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 							Name:       "testKopsControlPlane",
 							Namespace:  metav1.NamespaceDefault,
 							Kind:       "KopsControlPlane",
-							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
 						},
 					},
 				},

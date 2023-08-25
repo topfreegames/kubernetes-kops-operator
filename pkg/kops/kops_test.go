@@ -31,11 +31,13 @@ func TestGetSubnetFromKopsControlPlane(t *testing.T) {
 				},
 				Spec: kcontrolplanev1alpha2.KopsControlPlaneSpec{
 					KopsClusterSpec: kopsapi.ClusterSpec{
-						Subnets: []kopsapi.ClusterSubnetSpec{
-							{
-								Name: "test-subnet",
-								CIDR: "0.0.0.0/26",
-								Zone: "us-east-1d",
+						Networking: kopsapi.NetworkingSpec{
+							Subnets: []kopsapi.ClusterSubnetSpec{
+								{
+									Name: "test-subnet",
+									CIDR: "0.0.0.0/26",
+									Zone: "us-east-1d",
+								},
 							},
 						},
 					},
