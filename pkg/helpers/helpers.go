@@ -1,10 +1,11 @@
 package helpers
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
-	. "github.com/onsi/gomega"
+	g "github.com/onsi/gomega"
 	controlplanev1alpha2 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha2"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha2"
 	corev1 "k8s.io/api/core/v1"
@@ -20,6 +21,10 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
+
+func String(v string) *string {
+	return &v
+}
 
 func NewCluster(name, controlplane, namespace string) *clusterv1.Cluster {
 	return &clusterv1.Cluster{
@@ -65,15 +70,17 @@ func NewKopsCluster(name string) *kopsapi.Cluster {
 			CloudProvider: kopsapi.CloudProviderSpec{
 				AWS: &kopsapi.AWSSpec{},
 			},
-			ConfigBase:        fmt.Sprintf("memfs://tests/%s.test.k8s.cluster", name),
-			NonMasqueradeCIDR: "10.0.1.0/21",
-			NetworkCIDR:       "10.0.1.0/21",
-			Subnets: []kopsapi.ClusterSubnetSpec{
-				{
-					Name: "test-subnet",
-					CIDR: "10.0.1.0/24",
-					Type: kopsapi.SubnetTypePrivate,
-					Zone: "us-east-1",
+			ConfigBase: fmt.Sprintf("memfs://tests/%s.test.k8s.cluster", name),
+			Networking: kopsapi.NetworkingSpec{
+				NonMasqueradeCIDR: "172.0.0.0/21",
+				NetworkCIDR:       "10.0.0.0/21",
+				Subnets: []kopsapi.ClusterSubnetSpec{
+					{
+						Name: "test-subnet",
+						CIDR: "10.0.1.0/24",
+						Type: kopsapi.SubnetTypePrivate,
+						Zone: "us-east-1",
+					},
 				},
 			},
 			EtcdClusters: []kopsapi.EtcdClusterSpec{
@@ -83,15 +90,15 @@ func NewKopsCluster(name string) *kopsapi.Cluster {
 					Members: []kopsapi.EtcdMemberSpec{
 						{
 							Name:          "a",
-							InstanceGroup: fi.String("eu-central-1a"),
+							InstanceGroup: String("eu-central-1a"),
 						},
 						{
 							Name:          "b",
-							InstanceGroup: fi.String("eu-central-1b"),
+							InstanceGroup: String("eu-central-1b"),
 						},
 						{
 							Name:          "c",
-							InstanceGroup: fi.String("eu-central-1c"),
+							InstanceGroup: String("eu-central-1c"),
 						},
 					},
 				},
@@ -128,18 +135,21 @@ func NewKopsControlPlane(name, namespace string) *controlplanev1alpha2.KopsContr
 				CloudProvider: kopsapi.CloudProviderSpec{
 					AWS: &kopsapi.AWSSpec{},
 				},
-				Channel:           "none",
-				ConfigBase:        fmt.Sprintf("memfs://tests/%s.test.k8s.cluster", name),
-				NonMasqueradeCIDR: "10.0.1.0/21",
-				NetworkCIDR:       "10.0.1.0/21",
-				Subnets: []kopsapi.ClusterSubnetSpec{
-					{
-						Name: "test-subnet",
-						CIDR: "10.0.1.0/24",
-						Type: kopsapi.SubnetTypePrivate,
-						Zone: "us-east-1",
+				Channel:    "none",
+				ConfigBase: fmt.Sprintf("memfs://tests/%s.test.k8s.cluster", name),
+				Networking: kopsapi.NetworkingSpec{
+					NetworkCIDR:       "172.27.0.0/21",
+					NonMasqueradeCIDR: "10.0.0.0/21",
+					Subnets: []kopsapi.ClusterSubnetSpec{
+						{
+							Name: "test-subnet",
+							CIDR: "172.27.0.0/24",
+							Type: kopsapi.SubnetTypePrivate,
+							Zone: "us-east-1",
+						},
 					},
 				},
+
 				EtcdClusters: []kopsapi.EtcdClusterSpec{
 					{
 						Name:     "main",
@@ -147,15 +157,15 @@ func NewKopsControlPlane(name, namespace string) *controlplanev1alpha2.KopsContr
 						Members: []kopsapi.EtcdMemberSpec{
 							{
 								Name:          "a",
-								InstanceGroup: fi.String("eu-central-1a"),
+								InstanceGroup: String("eu-central-1a"),
 							},
 							{
 								Name:          "b",
-								InstanceGroup: fi.String("eu-central-1b"),
+								InstanceGroup: String("eu-central-1b"),
 							},
 							{
 								Name:          "c",
-								InstanceGroup: fi.String("eu-central-1c"),
+								InstanceGroup: String("eu-central-1c"),
 							},
 						},
 					},
@@ -170,7 +180,7 @@ func NewKopsControlPlane(name, namespace string) *controlplanev1alpha2.KopsContr
 
 func NewMockedK8sClient(objects ...client.Object) client.Client {
 	err := clusterv1.AddToScheme(scheme.Scheme)
-	Expect(err).NotTo(HaveOccurred())
+	g.Expect(err).NotTo(g.HaveOccurred())
 	fakeClient := fake.NewClientBuilder().WithObjects(objects...).WithScheme(scheme.Scheme).Build()
 	return fakeClient
 }
@@ -223,7 +233,7 @@ func NewKopsMachinePool(name, namespace, clusterName string) *infrastructurev1al
 	}
 }
 
-func CreateFakeKopsKeyPair(keyStore fi.CAStore) error {
+func CreateFakeKopsKeyPair(ctx context.Context, keyStore fi.CAStore) error {
 	certData := `-----BEGIN CERTIFICATE-----
 MIIC2DCCAcCgAwIBAgIRALJXAkVj964tq67wMSI8oJQwDQYJKoZIhvcNAQELBQAw
 FTETMBEGA1UEAxMKa3ViZXJuZXRlczAeFw0xNzEyMjcyMzUyNDBaFw0yNzEyMjcy
@@ -288,6 +298,6 @@ Y/C1Lox4f1ROJnCjc/hfcOjcxX5M8A8peecHWlVtUPKTJgxQ7oMKcw==
 			PrivateKey:  key,
 		},
 	}
-	err := keyStore.StoreKeyset(fi.CertificateIDCA, keyset)
+	err := keyStore.StoreKeyset(ctx, fi.CertificateIDCA, keyset)
 	return err
 }

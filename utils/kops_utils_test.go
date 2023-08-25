@@ -291,7 +291,7 @@ func TestReconcileKopsSecretsDelete(t *testing.T) {
 			fakeSecretStore, _ := fakeKopsClientset.SecretStore(kopsCluster)
 			kopsSecret := &fi.Secret{}
 			for _, kopsSecretName := range tc.actualKopsSecrets {
-				_, _, _ = fakeSecretStore.GetOrCreateSecret(kopsSecretName, kopsSecret)
+				_, _, _ = fakeSecretStore.GetOrCreateSecret(ctx, kopsSecretName, kopsSecret)
 			}
 
 			kopsControlPlane := &controlplanev1alpha2.KopsControlPlane{
@@ -417,7 +417,7 @@ func TestReconcileKopsSecrets(t *testing.T) {
 				kopsSecret := &fi.Secret{
 					Data: data,
 				}
-				_, _, _ = fakeSecretStore.GetOrCreateSecret(kopsSecretName, kopsSecret)
+				_, _, _ = fakeSecretStore.GetOrCreateSecret(ctx, kopsSecretName, kopsSecret)
 			}
 
 			kopsControlPlane := &controlplanev1alpha2.KopsControlPlane{
@@ -426,7 +426,7 @@ func TestReconcileKopsSecrets(t *testing.T) {
 				},
 			}
 
-			err := reconcileKopsSecretsNormal(fakeSecretStore, kopsControlPlane, tc.desiredKopsSecrets)
+			err := reconcileKopsSecretsNormal(ctx, fakeSecretStore, kopsControlPlane, tc.desiredKopsSecrets)
 			assert.Nil(t, err)
 			for secretName, data := range tc.expectedKopsSecrets {
 				secret, _ := fakeSecretStore.FindSecret(secretName)
