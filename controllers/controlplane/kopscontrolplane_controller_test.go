@@ -440,6 +440,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				}
 				return kopsControlPlane
 			},
+			expectedResult: resultDefault,
 		},
 		{
 			description:     "should not fail to if ASG not ready",
@@ -447,6 +448,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha2.KopsMachinePool, kopsControlPlane *controlplanev1alpha2.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 				return nil, apierrors.NewNotFound(schema.GroupResource{}, "ASG not ready")
 			},
+			expectedResult: requeue1min,
 		},
 		{
 			description:   "should fail to if can't retrieve ASG",
@@ -454,6 +456,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha2.KopsMachinePool, kopsControlPlane *controlplanev1alpha2.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 				return nil, errors.New("error")
 			},
+			expectedResult: resultError,
 		},
 		{
 			description:   "should fail to create Kops Cluster",
@@ -462,6 +465,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				kopsControlPlane.Spec.KopsClusterSpec.KubernetesVersion = ""
 				return kopsControlPlane
 			},
+			expectedResult: resultError,
 		},
 		{
 			description:            "should successfully create secret with Kubeconfig",
