@@ -65,23 +65,6 @@ spec:
                         More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
                       type: string
                     metadata:
-                      properties:
-                        annotations:
-                          additionalProperties:
-                            type: string
-                          type: object
-                        finalizers:
-                          items:
-                            type: string
-                          type: array
-                        labels:
-                          additionalProperties:
-                            type: string
-                          type: object
-                        name:
-                          type: string
-                        namespace:
-                          type: string
                       type: object
                     spec:
                       description: ProvisionerSpec is the top level provisioner specification.
@@ -1688,23 +1671,6 @@ spec:
                         More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
                       type: string
                     metadata:
-                      properties:
-                        annotations:
-                          additionalProperties:
-                            type: string
-                          type: object
-                        finalizers:
-                          items:
-                            type: string
-                          type: array
-                        labels:
-                          additionalProperties:
-                            type: string
-                          type: object
-                        name:
-                          type: string
-                        namespace:
-                          type: string
                       type: object
                     spec:
                       description: ProvisionerSpec is the top level provisioner specification.
