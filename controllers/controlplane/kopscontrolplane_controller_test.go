@@ -15,11 +15,11 @@ import (
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
 
 	asgTypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
-	infrastructurev1alpha2 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha2"
+	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	controlplanev1alpha2 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha2"
+	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -166,7 +166,7 @@ func TestGetClusterOwnerRef(t *testing.T) {
 	testCases := []map[string]interface{}{
 		{
 			"description": "Should succeed in retrieving owner",
-			"input": &controlplanev1alpha2.KopsControlPlane{
+			"input": &controlplanev1alpha1.KopsControlPlane{
 				ObjectMeta: metav1.ObjectMeta{
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -181,7 +181,7 @@ func TestGetClusterOwnerRef(t *testing.T) {
 		},
 		{
 			"description": "Should succeed with many ownerReferences",
-			"input": &controlplanev1alpha2.KopsControlPlane{
+			"input": &controlplanev1alpha1.KopsControlPlane{
 				ObjectMeta: metav1.ObjectMeta{
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -206,14 +206,14 @@ func TestGetClusterOwnerRef(t *testing.T) {
 		},
 		{
 			"description": "Should return nil when don't belong to a cluster yet",
-			"input": &controlplanev1alpha2.KopsControlPlane{
+			"input": &controlplanev1alpha1.KopsControlPlane{
 				ObjectMeta: metav1.ObjectMeta{},
 			},
 			"expectedError": false,
 		},
 		{
 			"description": "Should return NoCluster error when cluster not yet created",
-			"input": &controlplanev1alpha2.KopsControlPlane{
+			"input": &controlplanev1alpha1.KopsControlPlane{
 				ObjectMeta: metav1.ObjectMeta{
 					OwnerReferences: []metav1.OwnerReference{
 						{
@@ -248,7 +248,7 @@ func TestGetClusterOwnerRef(t *testing.T) {
 				Client: fakeClient,
 			}
 
-			owner, err := reconciler.getClusterOwnerRef(ctx, tc["input"].(*controlplanev1alpha2.KopsControlPlane))
+			owner, err := reconciler.getClusterOwnerRef(ctx, tc["input"].(*controlplanev1alpha1.KopsControlPlane))
 			if !tc["expectedError"].(bool) {
 				g.Expect(err).NotTo(HaveOccurred())
 				if owner != nil {
@@ -408,10 +408,9 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 		description              string
 		expectedResult           ctrl.Result
 		expectedError            bool
-		expectedRequeue          bool
-		kopsControlPlaneFunction func(kopsControlPlane *controlplanev1alpha2.KopsControlPlane) *controlplanev1alpha2.KopsControlPlane
+		kopsControlPlaneFunction func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane
 		clusterFunction          func(cluster *clusterv1.Cluster) *clusterv1.Cluster
-		getASGByNameFactory      func(kopsMachinePool *infrastructurev1alpha2.KopsMachinePool, kopsControlPlane *controlplanev1alpha2.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error)
+		getASGByNameFactory      func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error)
 		createKubeconfigSecret   bool
 		updateKubeconfigSecret   bool
 	}{
@@ -430,8 +429,17 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			expectedResult: resultDefault,
 		},
 		{
-			description: "should successfully create Kops Cluster with a custom Kops Secret",
-			kopsControlPlaneFunction: func(kopsControlPlane *controlplanev1alpha2.KopsControlPlane) *controlplanev1alpha2.KopsControlPlane {
+			description:    "should not requeue a KopsControlPlane that don't match the controllerClass",
+			expectedResult: resultNotRequeue,
+			kopsControlPlaneFunction: func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane {
+				kopsControlPlane.Spec.ControllerClass = "foo"
+				return kopsControlPlane
+			},
+		},
+		{
+			description:    "should successfully create Kops Cluster with a custom Kops Secret",
+			expectedResult: resultDefault,
+			kopsControlPlaneFunction: func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane {
 				kopsControlPlane.Spec.KopsSecret = &corev1.ObjectReference{
 					Namespace:  corev1.NamespaceDefault,
 					Kind:       "Secret",
@@ -440,32 +448,30 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				}
 				return kopsControlPlane
 			},
-			expectedResult: resultDefault,
 		},
 		{
-			description:     "should not fail to if ASG not ready",
-			expectedRequeue: true,
-			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha2.KopsMachinePool, kopsControlPlane *controlplanev1alpha2.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
+			description:    "should not fail to if ASG not ready",
+			expectedResult: requeue1min,
+			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 				return nil, apierrors.NewNotFound(schema.GroupResource{}, "ASG not ready")
 			},
-			expectedResult: requeue1min,
 		},
 		{
-			description:   "should fail to if can't retrieve ASG",
-			expectedError: true,
-			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha2.KopsMachinePool, kopsControlPlane *controlplanev1alpha2.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
+			description:    "should fail to if can't retrieve ASG",
+			expectedError:  true,
+			expectedResult: resultError,
+			getASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 				return nil, errors.New("error")
 			},
-			expectedResult: resultError,
 		},
 		{
-			description:   "should fail to create Kops Cluster",
-			expectedError: true,
-			kopsControlPlaneFunction: func(kopsControlPlane *controlplanev1alpha2.KopsControlPlane) *controlplanev1alpha2.KopsControlPlane {
+			description:    "should fail to create Kops Cluster",
+			expectedError:  true,
+			expectedResult: resultError,
+			kopsControlPlaneFunction: func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane {
 				kopsControlPlane.Spec.KopsClusterSpec.KubernetesVersion = ""
 				return kopsControlPlane
 			},
-			expectedResult: resultError,
 		},
 		{
 			description:            "should successfully create secret with Kubeconfig",
@@ -482,11 +488,11 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 	vfs.Context.ResetMemfsContext(true)
 	g := NewWithT(t)
 	ctx := context.TODO()
-	err := controlplanev1alpha2.AddToScheme(scheme.Scheme)
+	err := controlplanev1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 	err = clusterv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
-	err = infrastructurev1alpha2.AddToScheme(scheme.Scheme)
+	err = infrastructurev1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	for _, tc := range testCases {
@@ -518,11 +524,11 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				kopsControlPlaneFunction := tc.kopsControlPlaneFunction
 				kopsControlPlane = kopsControlPlaneFunction(kopsControlPlane)
 			}
-			var getASGByName func(kopsMachinePool *infrastructurev1alpha2.KopsMachinePool, kopsControlPlane *controlplanev1alpha2.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error)
+			var getASGByName func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error)
 			if tc.getASGByNameFactory != nil {
 				getASGByName = tc.getASGByNameFactory
 			} else {
-				getASGByName = func(kopsMachinePool *infrastructurev1alpha2.KopsMachinePool, kopsControlPlane *controlplanev1alpha2.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
+				getASGByName = func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 					return &asgTypes.AutoScalingGroup{
 						Instances: []asgTypes.Instance{
 							{
@@ -634,7 +640,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 		description                            string
 		expectedReconcilerError                bool
 		clusterFunction                        func(cluster *clusterv1.Cluster) *clusterv1.Cluster
-		expectedStatus                         *controlplanev1alpha2.KopsControlPlaneStatus
+		expectedStatus                         *controlplanev1alpha1.KopsControlPlaneStatus
 		conditionsToAssert                     []*clusterv1.Condition
 		eventsToAssert                         []string
 		expectedErrorGetClusterStatusFactory   func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
@@ -653,7 +659,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				}
 				return cluster
 			},
-			expectedStatus: &controlplanev1alpha2.KopsControlPlaneStatus{
+			expectedStatus: &controlplanev1alpha1.KopsControlPlaneStatus{
 				Paused: true,
 			},
 		},
@@ -664,7 +670,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				return nil, errors.New("")
 			},
 			conditionsToAssert: []*clusterv1.Condition{
-				conditions.FalseCondition(controlplanev1alpha2.KopsControlPlaneStateReadyCondition, controlplanev1alpha2.KopsControlPlaneStateReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
+				conditions.FalseCondition(controlplanev1alpha1.KopsControlPlaneStateReadyCondition, controlplanev1alpha1.KopsControlPlaneStateReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
 			},
 		},
 		{
@@ -674,7 +680,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				return errors.New("")
 			},
 			conditionsToAssert: []*clusterv1.Condition{
-				conditions.FalseCondition(controlplanev1alpha2.KopsTerraformGenerationReadyCondition, controlplanev1alpha2.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
+				conditions.FalseCondition(controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
 			},
 		},
 		{
@@ -684,7 +690,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				return errors.New("")
 			},
 			conditionsToAssert: []*clusterv1.Condition{
-				conditions.FalseCondition(controlplanev1alpha2.TerraformApplyReadyCondition, controlplanev1alpha2.TerraformApplyReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
+				conditions.FalseCondition(controlplanev1alpha1.TerraformApplyReadyCondition, controlplanev1alpha1.TerraformApplyReconciliationFailedReason, clusterv1.ConditionSeverityError, ""),
 			},
 		},
 		{
@@ -759,11 +765,11 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 	vfs.Context.ResetMemfsContext(true)
 	g := NewWithT(t)
 	ctx := context.TODO()
-	err := controlplanev1alpha2.AddToScheme(scheme.Scheme)
+	err := controlplanev1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 	err = clusterv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
-	err = infrastructurev1alpha2.AddToScheme(scheme.Scheme)
+	err = infrastructurev1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	for _, tc := range testCases {
@@ -854,7 +860,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				ApplyTerraformFactory:            applyTerraform,
 				GetClusterStatusFactory:          getClusterStatus,
 				ValidateKopsClusterFactory:       validateKopsCluster,
-				GetASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha2.KopsMachinePool, kopsControlPlane *controlplanev1alpha2.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
+				GetASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
 					return &asgTypes.AutoScalingGroup{
 						Instances: []asgTypes.Instance{
 							{
@@ -882,7 +888,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			}
 
 			if tc.expectedStatus != nil {
-				kcp := &controlplanev1alpha2.KopsControlPlane{}
+				kcp := &controlplanev1alpha1.KopsControlPlane{}
 				err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsControlPlane), kcp)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(*tc.expectedStatus).To(BeEquivalentTo(kcp.Status))
@@ -890,7 +896,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			}
 
 			if tc.conditionsToAssert != nil {
-				kcp := &controlplanev1alpha2.KopsControlPlane{}
+				kcp := &controlplanev1alpha1.KopsControlPlane{}
 				err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsControlPlane), kcp)
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(kcp.Status.Conditions).ToNot(BeNil())
@@ -937,12 +943,12 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 	}{
 		{
 			description: "should return objectKey for KopsControlPlane",
-			input: &infrastructurev1alpha2.KopsMachinePool{
+			input: &infrastructurev1alpha1.KopsMachinePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "testKopsMachinePool",
 					Namespace: metav1.NamespaceDefault,
 				},
-				Spec: infrastructurev1alpha2.KopsMachinePoolSpec{
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 					ClusterName: "testCluster",
 				},
 			},
@@ -957,11 +963,11 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 							Name:       "testKopsControlPlane",
 							Namespace:  metav1.NamespaceDefault,
 							Kind:       "KopsControlPlane",
-							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
 						},
 					},
 				},
-				&controlplanev1alpha2.KopsControlPlane{
+				&controlplanev1alpha1.KopsControlPlane{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "testKopsControlPlane",
 						Namespace: metav1.NamespaceDefault,
@@ -979,12 +985,12 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 		},
 		{
 			description: "should return objectKey for KopsControlPlane configured with the same controlleClass as the controller",
-			input: &infrastructurev1alpha2.KopsMachinePool{
+			input: &infrastructurev1alpha1.KopsMachinePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "testKopsMachinePool",
 					Namespace: metav1.NamespaceDefault,
 				},
-				Spec: infrastructurev1alpha2.KopsMachinePoolSpec{
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 					ClusterName: "testCluster",
 				},
 			},
@@ -1000,16 +1006,16 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 							Name:       "testKopsControlPlane",
 							Namespace:  metav1.NamespaceDefault,
 							Kind:       "KopsControlPlane",
-							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
 						},
 					},
 				},
-				&controlplanev1alpha2.KopsControlPlane{
+				&controlplanev1alpha1.KopsControlPlane{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "testKopsControlPlane",
 						Namespace: metav1.NamespaceDefault,
 					},
-					Spec: controlplanev1alpha2.KopsControlPlaneSpec{
+					Spec: controlplanev1alpha1.KopsControlPlaneSpec{
 						ControllerClass: "bar",
 					},
 				},
@@ -1035,12 +1041,12 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 		},
 		{
 			description: "should return empty list when Cluster isn't found",
-			input: &infrastructurev1alpha2.KopsMachinePool{
+			input: &infrastructurev1alpha1.KopsMachinePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "testKopsMachinePool",
 					Namespace: metav1.NamespaceDefault,
 				},
-				Spec: infrastructurev1alpha2.KopsMachinePoolSpec{
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 					ClusterName: "testCluster",
 				},
 			},
@@ -1048,12 +1054,12 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 		},
 		{
 			description: "should return a empty list of requests when Cluster don't have InfrastructureRef",
-			input: &infrastructurev1alpha2.KopsMachinePool{
+			input: &infrastructurev1alpha1.KopsMachinePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "testKopsMachinePool",
 					Namespace: metav1.NamespaceDefault,
 				},
-				Spec: infrastructurev1alpha2.KopsMachinePoolSpec{
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 					ClusterName: "testCluster",
 				},
 			},
@@ -1070,12 +1076,12 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 		},
 		{
 			description: "should return a empty list of requests when Cluster's InfrastructureRef isn't a KopsControlPlane",
-			input: &infrastructurev1alpha2.KopsMachinePool{
+			input: &infrastructurev1alpha1.KopsMachinePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "testKopsMachinePool",
 					Namespace: metav1.NamespaceDefault,
 				},
-				Spec: infrastructurev1alpha2.KopsMachinePoolSpec{
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 					ClusterName: "testCluster",
 				},
 			},
@@ -1090,7 +1096,7 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 							Name:       "testKubeAdmControlPlane",
 							Namespace:  metav1.NamespaceDefault,
 							Kind:       "KubeAdmControlPlane",
-							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
 						},
 					},
 				},
@@ -1099,12 +1105,12 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 		},
 		{
 			description: "should return empty list when KopsControlPlane isn't found",
-			input: &infrastructurev1alpha2.KopsMachinePool{
+			input: &infrastructurev1alpha1.KopsMachinePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "testKopsMachinePool",
 					Namespace: metav1.NamespaceDefault,
 				},
-				Spec: infrastructurev1alpha2.KopsMachinePoolSpec{
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 					ClusterName: "testCluster",
 				},
 			},
@@ -1119,7 +1125,7 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 							Name:       "testKopsControlPlane",
 							Namespace:  metav1.NamespaceDefault,
 							Kind:       "KopsControlPlane",
-							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
 						},
 					},
 				},
@@ -1128,12 +1134,12 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 		},
 		{
 			description: "should return empty list when KopsControlPlane is configured with a different controllerClass",
-			input: &infrastructurev1alpha2.KopsMachinePool{
+			input: &infrastructurev1alpha1.KopsMachinePool{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      "testKopsMachinePool",
 					Namespace: metav1.NamespaceDefault,
 				},
-				Spec: infrastructurev1alpha2.KopsMachinePoolSpec{
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 					ClusterName: "testCluster",
 				},
 			},
@@ -1148,16 +1154,16 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 							Name:       "testKopsControlPlane",
 							Namespace:  metav1.NamespaceDefault,
 							Kind:       "KopsControlPlane",
-							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha2",
+							APIVersion: "controlplane.cluster.x-k8s.io/v1alpha1",
 						},
 					},
 				},
-				&controlplanev1alpha2.KopsControlPlane{
+				&controlplanev1alpha1.KopsControlPlane{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "testKopsControlPlane",
 						Namespace: metav1.NamespaceDefault,
 					},
-					Spec: controlplanev1alpha2.KopsControlPlaneSpec{
+					Spec: controlplanev1alpha1.KopsControlPlaneSpec{
 						ControllerClass: "differentClass",
 					},
 				},
@@ -1172,7 +1178,7 @@ func TestKopsMachinePoolToInfrastructureMapFunc(t *testing.T) {
 	err := clusterv1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
-	err = controlplanev1alpha2.AddToScheme(scheme.Scheme)
+	err = controlplanev1alpha1.AddToScheme(scheme.Scheme)
 	Expect(err).NotTo(HaveOccurred())
 
 	for _, tc := range testCases {
@@ -1292,7 +1298,7 @@ func TestGetRegionBySubnet(t *testing.T) {
 	g := NewWithT(t)
 
 	for _, tc := range testCases {
-		kcp := &controlplanev1alpha2.KopsControlPlane{}
+		kcp := &controlplanev1alpha1.KopsControlPlane{}
 		kcp.Spec.KopsClusterSpec.Networking.Subnets = tc.input
 		region, err := RegionBySubnet(kcp)
 
@@ -1338,7 +1344,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			kopsCluster, err := fakeKopsClientset.CreateCluster(ctx, bareKopsCluster)
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(kopsCluster).NotTo(BeNil())
-			kcp := &controlplanev1alpha2.KopsControlPlane{}
+			kcp := &controlplanev1alpha1.KopsControlPlane{}
 			kcp.Spec.SpotInst.Enabled = tc.spotInstEnabled
 
 			kmp := helpers.NewKopsMachinePool("test-ig", metav1.NamespaceDefault, "test-cluster")
@@ -1417,7 +1423,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 
 			reconciler := &KopsControlPlaneReconciler{}
 			terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
-			err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kcp, []infrastructurev1alpha2.KopsMachinePool{*kmp}, true, kopsCluster.Spec.ConfigBase, terraformOutputDir, true)
+			err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kcp, []infrastructurev1alpha1.KopsMachinePool{*kmp}, true, kopsCluster.Spec.ConfigBase, terraformOutputDir, true)
 			g.Expect(err).NotTo(HaveOccurred())
 
 			templateTestDir := "../../utils/templates/tests"
@@ -1471,14 +1477,14 @@ func TestControllerClassPredicate(t *testing.T) {
 	}{
 		{
 			description:    "should return true when controller and object don't have any class defined",
-			input:          &controlplanev1alpha2.KopsControlPlane{},
+			input:          &controlplanev1alpha1.KopsControlPlane{},
 			expectedOutput: true,
 		},
 		{
 			description:     "should return true when controller and object have the same class defined",
 			controllerClass: "foo",
-			input: &controlplanev1alpha2.KopsControlPlane{
-				Spec: controlplanev1alpha2.KopsControlPlaneSpec{
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
 					ControllerClass: "foo",
 				},
 			},
@@ -1487,8 +1493,8 @@ func TestControllerClassPredicate(t *testing.T) {
 		{
 			description:     "should return false when controller and object have different classes defined",
 			controllerClass: "foo",
-			input: &controlplanev1alpha2.KopsControlPlane{
-				Spec: controlplanev1alpha2.KopsControlPlaneSpec{
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
 					ControllerClass: "bar",
 				},
 			},
@@ -1496,19 +1502,19 @@ func TestControllerClassPredicate(t *testing.T) {
 		{
 			description:     "should return false when only controller has class defined",
 			controllerClass: "foo",
-			input:           &controlplanev1alpha2.KopsControlPlane{},
+			input:           &controlplanev1alpha1.KopsControlPlane{},
 		},
 		{
 			description: "should return false when only object has class defined",
-			input: &controlplanev1alpha2.KopsControlPlane{
-				Spec: controlplanev1alpha2.KopsControlPlaneSpec{
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
 					ControllerClass: "foo",
 				},
 			},
 		},
 		{
 			description: "should return false when the object isn't a KopsControlPlane",
-			input:       &infrastructurev1alpha2.KopsMachinePool{},
+			input:       &infrastructurev1alpha1.KopsMachinePool{},
 		},
 	}
 

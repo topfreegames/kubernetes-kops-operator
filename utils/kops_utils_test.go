@@ -9,7 +9,7 @@ import (
 
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
 
-	controlplanev1alpha2 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha2"
+	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kops/pkg/featureflag"
 	"k8s.io/kops/upup/pkg/fi"
@@ -26,16 +26,16 @@ import (
 func TestParseSpotinstFeatureflags(t *testing.T) {
 	testCases := []struct {
 		description          string
-		input                *controlplanev1alpha2.KopsControlPlane
+		input                *controlplanev1alpha1.KopsControlPlane
 		environmentVariables map[string]string
 		expectedError        bool
 		expectedResult       map[string]bool
 	}{
 		{
 			description: "should enable Spotinst, SpotinstOcean and SpotinstHybrid",
-			input: &controlplanev1alpha2.KopsControlPlane{
-				Spec: controlplanev1alpha2.KopsControlPlaneSpec{
-					SpotInst: controlplanev1alpha2.SpotInstSpec{
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					SpotInst: controlplanev1alpha1.SpotInstSpec{
 						Enabled:      true,
 						FeatureFlags: "+SpotinstOcean,SpotinstHybrid",
 					},
@@ -53,9 +53,9 @@ func TestParseSpotinstFeatureflags(t *testing.T) {
 		},
 		{
 			description: "should enable Spotinst",
-			input: &controlplanev1alpha2.KopsControlPlane{
-				Spec: controlplanev1alpha2.KopsControlPlaneSpec{
-					SpotInst: controlplanev1alpha2.SpotInstSpec{
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					SpotInst: controlplanev1alpha1.SpotInstSpec{
 						Enabled: true,
 					},
 				},
@@ -86,9 +86,9 @@ func TestParseSpotinstFeatureflags(t *testing.T) {
 		},
 		{
 			description: "should return error if credentials environment variables aren't defined",
-			input: &controlplanev1alpha2.KopsControlPlane{
-				Spec: controlplanev1alpha2.KopsControlPlaneSpec{
-					SpotInst: controlplanev1alpha2.SpotInstSpec{
+			input: &controlplanev1alpha1.KopsControlPlane{
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					SpotInst: controlplanev1alpha1.SpotInstSpec{
 						Enabled:      true,
 						FeatureFlags: "+SpotinstOcean,SpotinstHybrid",
 					},
@@ -294,8 +294,8 @@ func TestReconcileKopsSecretsDelete(t *testing.T) {
 				_, _, _ = fakeSecretStore.GetOrCreateSecret(ctx, kopsSecretName, kopsSecret)
 			}
 
-			kopsControlPlane := &controlplanev1alpha2.KopsControlPlane{
-				Status: controlplanev1alpha2.KopsControlPlaneStatus{
+			kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{
+				Status: controlplanev1alpha1.KopsControlPlaneStatus{
 					Secrets: tc.statusKopsSecret,
 				},
 			}
@@ -420,8 +420,8 @@ func TestReconcileKopsSecrets(t *testing.T) {
 				_, _, _ = fakeSecretStore.GetOrCreateSecret(ctx, kopsSecretName, kopsSecret)
 			}
 
-			kopsControlPlane := &controlplanev1alpha2.KopsControlPlane{
-				Status: controlplanev1alpha2.KopsControlPlaneStatus{
+			kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{
+				Status: controlplanev1alpha1.KopsControlPlaneStatus{
 					Secrets: tc.statusKopsSecret,
 				},
 			}
