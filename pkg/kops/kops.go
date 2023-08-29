@@ -8,8 +8,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	"github.com/pkg/errors"
-	kcontrolplanev1alpha2 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha2"
-	kinfrastructurev1alpha2 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha2"
+	kcontrolplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	kinfrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 )
 
 var (
@@ -19,7 +19,7 @@ var (
 	ErrLabelValueEmpty = errors.New("label value is empty")
 )
 
-func GetSubnetFromKopsControlPlane(kcp *kcontrolplanev1alpha2.KopsControlPlane) (*kopsapi.ClusterSubnetSpec, error) {
+func GetSubnetFromKopsControlPlane(kcp *kcontrolplanev1alpha1.KopsControlPlane) (*kopsapi.ClusterSubnetSpec, error) {
 	if kcp.Spec.KopsClusterSpec.Networking.Subnets == nil {
 		return nil, errors.Wrap(errors.Errorf("SubnetNotFound"), "subnet not found in KopsControlPlane")
 	}
@@ -42,8 +42,8 @@ func GetRegionFromKopsSubnet(subnet kopsapi.ClusterSubnetSpec) (*string, error) 
 }
 
 // GetKopsMachinePoolsWithLabel retrieve all KopsMachinePool with the given label
-func GetKopsMachinePoolsWithLabel(ctx context.Context, c client.Client, key, value string) ([]kinfrastructurev1alpha2.KopsMachinePool, error) {
-	var kmps []kinfrastructurev1alpha2.KopsMachinePool
+func GetKopsMachinePoolsWithLabel(ctx context.Context, c client.Client, key, value string) ([]kinfrastructurev1alpha1.KopsMachinePool, error) {
+	var kmps []kinfrastructurev1alpha1.KopsMachinePool
 
 	if key == "" {
 		return kmps, ErrLabelKeyEmpty
@@ -58,7 +58,7 @@ func GetKopsMachinePoolsWithLabel(ctx context.Context, c client.Client, key, val
 		},
 	}
 
-	kmpsList := &kinfrastructurev1alpha2.KopsMachinePoolList{}
+	kmpsList := &kinfrastructurev1alpha1.KopsMachinePoolList{}
 	err := c.List(ctx, kmpsList, selectors...)
 	if err != nil {
 		return kmps, fmt.Errorf("error while trying to retrieve KopsMachinePool list: %w", err)
@@ -67,7 +67,7 @@ func GetKopsMachinePoolsWithLabel(ctx context.Context, c client.Client, key, val
 	return kmpsList.Items, nil
 }
 
-func GetCloudResourceNameFromKopsMachinePool(kmp kinfrastructurev1alpha2.KopsMachinePool) (string, error) {
+func GetCloudResourceNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.KopsMachinePool) (string, error) {
 
 	if _, ok := kmp.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-role"]; !ok {
 		return "", fmt.Errorf("failed to retrieve role from KopsMachinePool %s", kmp.GetName())

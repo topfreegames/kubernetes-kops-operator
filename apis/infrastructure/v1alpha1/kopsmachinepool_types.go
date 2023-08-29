@@ -19,7 +19,7 @@ package v1alpha1
 import (
 	karpenter "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kops "k8s.io/kops/pkg/apis/kops/v1alpha2"
+	kops "k8s.io/kops/pkg/apis/kops"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 )
 
