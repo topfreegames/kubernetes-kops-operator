@@ -5,7 +5,7 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.10.0
   creationTimestamp: null
   labels:
-    cluster.x-k8s.io/v1beta1: v1alpha2
+    cluster.x-k8s.io/v1beta1: v1alpha1
   name: kopsmachinepools.infrastructure.cluster.x-k8s.io
 spec:
   group: infrastructure.cluster.x-k8s.io

@@ -3,8 +3,9 @@ kind: CustomResourceDefinition
 metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.10.0
+  creationTimestamp: null
   labels:
-    cluster.x-k8s.io/v1beta1: v1alpha2
+    cluster.x-k8s.io/v1beta1: v1alpha1
   name: kopscontrolplanes.controlplane.cluster.x-k8s.io
 spec:
   group: controlplane.cluster.x-k8s.io
@@ -24,6 +25,9 @@ spec:
     - jsonPath: .metadata.creationTimestamp
       name: Age
       type: date
+    - jsonPath: .spec.controllerClass
+      name: ControllerClass
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
