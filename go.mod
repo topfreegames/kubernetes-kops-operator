@@ -19,7 +19,7 @@ require (
 	k8s.io/api v0.27.3
 	k8s.io/apimachinery v0.27.3
 	k8s.io/client-go v0.27.3
-	k8s.io/kops v1.27.0
+	k8s.io/kops v1.27.1
 	k8s.io/kubectl v0.27.3
 	sigs.k8s.io/cluster-api v1.5.0
 	sigs.k8s.io/controller-runtime v0.15.1
