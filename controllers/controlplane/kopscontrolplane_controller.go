@@ -60,6 +60,7 @@ import (
 	"k8s.io/kops/upup/pkg/fi/cloudup"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
+	capiutil "sigs.k8s.io/cluster-api/util"
 	"sigs.k8s.io/cluster-api/util/annotations"
 	"sigs.k8s.io/cluster-api/util/conditions"
 	"sigs.k8s.io/cluster-api/util/kubeconfig"
@@ -69,6 +70,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/yaml"
@@ -531,21 +533,21 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			reconciler.Mux.Unlock()
 			log.Info(fmt.Sprintf("unexpected Unlock step for %s, took %s", kopsControlPlane.Name, time.Since(lockInitTime)))
 		}
-		failedToUpdateKCPReason := "FailedToUpdate"
-
 		if err := reconciler.Status().Update(ctx, kopsControlPlane); err != nil {
-			r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, failedToUpdateKCPReason, "failed to update kopsControlPlane: %s", err)
+			r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, controlplanev1alpha1.FailedToUpdateKopsControlPlane, "failed to update kopsControlPlane: %s", err)
 		}
 
 		for _, kopsMachinePool := range kmps {
 			kopsMachinePoolHelper := kopsMachinePool.DeepCopy()
 			if err := reconciler.Update(ctx, &kopsMachinePool); err != nil {
-				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, failedToUpdateKCPReason, "failed to update kopsControlPlane: %s", err)
+				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, controlplanev1alpha1.FailedToUpdateKopsControlPlane, "failed to update kopsControlPlane: %s", err)
 			}
 
-			kopsMachinePool.Status = kopsMachinePoolHelper.Status
-			if err := reconciler.Status().Update(ctx, &kopsMachinePool); err != nil {
-				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, failedToUpdateKCPReason, "failed to update kopsControlPlane: %s", err)
+			if kopsMachinePool.ObjectMeta.DeletionTimestamp.IsZero() {
+				kopsMachinePool.Status = kopsMachinePoolHelper.Status
+				if err := reconciler.Status().Update(ctx, &kopsMachinePool); err != nil {
+					r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, infrastructurev1alpha1.FailedToUpdateKopsMachinePool, "failed to update kopsMachinePool: %s", err)
+				}
 			}
 		}
 
@@ -590,12 +592,16 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	shouldEnableKarpenter := false
+	existingKopsMachinePool := []infrastructurev1alpha1.KopsMachinePool{}
 	for i, kopsMachinePool := range kmps {
-		err = reconciler.reconcileKopsMachinePool(ctx, log, kopsClientset, kopsControlPlane, &kmps[i])
+		err = reconciler.reconcileKopsMachinePool(ctx, kopsClientset, kopsControlPlane, &kmps[i])
 		if err != nil {
 			reconciler.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeWarning, "KopsMachinePoolReconcileFailed", err.Error())
 		} else {
 			reconciler.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeNormal, "KopsMachinePoolReconcileSuccess", kopsMachinePool.Name)
+		}
+		if kopsMachinePool.ObjectMeta.DeletionTimestamp.IsZero() {
+			existingKopsMachinePool = append(existingKopsMachinePool, kopsMachinePool)
 		}
 		if len(kopsMachinePool.Spec.KarpenterProvisioners) > 0 {
 			shouldEnableKarpenter = true
@@ -664,7 +670,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	// Prepare custom cloud resources
-	err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, kmps, shouldEnableKarpenter, fullCluster.Spec.ConfigBase, terraformOutputDir, shouldIgnoreSG)
+	err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, existingKopsMachinePool, shouldEnableKarpenter, fullCluster.Spec.ConfigBase, terraformOutputDir, shouldIgnoreSG)
 	if err != nil {
 		return resultError, err
 	}
@@ -732,7 +738,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return resultDefault, nil
 }
 
-func (r *KopsControlPlaneReconciler) updateKopsMachinePoolWithProviderIDList(ctx context.Context, log logr.Logger, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, credentials *aws.Credentials) error {
+func (r *KopsControlPlaneReconciliation) updateKopsMachinePoolWithProviderIDList(ctx context.Context, log logr.Logger, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, credentials *aws.Credentials) error {
 	for i, kopsMachinePool := range kmps {
 		// TODO: retrieve karpenter providerIDList
 		if len(kopsMachinePool.Spec.SpotInstOptions) == 0 && kopsMachinePool.Spec.KopsInstanceGroupSpec.Manager != "Karpenter" {
@@ -760,7 +766,7 @@ func (r *KopsControlPlaneReconciler) updateKopsMachinePoolWithProviderIDList(ctx
 	return nil
 }
 
-func (r *KopsControlPlaneReconciler) reconcileKopsMachinePool(ctx context.Context, log logr.Logger, kopsClientset simple.Clientset, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) error {
+func (r *KopsControlPlaneReconciliation) reconcileKopsMachinePool(ctx context.Context, kopsClientset simple.Clientset, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) error {
 	// Ensure correct NodeLabel for the IG
 	if kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels != nil {
 		kopsMachinePool.Spec.KopsInstanceGroupSpec.NodeLabels["kops.k8s.io/instance-group-name"] = kopsMachinePool.Name
@@ -783,7 +789,38 @@ func (r *KopsControlPlaneReconciler) reconcileKopsMachinePool(ctx context.Contex
 		},
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
-	err := r.createOrUpdateInstanceGroup(ctx, log, kopsClientset, kopsCluster, kopsInstanceGroup)
+
+	if !kopsMachinePool.ObjectMeta.DeletionTimestamp.IsZero() {
+		r.log.Info(fmt.Sprintf("deleting instancegroup/%s", kopsInstanceGroup.Name))
+
+		for _, ownerReference := range kopsMachinePool.GetOwnerReferences() {
+			err := r.Client.Delete(ctx, capiutil.ObjectReferenceToUnstructured(
+				corev1.ObjectReference{
+					Kind:       ownerReference.Kind,
+					Namespace:  kopsMachinePool.Namespace,
+					Name:       ownerReference.Name,
+					UID:        ownerReference.UID,
+					APIVersion: ownerReference.APIVersion,
+				},
+			))
+			if client.IgnoreNotFound(err) != nil {
+				return err
+			}
+		}
+		err := kopsClientset.InstanceGroupsFor(kopsCluster).Delete(ctx, kopsInstanceGroup.Name, metav1.DeleteOptions{})
+		if err != nil {
+			return err
+		}
+		r.Recorder.Eventf(kopsMachinePool, corev1.EventTypeNormal, "KopsMachinePoolDeleted", kopsMachinePool.Name)
+		controllerutil.RemoveFinalizer(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolFinalizer)
+		return nil
+	}
+
+	if !controllerutil.ContainsFinalizer(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolFinalizer) {
+		controllerutil.AddFinalizer(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolFinalizer)
+	}
+
+	err := r.createOrUpdateInstanceGroup(ctx, r.log, kopsClientset, kopsCluster, kopsInstanceGroup)
 	if err != nil {
 		conditions.MarkFalse(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolStateReadyCondition, infrastructurev1alpha1.KopsMachinePoolStateReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
 		return err
@@ -851,7 +888,7 @@ func RegionBySubnet(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) (st
 }
 
 // createOrUpdateInstanceGroup create or update the instance group in kops state
-func (r *KopsControlPlaneReconciler) createOrUpdateInstanceGroup(ctx context.Context, log logr.Logger, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, kopsInstanceGroup *kopsapi.InstanceGroup) error {
+func (r *KopsControlPlaneReconciliation) createOrUpdateInstanceGroup(ctx context.Context, log logr.Logger, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, kopsInstanceGroup *kopsapi.InstanceGroup) error {
 
 	instanceGroupName := kopsInstanceGroup.ObjectMeta.Name
 	_, err := kopsClientset.InstanceGroupsFor(kopsCluster).Get(ctx, instanceGroupName, metav1.GetOptions{})

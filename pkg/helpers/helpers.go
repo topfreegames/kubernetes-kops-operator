@@ -119,7 +119,7 @@ func NewKopsControlPlane(name, namespace string) *controlplanev1alpha1.KopsContr
 				{
 					APIVersion: "cluster.x-k8s.io/v1beta1",
 					Kind:       "Cluster",
-					Name:       GetFQDN("testCluster"),
+					Name:       GetFQDN(name),
 				},
 			},
 		},

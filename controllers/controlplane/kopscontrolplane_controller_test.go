@@ -10,9 +10,12 @@ import (
 	"testing"
 	"time"
 
+	expv1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
+
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
 	asgTypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
@@ -22,7 +25,6 @@ import (
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	corev1 "k8s.io/api/core/v1"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -41,6 +43,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 )
 
@@ -630,6 +633,139 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(fakeSecret.Data).NotTo(BeNil())
 			}
+		})
+	}
+}
+
+func TestKopsControlPlaneReconcilerDelete(t *testing.T) {
+	testCases := []struct {
+		description             string
+		kopsMachinePoolFunction func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool
+		assertFunction          func(client.Client) bool
+	}{
+		{
+			description: "should delete kopsMachinePool",
+			kopsMachinePoolFunction: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
+				kopsMachinePool.SetOwnerReferences(
+					[]metav1.OwnerReference{
+						{
+							Kind:       "MachinePool",
+							APIVersion: "cluster.x-k8s.io/v1beta1",
+							Name:       "test-machine-pool",
+							UID:        "1",
+						},
+					},
+				)
+				kopsMachinePool.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+				controllerutil.AddFinalizer(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolFinalizer)
+				return kopsMachinePool
+			},
+			assertFunction: func(kubeClient client.Client) bool {
+				kmp := &infrastructurev1alpha1.KopsMachinePool{}
+				errKMP := kubeClient.Get(context.TODO(), client.ObjectKey{
+					Namespace: metav1.NamespaceDefault,
+					Name:      "test-kops-machine-pool",
+				}, kmp)
+
+				mp := &expv1.MachinePool{}
+				errMP := kubeClient.Get(context.TODO(), client.ObjectKey{
+					Namespace: metav1.NamespaceDefault,
+					Name:      "test-machine-pool",
+				}, mp)
+
+				return apierrors.IsNotFound(errKMP) && apierrors.IsNotFound(errMP)
+			},
+		},
+	}
+
+	RegisterFailHandler(Fail)
+	vfs.Context.ResetMemfsContext(true)
+	g := NewWithT(t)
+	ctx := context.TODO()
+	err := controlplanev1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = clusterv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = expv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = infrastructurev1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			kopsControlPlane := helpers.NewKopsControlPlane("test-cluster", metav1.NamespaceDefault)
+			cluster := helpers.NewCluster("test-cluster", helpers.GetFQDN(kopsControlPlane.Name), metav1.NamespaceDefault)
+			machinePool := &expv1.MachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-machine-pool",
+					Namespace: metav1.NamespaceDefault,
+					UID:       "1",
+				},
+			}
+			kopsMachinePool := helpers.NewKopsMachinePool("test-kops-machine-pool", kopsControlPlane.Namespace, cluster.Name)
+			kopsMachinePool = tc.kopsMachinePoolFunction(kopsMachinePool)
+			kopsControlPlaneSecret := helpers.NewAWSCredentialSecret()
+
+			fakeClient := fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster, kopsControlPlaneSecret, kopsMachinePool, machinePool).WithStatusSubresource(kopsControlPlane, kopsMachinePool).WithScheme(scheme.Scheme).Build()
+			fakeKopsClientset := helpers.NewFakeKopsClientset()
+
+			kopsCluster := &kopsapi.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: helpers.GetFQDN("test-cluster"),
+				},
+				Spec: kopsControlPlane.Spec.KopsClusterSpec,
+			}
+
+			keyStore, err := fakeKopsClientset.KeyStore(kopsCluster)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			err = helpers.CreateFakeKopsKeyPair(ctx, keyStore)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			reconciler := &KopsControlPlaneReconciler{
+				Client: fakeClient,
+				GetKopsClientSetFactory: func(configBase string) (simple.Clientset, error) {
+					return fakeKopsClientset, nil
+				},
+				Mux:      new(sync.Mutex),
+				Recorder: record.NewFakeRecorder(10),
+				BuildCloudFactory: func(*kopsapi.Cluster) (fi.Cloud, error) {
+					return nil, nil
+				},
+				PopulateClusterSpecFactory: func(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error) {
+					return kopsCluster, nil
+				},
+				PrepareKopsCloudResourcesFactory: func(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, terraformOutputDir string, cloud fi.Cloud) error {
+					return nil
+				},
+				ApplyTerraformFactory: func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error {
+					return nil
+				},
+				GetClusterStatusFactory: func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
+					return nil, nil
+				},
+				ValidateKopsClusterFactory: func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+					return &validation.ValidationCluster{}, nil
+				},
+				GetASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
+					return &asgTypes.AutoScalingGroup{
+						Instances: []asgTypes.Instance{
+							{
+								AvailabilityZone: aws.String("us-east-1"),
+								InstanceId:       aws.String("<teste>"),
+							},
+						},
+					}, nil
+				},
+			}
+			_, _ = reconciler.Reconcile(ctx, ctrl.Request{
+				NamespacedName: client.ObjectKey{
+					Namespace: metav1.NamespaceDefault,
+					Name:      helpers.GetFQDN("test-cluster"),
+				},
+			})
+			g.Expect(tc.assertFunction(fakeClient)).To(BeTrue())
+
 		})
 	}
 }
@@ -1241,7 +1377,7 @@ func TestCreateOrUpdateInstanceGroup(t *testing.T) {
 				ig.Spec.MachineType = "m5.test"
 			}
 
-			reconciler := &KopsControlPlaneReconciler{}
+			reconciler := &KopsControlPlaneReconciliation{}
 			err = reconciler.createOrUpdateInstanceGroup(ctx, ctrl.LoggerFrom(ctx), fakeKopsClientset, kopsCluster, ig)
 			if tc["expectedError"].(bool) {
 				g.Expect(err).To(HaveOccurred())
@@ -1538,6 +1674,154 @@ func TestControllerClassPredicate(t *testing.T) {
 				Object: tc.input,
 			})).To(BeEquivalentTo(tc.expectedOutput))
 
+		})
+	}
+}
+
+func TestReconcileKopsMachinePool(t *testing.T) {
+	g := NewWithT(t)
+	var testCases = []struct {
+		description    string
+		instanceGroups []*kopsapi.InstanceGroup
+		input          *infrastructurev1alpha1.KopsMachinePool
+		assertFunction func(simple.Clientset, *kopsapi.Cluster) bool
+	}{
+		{
+			description: "should create a new IG",
+			input: &infrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kops-machine-pool-a",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: helpers.GetFQDN("test-cluster"),
+					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
+						Role: "Node",
+					},
+				},
+			},
+			assertFunction: func(fakeKopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) bool {
+				ig, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Get(context.TODO(), "test-kops-machine-pool-a", metav1.GetOptions{})
+				return err == nil && ig.Name == "test-kops-machine-pool-a"
+			},
+		},
+		{
+			description: "should update an already created IG",
+			instanceGroups: []*kopsapi.InstanceGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-kops-machine-pool-a",
+						Namespace: metav1.NamespaceDefault,
+					},
+					Spec: kopsapi.InstanceGroupSpec{
+						Role:  "Node",
+						Image: "image-a",
+					},
+				},
+			},
+			input: &infrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kops-machine-pool-a",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: helpers.GetFQDN("test-cluster"),
+					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
+						Role:  "Node",
+						Image: "image-b",
+					},
+				},
+			},
+			assertFunction: func(fakeKopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) bool {
+				ig, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Get(context.TODO(), "test-kops-machine-pool-a", metav1.GetOptions{})
+				return err == nil && ig.Spec.Image == "image-b"
+			},
+		},
+		{
+			description: "should delete kmp marked for deletion",
+			instanceGroups: []*kopsapi.InstanceGroup{
+				{
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "test-kops-machine-pool-a",
+						Namespace: metav1.NamespaceDefault,
+					},
+					Spec: kopsapi.InstanceGroupSpec{
+						Role:  "Node",
+						Image: "image-a",
+					},
+				},
+			},
+			input: &infrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kops-machine-pool-a",
+					Namespace: metav1.NamespaceDefault,
+					DeletionTimestamp: &metav1.Time{
+						Time: time.Now(),
+					},
+				},
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: helpers.GetFQDN("test-cluster"),
+					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
+						Role: "Node",
+					},
+				},
+			},
+			assertFunction: func(fakeKopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) bool {
+				_, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Get(context.TODO(), "test-kops-machine-pool-a", metav1.GetOptions{})
+				return err != nil && apierrors.IsNotFound(err)
+			},
+		},
+		{
+			description: "should do nothing for a ig already deleted",
+			input: &infrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kops-machine-pool-a",
+					Namespace: metav1.NamespaceDefault,
+					DeletionTimestamp: &metav1.Time{
+						Time: time.Now(),
+					},
+				},
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: helpers.GetFQDN("test-cluster"),
+					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
+						Role: "Node",
+					},
+				},
+			},
+			assertFunction: func(fakeKopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) bool {
+				_, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Get(context.TODO(), "test-kops-machine-pool-a", metav1.GetOptions{})
+				return err != nil && apierrors.IsNotFound(err)
+			},
+		},
+	}
+
+	RegisterFailHandler(Fail)
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kops-control-plane",
+					Namespace: metav1.NamespaceDefault,
+				},
+			}
+			kopsCluster := helpers.NewKopsCluster("test-cluster")
+			fakeKopsClientset := helpers.NewFakeKopsClientset()
+			_, err := fakeKopsClientset.CreateCluster(context.TODO(), kopsCluster)
+			g.Expect(err).NotTo(HaveOccurred())
+			for _, ig := range tc.instanceGroups {
+				_, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Create(context.TODO(), ig, metav1.CreateOptions{})
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+
+			reconciler := &KopsControlPlaneReconciler{
+				Recorder: record.NewFakeRecorder(10),
+			}
+			reconciliation := &KopsControlPlaneReconciliation{
+				KopsControlPlaneReconciler: *reconciler,
+			}
+			_ = reconciliation.reconcileKopsMachinePool(context.TODO(), fakeKopsClientset, kopsControlPlane, tc.input)
+			g.Expect(tc.assertFunction(fakeKopsClientset, kopsCluster)).To(BeTrue())
 		})
 	}
 }
