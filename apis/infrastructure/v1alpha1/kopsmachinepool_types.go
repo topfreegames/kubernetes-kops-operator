@@ -31,6 +31,12 @@ const (
 const (
 	// KopsMachinePoolStateReconciliationFailedReason (Severity=Error) indicates that Kops state couldn't be created/updated.
 	KopsMachinePoolStateReconciliationFailedReason = "KopsMachinePoolStateReconciliationFailed"
+
+	// KopsMachinePoolFinalizer allows the controller to clean up resources on delete.
+	KopsMachinePoolFinalizer = "kopsmachinepool.infrastructure.cluster.x-k8s.io"
+
+	// FailedToUpdateKopsMachinePool (Severity=Warn) indicates that controller failed to update the custom resource.
+	FailedToUpdateKopsMachinePool = "FailedToUpdateKopsMachinePool"
 )
 
 // KopsMachinePoolSpec defines the desired state of KopsMachinePool

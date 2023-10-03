@@ -53,6 +53,9 @@ const (
 
 	// TerraformApplyReconciliationFailedReason (Severity=Error) indicates that Terraform files couldn't be applied.
 	TerraformApplyReconciliationFailedReason = "TerraformApplyReconciliationFailed"
+
+	// FailedToUpdateKopsControlPlane (Severity=Warn) indicates that controller failed to update the custom resource.
+	FailedToUpdateKopsControlPlane = "FailedToUpdateKopsControlPlane"
 )
 
 type SpotInstSpec struct {

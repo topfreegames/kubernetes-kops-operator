@@ -987,6 +987,9 @@ spec:
                       evictionSoftGracePeriod:
                         description: Comma-delimited list of grace periods for each soft eviction signal.  For example, 'memory.available=30s'.
                         type: string
+                      experimentalAllocatableIgnoreEviction:
+                        description: ExperimentalAllocatableIgnoreEviction enables ignoring Hard Eviction Thresholds while calculating Node Allocatable
+                        type: boolean
                       experimentalAllowedUnsafeSysctls:
                         description: ExperimentalAllowedUnsafeSysctls are passed to the kubelet config to whitelist allowable sysctls Was promoted to beta and renamed. https://github.com/kubernetes/kubernetes/pull/63717
                         items:
@@ -1641,6 +1644,12 @@ spec:
                     properties:
                       enabled:
                         type: boolean
+                      image:
+                        type: string
+                      logFormat:
+                        type: string
+                      logLevel:
+                        type: string
                     type: object
                   keyStore:
                     description: KeyStore is the VFS path to where SSL keys and certificates are stored
@@ -3100,6 +3109,9 @@ spec:
                       evictionSoftGracePeriod:
                         description: Comma-delimited list of grace periods for each soft eviction signal.  For example, 'memory.available=30s'.
                         type: string
+                      experimentalAllocatableIgnoreEviction:
+                        description: ExperimentalAllocatableIgnoreEviction enables ignoring Hard Eviction Thresholds while calculating Node Allocatable
+                        type: boolean
                       experimentalAllowedUnsafeSysctls:
                         description: ExperimentalAllowedUnsafeSysctls are passed to the kubelet config to whitelist allowable sysctls Was promoted to beta and renamed. https://github.com/kubernetes/kubernetes/pull/63717
                         items:
@@ -3644,6 +3656,9 @@ spec:
                           preallocateBPFMaps:
                             description: 'PreallocateBPFMaps reduces the per-packet latency at the expense of up-front memory allocation. Default: true'
                             type: boolean
+                          registry:
+                            description: Registry overrides the default Cilium container registry (quay.io)
+                            type: string
                           sidecarIstioProxyImage:
                             description: 'SidecarIstioProxyImage is the regular expression matching compatible Istio sidecar istio-proxy container image names. Default: cilium/istio_proxy'
                             type: string

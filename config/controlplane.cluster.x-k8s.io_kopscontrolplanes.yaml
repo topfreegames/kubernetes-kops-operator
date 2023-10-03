@@ -1278,6 +1278,11 @@ spec:
                         description: Comma-delimited list of grace periods for each
                           soft eviction signal.  For example, 'memory.available=30s'.
                         type: string
+                      experimentalAllocatableIgnoreEviction:
+                        description: ExperimentalAllocatableIgnoreEviction enables
+                          ignoring Hard Eviction Thresholds while calculating Node
+                          Allocatable
+                        type: boolean
                       experimentalAllowedUnsafeSysctls:
                         description: ExperimentalAllowedUnsafeSysctls are passed to
                           the kubelet config to whitelist allowable sysctls Was promoted
@@ -2129,6 +2134,12 @@ spec:
                     properties:
                       enabled:
                         type: boolean
+                      image:
+                        type: string
+                      logFormat:
+                        type: string
+                      logLevel:
+                        type: string
                     type: object
                   keyStore:
                     description: KeyStore is the VFS path to where SSL keys and certificates
@@ -4377,6 +4388,11 @@ spec:
                         description: Comma-delimited list of grace periods for each
                           soft eviction signal.  For example, 'memory.available=30s'.
                         type: string
+                      experimentalAllocatableIgnoreEviction:
+                        description: ExperimentalAllocatableIgnoreEviction enables
+                          ignoring Hard Eviction Thresholds while calculating Node
+                          Allocatable
+                        type: boolean
                       experimentalAllowedUnsafeSysctls:
                         description: ExperimentalAllowedUnsafeSysctls are passed to
                           the kubelet config to whitelist allowable sysctls Was promoted
@@ -5197,6 +5213,10 @@ spec:
                               latency at the expense of up-front memory allocation.
                               Default: true'
                             type: boolean
+                          registry:
+                            description: Registry overrides the default Cilium container
+                              registry (quay.io)
+                            type: string
                           sidecarIstioProxyImage:
                             description: 'SidecarIstioProxyImage is the regular expression
                               matching compatible Istio sidecar istio-proxy container
