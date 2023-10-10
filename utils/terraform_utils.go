@@ -93,3 +93,25 @@ func ApplyTerraform(ctx context.Context, workingDir, terraformExecPath string, c
 
 	return nil
 }
+
+func CleanupTerraformDirectory(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	names, err := d.Readdirnames(-1)
+	if err != nil {
+		return err
+	}
+	for _, name := range names {
+		if strings.HasPrefix(name, ".terraform") {
+			continue
+		}
+		err = os.RemoveAll(filepath.Join(dir, name))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
