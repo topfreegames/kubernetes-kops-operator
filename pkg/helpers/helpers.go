@@ -220,6 +220,14 @@ func NewKopsMachinePool(name, namespace, clusterName string) *infrastructurev1al
 			},
 			ResourceVersion:   "1",
 			CreationTimestamp: metav1.Time{},
+			OwnerReferences: []metav1.OwnerReference{
+				{
+					APIVersion: "cluster.x-k8s.io/v1beta1",
+					Kind:       "Machine",
+					Name:       "test-machine",
+					UID:        "1",
+				},
+			},
 		},
 		Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 			ClusterName: clusterName,

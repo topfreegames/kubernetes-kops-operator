@@ -77,6 +77,7 @@ require (
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
 	golang.org/x/tools v0.9.3 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230530153820-e85fd2cbaebc // indirect
+	gotest.tools/v3 v3.4.0 // indirect
 	k8s.io/cli-runtime v0.27.3 // indirect
 	k8s.io/cloud-provider-aws v1.27.2 // indirect
 	k8s.io/cloud-provider-gcp/providers v0.26.2 // indirect

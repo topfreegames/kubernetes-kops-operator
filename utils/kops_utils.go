@@ -23,6 +23,8 @@ import (
 	"k8s.io/kops/pkg/kubeconfig"
 	"k8s.io/kops/pkg/pki"
 	"k8s.io/kops/pkg/rbac"
+	"k8s.io/kops/pkg/resources"
+	resourceops "k8s.io/kops/pkg/resources/ops"
 	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
@@ -287,4 +289,36 @@ func isKopsSecretInStatus(kopsSecretName string, kopsSecretStatus []string) bool
 		}
 	}
 	return false
+}
+
+func KopsDeleteResources(ctx context.Context, cloud fi.Cloud, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error {
+	if len(kopsCluster.Name) == 0 {
+		return errors.New("cluster name is required")
+	}
+
+	allResources, err := resourceops.ListResources(cloud, kopsCluster)
+	if err != nil {
+		return err
+	}
+
+	clusterResources := make(map[string]*resources.Resource)
+	for k, resource := range allResources {
+		if resource.Shared {
+			continue
+		}
+		clusterResources[k] = resource
+	}
+
+	err = resourceops.DeleteResources(cloud, clusterResources)
+	if err != nil {
+		return err
+	}
+
+	err = kopsClientset.DeleteCluster(ctx, kopsCluster)
+	if err != nil {
+		return fmt.Errorf("error removing cluster from state store: %v", err)
+	}
+
+	return nil
+
 }

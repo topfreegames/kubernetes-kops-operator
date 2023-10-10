@@ -3,13 +3,38 @@ package util
 import (
 	"context"
 	"os"
+	"time"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
+	capiutil "sigs.k8s.io/cluster-api/util"
+
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+func DeleteOwnerResources(ctx context.Context, kubeClient client.Client, resource client.Object) error {
+	for _, ownerReference := range resource.GetOwnerReferences() {
+		err := kubeClient.Delete(ctx, capiutil.ObjectReferenceToUnstructured(
+			corev1.ObjectReference{
+				Kind:       ownerReference.Kind,
+				Namespace:  resource.GetNamespace(),
+				Name:       ownerReference.Name,
+				UID:        ownerReference.UID,
+				APIVersion: ownerReference.APIVersion,
+			},
+		))
+		if client.IgnoreNotFound(err) != nil {
+			return err
+		}
+	}
+
+	// Wait for child resources to be marked for deletion
+	// Either this or a complex retry until
+	time.Sleep(3 * time.Second)
+	return nil
+}
 
 // GetClusterByName finds and return a Cluster object using the specified params.
 func GetClusterByName(ctx context.Context, c client.Client, namespace, name string) (*clusterv1beta1.Cluster, error) {

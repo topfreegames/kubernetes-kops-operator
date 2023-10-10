@@ -60,12 +60,10 @@ func CreateAdditionalTerraformFiles(tfFiles ...Template) error {
 	return nil
 }
 
-// ApplyTerraform just applies the already created terraform files
-func ApplyTerraform(ctx context.Context, workingDir, terraformExecPath string, credentials aws.Credentials) error {
-
+func initTerraform(ctx context.Context, workingDir, terraformExecPath string, credentials aws.Credentials) (*tfexec.Terraform, error) {
 	tf, err := tfexec.NewTerraform(workingDir, terraformExecPath)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	env := map[string]string{
@@ -78,15 +76,41 @@ func ApplyTerraform(ctx context.Context, workingDir, terraformExecPath string, c
 	// this overrides all ENVVARs that are passed to Terraform
 	err = tf.SetEnv(env)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	err = tf.Init(ctx, tfexec.Upgrade(true))
+	if err != nil {
+		return nil, err
+	}
+
+	return tf, nil
+
+}
+
+// ApplyTerraform just applies the already created terraform files
+func ApplyTerraform(ctx context.Context, workingDir, terraformExecPath string, credentials aws.Credentials) error {
+
+	tf, err := initTerraform(ctx, workingDir, terraformExecPath, credentials)
 	if err != nil {
 		return err
 	}
 
 	err = tf.Apply(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func DestroyTerraform(ctx context.Context, workingDir, terraformExecPath string, credentials aws.Credentials) error {
+	tf, err := initTerraform(ctx, workingDir, terraformExecPath, credentials)
+	if err != nil {
+		return err
+	}
+
+	err = tf.Destroy(ctx)
 	if err != nil {
 		return err
 	}

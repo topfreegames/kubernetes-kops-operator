@@ -38,6 +38,9 @@ const (
 
 	// KopsControlPlaneFinalizer allows the controller to clean up resources on delete.
 	KopsControlPlaneFinalizer = "kopscontrolplane.controlplane.cluster.x-k8s.io"
+
+	// ClusterNameAnnotation is the annotation set on KopsControlPlane to signalize that it shouldn't be deleted even with deletionTimestamp.
+	ClusterDeleteProtectionAnnotation = "cluster.x-k8s.io/delete-protection"
 )
 
 const (
