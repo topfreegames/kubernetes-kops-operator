@@ -829,12 +829,13 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 
 func TestKopsControlPlaneReconcilerDelete(t *testing.T) {
 	testCases := []struct {
-		description             string
-		kopsMachinePoolFunction func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool
-		assertFunction          func(client.Client) bool
+		description              string
+		kopsControlPlaneFunction func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane
+		kopsMachinePoolFunction  func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool
+		assertFunction           func(client.Client) bool
 	}{
 		{
-			description: "should delete kopsMachinePool",
+			description: "should delete ig",
 			kopsMachinePoolFunction: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
 				kopsMachinePool.SetOwnerReferences(
 					[]metav1.OwnerReference{
@@ -866,6 +867,65 @@ func TestKopsControlPlaneReconcilerDelete(t *testing.T) {
 				return apierrors.IsNotFound(errKMP) && apierrors.IsNotFound(errMP)
 			},
 		},
+		{
+			description: "should delete cluster",
+			kopsControlPlaneFunction: func(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) *controlplanev1alpha1.KopsControlPlane {
+				kopsControlPlane.Finalizers = []string{
+					controlplanev1alpha1.KopsControlPlaneFinalizer,
+				}
+				kopsControlPlane.ObjectMeta.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+				return kopsControlPlane
+			},
+			kopsMachinePoolFunction: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
+				kopsMachinePool.SetOwnerReferences(
+					[]metav1.OwnerReference{
+						{
+							Kind:       "MachinePool",
+							APIVersion: "cluster.x-k8s.io/v1beta1",
+							Name:       "test-machine-pool",
+							UID:        "1",
+						},
+					},
+				)
+				controllerutil.AddFinalizer(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolFinalizer)
+				return kopsMachinePool
+			},
+			assertFunction: func(kubeClient client.Client) bool {
+				cluster := &clusterv1.Cluster{}
+				errCL := kubeClient.Get(context.TODO(), client.ObjectKey{
+					Namespace: metav1.NamespaceDefault,
+					Name:      "test-cluster",
+				}, cluster)
+				if !apierrors.IsNotFound(errCL) {
+					return false
+				}
+
+				kcp := &controlplanev1alpha1.KopsControlPlane{}
+				errKCP := kubeClient.Get(context.TODO(), client.ObjectKey{
+					Namespace: metav1.NamespaceDefault,
+					Name:      "test-cluster",
+				}, kcp)
+				if !apierrors.IsNotFound(errKCP) {
+					return false
+				}
+
+				kmp := &infrastructurev1alpha1.KopsMachinePool{}
+				errKMP := kubeClient.Get(context.TODO(), client.ObjectKey{
+					Namespace: metav1.NamespaceDefault,
+					Name:      "test-kops-machine-pool",
+				}, kmp)
+				if errKMP != nil || len(kmp.ObjectMeta.Finalizers) > 0 {
+					return false
+				}
+
+				mp := &expv1.MachinePool{}
+				errMP := kubeClient.Get(context.TODO(), client.ObjectKey{
+					Namespace: metav1.NamespaceDefault,
+					Name:      "test-machine-pool",
+				}, mp)
+				return apierrors.IsNotFound(errMP)
+			},
+		},
 	}
 
 	RegisterFailHandler(Fail)
@@ -884,6 +944,9 @@ func TestKopsControlPlaneReconcilerDelete(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
 			kopsControlPlane := helpers.NewKopsControlPlane("test-cluster", metav1.NamespaceDefault)
+			if tc.kopsControlPlaneFunction != nil {
+				kopsControlPlane = tc.kopsControlPlaneFunction(kopsControlPlane)
+			}
 			cluster := helpers.NewCluster("test-cluster", helpers.GetFQDN(kopsControlPlane.Name), metav1.NamespaceDefault)
 			machinePool := &expv1.MachinePool{
 				ObjectMeta: metav1.ObjectMeta{
@@ -893,7 +956,9 @@ func TestKopsControlPlaneReconcilerDelete(t *testing.T) {
 				},
 			}
 			kopsMachinePool := helpers.NewKopsMachinePool("test-kops-machine-pool", kopsControlPlane.Namespace, cluster.Name)
-			kopsMachinePool = tc.kopsMachinePoolFunction(kopsMachinePool)
+			if tc.kopsMachinePoolFunction != nil {
+				kopsMachinePool = tc.kopsMachinePoolFunction(kopsMachinePool)
+			}
 			kopsControlPlaneSecret := helpers.NewAWSCredentialSecret()
 
 			fakeClient := fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster, kopsControlPlaneSecret, kopsMachinePool, machinePool).WithStatusSubresource(kopsControlPlane, kopsMachinePool).WithScheme(scheme.Scheme).Build()
@@ -946,6 +1011,12 @@ func TestKopsControlPlaneReconcilerDelete(t *testing.T) {
 							},
 						},
 					}, nil
+				},
+				DestroyTerraformFactory: func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error {
+					return nil
+				},
+				KopsDeleteResourcesFactory: func(ctx context.Context, cloud fi.Cloud, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error {
+					return nil
 				},
 			}
 			_, _ = reconciler.Reconcile(ctx, ctrl.Request{
@@ -2012,6 +2083,68 @@ func TestReconcileKopsMachinePool(t *testing.T) {
 			}
 			_ = reconciliation.reconcileKopsMachinePool(context.TODO(), fakeKopsClientset, kopsControlPlane, tc.input)
 			g.Expect(tc.assertFunction(fakeKopsClientset, kopsCluster)).To(BeTrue())
+		})
+	}
+}
+
+func TestShouldDeleteCluster(t *testing.T) {
+	testCases := []struct {
+		description    string
+		kcp            *controlplanev1alpha1.KopsControlPlane
+		expectedOutput bool
+	}{
+		{
+			description: "should return false when KopsControlPlane isn't marked for deletion",
+			kcp: &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kops-control-plane",
+					Namespace: metav1.NamespaceDefault,
+				},
+			},
+		},
+		{
+			description: "should return false when KopsControlPlane is marked for deletion, but it still have the deletion protection enabled",
+			kcp: &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kops-control-plane",
+					Namespace: metav1.NamespaceDefault,
+					DeletionTimestamp: &metav1.Time{
+						Time: time.Now(),
+					},
+					Annotations: map[string]string{
+						controlplanev1alpha1.ClusterDeleteProtectionAnnotation: "true",
+					},
+				},
+			},
+		},
+		{
+			description: "should return true when KopsControlPlane is marked for deletion and it doesn't have the deletion protection enabled",
+			kcp: &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kops-control-plane",
+					Namespace: metav1.NamespaceDefault,
+					DeletionTimestamp: &metav1.Time{
+						Time: time.Now(),
+					},
+				},
+			},
+			expectedOutput: true,
+		},
+	}
+	g := NewWithT(t)
+	RegisterFailHandler(Fail)
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+
+			r := &KopsControlPlaneReconciler{
+				Recorder: record.NewFakeRecorder(10),
+			}
+			reconciliation := &KopsControlPlaneReconciliation{
+				KopsControlPlaneReconciler: *r,
+			}
+			result := reconciliation.shouldDeleteCluster(tc.kcp)
+			g.Expect(result).To(BeEquivalentTo(tc.expectedOutput))
 		})
 	}
 }

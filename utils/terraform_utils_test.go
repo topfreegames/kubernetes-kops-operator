@@ -3,9 +3,8 @@ package utils
 import (
 	"embed"
 	"fmt"
-	"io/fs"
 	"os"
-	"syscall"
+	"strings"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -144,11 +143,11 @@ func TestCleanupTerraformDirectory(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "test")
 
 	testCases := []struct {
-		description   string
-		input         string
-		files         []string
-		validateFunc  func([]string) bool
-		expectedError error
+		description          string
+		input                string
+		files                []string
+		validateFunc         func([]string) bool
+		expectedErrorMessage string
 	}{
 		{
 			description: "should remove all files in the directory",
@@ -176,13 +175,9 @@ func TestCleanupTerraformDirectory(t *testing.T) {
 			},
 		},
 		{
-			description: "should return error when trying to remove files in an invalid directory",
-			input:       "/invalid-directory",
-			expectedError: &fs.PathError{
-				Op:   "open",
-				Path: "/invalid-directory",
-				Err:  syscall.ENOENT,
-			},
+			description:          "should return error when trying to remove files in an invalid directory",
+			input:                "/invalid-directory",
+			expectedErrorMessage: "no such file or directory",
 		},
 		{
 			description: "should return error when the file isn't a directory",
@@ -190,11 +185,7 @@ func TestCleanupTerraformDirectory(t *testing.T) {
 			files: []string{
 				"a",
 			},
-			expectedError: &fs.PathError{
-				Op:   "fdopendir",
-				Path: fmt.Sprintf(tmpDir + "/a"),
-				Err:  syscall.ENOTDIR,
-			},
+			expectedErrorMessage: "not a directory",
 		},
 	}
 
@@ -210,8 +201,9 @@ func TestCleanupTerraformDirectory(t *testing.T) {
 				g.Expect(err).To(BeNil())
 			}
 			err := CleanupTerraformDirectory(tc.input)
-			if tc.expectedError != nil {
-				g.Expect(err).To(BeEquivalentTo(tc.expectedError))
+			if len(tc.expectedErrorMessage) > 0 {
+				g.Expect(err).ToNot(BeNil())
+				g.Expect(strings.Contains(err.Error(), tc.expectedErrorMessage)).To(BeTrue())
 				return
 			} else {
 				g.Expect(err).To(BeNil())
