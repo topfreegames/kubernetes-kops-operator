@@ -390,7 +390,11 @@ func TestCreateOrUpdateKopsCluster(t *testing.T) {
 				},
 			}
 
-			err := reconciler.createOrUpdateKopsCluster(ctx, fakeKopsClientset, bareKopsCluster, dummySSHPublicKey, nil)
+			reconciliation := &KopsControlPlaneReconciliation{
+				KopsControlPlaneReconciler: *reconciler,
+			}
+
+			err := reconciliation.createOrUpdateKopsCluster(ctx, fakeKopsClientset, bareKopsCluster, dummySSHPublicKey, nil)
 			if !tc.expectedError {
 				g.Expect(err).NotTo(HaveOccurred())
 				cluster, err := fakeKopsClientset.GetCluster(ctx, bareKopsCluster.Name)
@@ -1378,7 +1382,7 @@ func TestCreateOrUpdateInstanceGroup(t *testing.T) {
 			}
 
 			reconciler := &KopsControlPlaneReconciliation{}
-			err = reconciler.createOrUpdateInstanceGroup(ctx, ctrl.LoggerFrom(ctx), fakeKopsClientset, kopsCluster, ig)
+			err = reconciler.createOrUpdateInstanceGroup(ctx, fakeKopsClientset, kopsCluster, ig)
 			if tc["expectedError"].(bool) {
 				g.Expect(err).To(HaveOccurred())
 				return
