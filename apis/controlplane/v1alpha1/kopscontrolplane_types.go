@@ -82,6 +82,8 @@ type KopsControlPlaneSpec struct {
 	// SpotInst enables Spot and define their feature flags
 	// +optional
 	SpotInst SpotInstSpec `json:"spotInst,omitempty"`
+	// KopsClusterAddons is intended to pass additional objects to the cluster: https://kops.sigs.k8s.io/addon_objects/#kubeschedulerconfiguration-group-kubeschedulerconfigk8sio
+	KopsClusterAddons string `json:"kopsClusterAddons,omitempty"`
 }
 
 type IdentityRefSpec struct {
