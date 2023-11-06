@@ -55,6 +55,7 @@ import (
 	"k8s.io/kops/pkg/assets"
 	"k8s.io/kops/pkg/client/simple"
 	"k8s.io/kops/pkg/featureflag"
+	"k8s.io/kops/pkg/kubemanifest"
 	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/upup/pkg/fi/cloudup"
@@ -474,6 +475,28 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ku
 	return nil
 }
 
+func (r *KopsControlPlaneReconciliation) reconcileClusterAddons(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error {
+
+	if r.kcp.Spec.KopsClusterAddons == "" {
+		err := kopsClientset.AddonsFor(kopsCluster).Replace(nil)
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	addons, err := kubemanifest.LoadObjectsFrom([]byte(r.kcp.Spec.KopsClusterAddons))
+	if err != nil {
+		return err
+	}
+
+	err = kopsClientset.AddonsFor(kopsCluster).Replace(addons)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/finalizers,verbs=update
@@ -620,6 +643,11 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			Name: owner.GetName(),
 		},
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
+	}
+
+	err = reconciler.reconcileClusterAddons(ctx, kopsClientset, kopsCluster)
+	if err != nil {
+		return resultError, err
 	}
 
 	featureflag.ParseFlags("-Karpenter")

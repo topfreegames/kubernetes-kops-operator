@@ -64,6 +64,9 @@ spec:
                 - name
                 - namespace
                 type: object
+              kopsClusterAddons:
+                description: 'KopsClusterAddons is intended to pass additional objects to the cluster: https://kops.sigs.k8s.io/addon_objects/#kubeschedulerconfiguration-group-kubeschedulerconfigk8sio'
+                type: string
               kopsClusterSpec:
                 description: 'KopsClusterSpec declare the desired Cluster Kops resource: https://kops.sigs.k8s.io/cluster_spec/'
                 properties:

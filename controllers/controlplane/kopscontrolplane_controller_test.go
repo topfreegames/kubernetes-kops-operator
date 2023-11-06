@@ -34,6 +34,7 @@ import (
 	"k8s.io/client-go/tools/record"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
+	"k8s.io/kops/pkg/kubemanifest"
 	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
 	"k8s.io/kops/util/pkg/vfs"
@@ -111,6 +112,191 @@ func TestEvaluateKopsValidationResult(t *testing.T) {
 		} else {
 			g.Expect(result).To(BeFalse())
 		}
+	}
+}
+
+func TestReconcileClusterAddons(t *testing.T) {
+	addon := `---
+apiVersion: kubescheduler.config.k8s.io/v1beta3
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  pluginConfig:
+  - name: PodTopologySpread
+    args:
+      defaultConstraints:
+      - maxSkew: 1
+        topologyKey: "kubernetes.io/hostname"
+        whenUnsatisfiable: ScheduleAnyway
+      - maxSkew: 3
+        topologyKey: "topology.kubernetes.io/zone"
+        whenUnsatisfiable: ScheduleAnyway
+      defaultingType: List`
+	addons := `---
+apiVersion: kubescheduler.config.k8s.io/v1beta3
+kind: KubeSchedulerConfiguration
+profiles:
+- schedulerName: default-scheduler
+  pluginConfig:
+  - name: PodTopologySpread
+    args:
+      defaultConstraints:
+      - maxSkew: 1
+        topologyKey: "kubernetes.io/hostname"
+        whenUnsatisfiable: ScheduleAnyway
+      defaultingType: List
+---
+apiVersion: kubescheduler.config.k8s.io/v1beta3
+kind: RandomObject`
+
+	testCases := []struct {
+		description    string
+		currentAddons  string
+		kcp            *controlplanev1alpha1.KopsControlPlane
+		assertFunction func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, err error) bool
+	}{
+		{
+			description: "should do nothing when the kcp don't define a cluster addon",
+			kcp: &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cluster",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{},
+			},
+			assertFunction: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, err error) bool {
+				return err == nil
+			},
+		},
+		{
+			description: "should create the addon in the kops state",
+			kcp: &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cluster",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					KopsClusterAddons: addon,
+				},
+			},
+			assertFunction: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, _ error) bool {
+				obj, err := kopsClientset.AddonsFor(kopsCluster).List(context.TODO())
+				if err != nil {
+					return false
+				}
+				return len(obj) == 1
+
+			},
+		},
+		{
+			description: "should remove the addon from the kops state",
+			kcp: &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cluster",
+					Namespace: metav1.NamespaceDefault,
+				},
+			},
+			currentAddons: addon,
+			assertFunction: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, _ error) bool {
+				obj, err := kopsClientset.AddonsFor(kopsCluster).List(context.TODO())
+				if err != nil {
+					return false
+				}
+				return len(obj) == 0
+
+			},
+		},
+		{
+			description: "should replace the addon for both addons in the kops state",
+			kcp: &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cluster",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					KopsClusterAddons: addons,
+				},
+			},
+			currentAddons: addon,
+			assertFunction: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, _ error) bool {
+				obj, err := kopsClientset.AddonsFor(kopsCluster).List(context.TODO())
+				if err != nil {
+					return false
+				}
+				return len(obj) == 2
+
+			},
+		},
+		{
+			description: "should replace for only the default-scheduler in the kops state",
+			kcp: &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cluster",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					KopsClusterAddons: addon,
+				},
+			},
+			currentAddons: addons,
+			assertFunction: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, _ error) bool {
+				obj, err := kopsClientset.AddonsFor(kopsCluster).List(context.TODO())
+				if err != nil {
+					return false
+				}
+
+				return obj[0].ToUnstructured().GetKind() == "KubeSchedulerConfiguration"
+			},
+		},
+		{
+			description: "should fail when the yaml is invalid",
+			kcp: &controlplanev1alpha1.KopsControlPlane{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-cluster",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: controlplanev1alpha1.KopsControlPlaneSpec{
+					KopsClusterAddons: "invalid-yaml",
+				},
+			},
+			assertFunction: func(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, err error) bool {
+				return strings.HasPrefix(err.Error(), "error parsing yaml")
+			},
+		},
+	}
+
+	RegisterFailHandler(Fail)
+	vfs.Context.ResetMemfsContext(true)
+	g := NewWithT(t)
+	ctx := context.TODO()
+	err := controlplanev1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			reconciler := &KopsControlPlaneReconciler{}
+
+			fakeKopsClientset := helpers.NewFakeKopsClientset()
+			kopsCluster := helpers.NewKopsCluster("test-cluster")
+			kopsCluster, err := fakeKopsClientset.CreateCluster(ctx, kopsCluster)
+
+			if tc.currentAddons != "" {
+				addons, err := kubemanifest.LoadObjectsFrom([]byte(tc.currentAddons))
+				g.Expect(err).NotTo(HaveOccurred())
+				err = fakeKopsClientset.AddonsFor(kopsCluster).Replace(addons)
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(kopsCluster).NotTo(BeNil())
+
+			reconciliation := &KopsControlPlaneReconciliation{
+				KopsControlPlaneReconciler: *reconciler,
+				kcp:                        tc.kcp,
+			}
+
+			err = reconciliation.reconcileClusterAddons(ctx, fakeKopsClientset, kopsCluster)
+			g.Expect(tc.assertFunction(fakeKopsClientset, kopsCluster, err)).To(BeTrue())
+		})
 	}
 }
 
