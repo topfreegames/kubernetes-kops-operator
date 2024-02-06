@@ -30,27 +30,31 @@ rules:
   resources:
   - clusters
   verbs:
-  - create
   - delete
   - get
   - list
-  - patch
-  - update
   - watch
-- apiGroups:
-  - cluster.x-k8s.io
-  resources:
-  - clusters/finalizers
-  verbs:
-  - update
 - apiGroups:
   - cluster.x-k8s.io
   resources:
   - clusters/status
   verbs:
   - get
-  - patch
-  - update
+- apiGroups:
+  - cluster.x-k8s.io
+  resources:
+  - machinepools
+  verbs:
+  - delete
+  - get
+  - list
+  - watch
+- apiGroups:
+  - cluster.x-k8s.io
+  resources:
+  - machinepools/status
+  verbs:
+  - get
 - apiGroups:
   - controlplane.cluster.x-k8s.io
   resources:
