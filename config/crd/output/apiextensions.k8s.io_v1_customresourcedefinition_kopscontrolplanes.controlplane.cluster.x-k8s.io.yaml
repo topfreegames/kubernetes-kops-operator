@@ -2,7 +2,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.10.0
+    controller-gen.kubebuilder.io/version: v0.9.2
   creationTimestamp: null
   labels:
     cluster.x-k8s.io/v1beta1: v1alpha1
@@ -782,12 +782,19 @@ spec:
                   clusterDNSDomain:
                     description: ClusterDNSDomain is the suffix we use for internal DNS names (normally cluster.local)
                     type: string
-                  configBase:
-                    description: ConfigBase is the path where we store configuration for the cluster This might be different than the location where the cluster spec itself is stored, both because this must be accessible to the cluster, and because it might be on a different cloud or storage system (etcd vs S3)
-                    type: string
                   configStore:
-                    description: ConfigStore is the VFS path to where the configuration (Cluster, InstanceGroups etc) is stored
-                    type: string
+                    description: ConfigStore configures the stores that nodes use to get their configuration.
+                    properties:
+                      base:
+                        description: Base is the VFS path where we store configuration for the cluster This might be different than the location where the cluster spec itself is stored, both because this must be accessible to the cluster, and because it might be on a different cloud or storage system (etcd vs S3).
+                        type: string
+                      keypairs:
+                        description: Keypairs is the VFS path to where certificates and corresponding private keys are stored.
+                        type: string
+                      secrets:
+                        description: Secrets is the VFS path to where secrets are stored.
+                        type: string
+                    type: object
                   containerRuntime:
                     description: Container runtime to use for Kubernetes
                     type: string
@@ -869,6 +876,9 @@ spec:
                             description: Version used to pick the runc package.
                             type: string
                         type: object
+                      selinuxEnabled:
+                        description: SelinuxEnabled enables SELinux support
+                        type: boolean
                       skipInstall:
                         description: SkipInstall prevents kOps from installing and modifying containerd in any way (default "false").
                         type: boolean
@@ -1134,6 +1144,9 @@ spec:
                       runtimeRequestTimeout:
                         description: RuntimeRequestTimeout is timeout for runtime requests on - pull, logs, exec and attach
                         type: string
+                      seccompDefault:
+                        description: SeccompDefault enables the use of `RuntimeDefault` as the default seccomp profile for all workloads.
+                        type: boolean
                       seccompProfileRoot:
                         description: SeccompProfileRoot is the directory path for seccomp profiles.
                         type: string
@@ -1457,6 +1470,11 @@ spec:
                             image:
                               description: Image is the etcd manager image to use.
                               type: string
+                            listenMetricsURLs:
+                              description: ListenMetricsURLs is the list of URLs to listen on that will respond to both the /metrics and /health endpoints
+                              items:
+                                type: string
+                              type: array
                             logLevel:
                               description: LogLevel allows the klog library verbose log level to be set for etcd-manager. The default is 6. https://github.com/google/glog#verbose-logging
                               format: int32
@@ -1645,6 +1663,12 @@ spec:
                   karpenter:
                     description: Karpenter defines the Karpenter configuration.
                     properties:
+                      cpuRequest:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
                       enabled:
                         type: boolean
                       image:
@@ -1653,10 +1677,19 @@ spec:
                         type: string
                       logLevel:
                         type: string
+                      memoryLimit:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      memoryRequest:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
                     type: object
-                  keyStore:
-                    description: KeyStore is the VFS path to where SSL keys and certificates are stored
-                    type: string
                   kubeAPIServer:
                     description: KubeAPIServerConfig defines the configuration for the kube api
                     properties:
@@ -2023,6 +2056,9 @@ spec:
                   kubeControllerManager:
                     description: KubeControllerManagerConfig is the configuration for the controller
                     properties:
+                      ClusterSigningDuration:
+                        description: ClusterSigningDuration is the max length of duration that the signed certificates will be given. (default 365*24h)
+                        type: string
                       allocateNodeCIDRs:
                         description: AllocateNodeCIDRs enables CIDRs for Pods to be allocated and, if ConfigureCloudRoutes is true, to be set on the cloud provider.
                         type: boolean
@@ -2101,8 +2137,14 @@ spec:
                       enableProfiling:
                         description: EnableProfiling enables profiling via web interface host:port/debug/pprof/
                         type: boolean
+                      endpointSliceUpdatesBatchPeriod:
+                        description: The length of endpoint slice updates batching period. Processing of pod changes will be delayed by this duration to join them with potential upcoming updates and reduce the overall number of endpoints updates. Larger number = higher endpoint programming latency, but lower number of endpoints revision generated.
+                        type: string
+                      endpointUpdatesBatchPeriod:
+                        description: The length of endpoint updates batching period. Processing of pod changes will be delayed by this duration to join them with potential upcoming updates and reduce the overall number of endpoints updates. Larger number = higher endpoint programming latency, but lower number of endpoints revision generated
+                        type: string
                       experimentalClusterSigningDuration:
-                        description: ExperimentalClusterSigningDuration is the duration that determines the length of duration that the signed certificates will be given. (default 8760h0m0s)
+                        description: ExperimentalClusterSigningDuration is the max length of duration that the signed certificates will be given. (default 365*24h) Deprecated - use cluster-signing-duration instead
                         type: string
                       externalCloudVolumePlugin:
                         description: ExternalCloudVolumePlugin is a fallback mechanism that allows a legacy, in-tree cloudprovider to be used for volume plugins even when an external cloud controller manager is being used.  This can be used instead of installing CSI.  The value should be the same as is used for the --cloud-provider flag, i.e. "aws".
@@ -3256,6 +3298,9 @@ spec:
                       runtimeRequestTimeout:
                         description: RuntimeRequestTimeout is timeout for runtime requests on - pull, logs, exec and attach
                         type: string
+                      seccompDefault:
+                        description: SeccompDefault enables the use of `RuntimeDefault` as the default seccomp profile for all workloads.
+                        type: boolean
                       seccompProfileRoot:
                         description: SeccompProfileRoot is the directory path for seccomp profiles.
                         type: string
@@ -3551,6 +3596,9 @@ spec:
                           chainingMode:
                             description: 'ChainingMode allows using Cilium in combination with other CNI plugins. With Cilium CNI chaining, the base network connectivity and IP address management is managed by the non-Cilium CNI plugin, but Cilium attaches eBPF programs to the network devices created by the non-Cilium plugin to provide L3/L4 network visibility, policy enforcement and other advanced features. Default: none'
                             type: string
+                          clusterID:
+                            description: ClusterID is the ID of the cluster. It is only relevant when building a mesh of clusters. Must be a number between 1 and 255.
+                            type: integer
                           clusterName:
                             description: ClusterName is the name of the cluster. It is only relevant when building a mesh of clusters.
                             type: string
@@ -3651,6 +3699,9 @@ spec:
                           monitorAggregation:
                             description: 'MonitorAggregation sets the level of packet monitoring. Possible values are "low", "medium", or "maximum". Default: medium'
                             type: string
+                          nodeEncryption:
+                            description: 'NodeEncryption enables encryption for pure node to node traffic. Default: false'
+                            type: boolean
                           operatorPodAnnotations:
                             additionalProperties:
                               type: string
@@ -3714,8 +3765,8 @@ spec:
                             format: int32
                             type: integer
                         type: object
-                      gce:
-                        description: GCENetworkingSpec is the specification of GCE's native networking mode, using IP aliases
+                      gcp:
+                        description: GCPNetworkingSpec is the specification of GCP's native networking mode, using IP aliases.
                         type: object
                       isolateControlPlane:
                         description: 'IsolateControlPlane determines whether we should lock down masters so that they are not on the pod network. true is the kube-up behaviour, but it is very surprising: it means that daemonsets only work on the master if they have hostNetwork=true. false is now the default, and it will: * give the master a normal PodCIDR * run kube-proxy on the master * enable debugging handlers on the master, so kubectl logs works'
@@ -3828,14 +3879,8 @@ spec:
                                 description: PublicName is the domain name for the bastion load balancer.
                                 type: string
                             type: object
-                          controlPlane:
-                            description: ControlPlane specifies the environment for launching the control plane nodes. (public, private)
-                            type: string
                           dns:
                             description: DNS specifies the environment for hosted DNS zones. (Public, Private, None)
-                            type: string
-                          nodes:
-                            description: Nodes specifies the environment for launching the worker nodes. (public, private)
                             type: string
                         type: object
                       weave:
@@ -4020,9 +4065,6 @@ spec:
                         description: 'MaxUnavailable is the maximum number of nodes that can be unavailable during the update. The value can be an absolute number (for example 5) or a percentage of desired nodes (for example 10%). The absolute number is calculated from a percentage by rounding down. Defaults to 1 if MaxSurge is 0, otherwise defaults to 0. Example: when this is set to 30%, the InstanceGroup can be scaled down to 70% of desired nodes immediately when the rolling update starts. Once new nodes are ready, more old nodes can be drained, ensuring that the total number of nodes available at all times during the update is at least 70% of desired nodes.'
                         x-kubernetes-int-or-string: true
                     type: object
-                  secretStore:
-                    description: SecretStore is the VFS path to where secrets are stored
-                    type: string
                   serviceAccountIssuerDiscovery:
                     description: ServiceAccountIssuerDiscovery configures the OIDC Issuer for ServiceAccounts.
                     properties:
@@ -4085,6 +4127,8 @@ spec:
                   useHostCertificates:
                     description: UseHostCertificates will mount /etc/ssl/certs to inside needed containers. This is needed if some APIs do have self-signed certs
                     type: boolean
+                required:
+                - configStore
                 type: object
               kopsSecret:
                 description: KopsSecret is a reference to the Kubernetes Secret that holds a list of Kops Secrets
