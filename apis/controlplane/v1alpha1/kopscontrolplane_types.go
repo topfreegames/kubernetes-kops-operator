@@ -110,8 +110,8 @@ type KopsControlPlaneStatus struct {
 	// +kubebuilder:default=false
 	Ready bool `json:"ready,omitempty"`
 
-	// +kubebuilder:default=false
 	// Paused indicates that the controller is prevented from processing the KopsControlPlane and all its associated objects.
+	// +kubebuilder:default=false
 	// +optional
 	Paused bool `json:"paused,omitempty"`
 
@@ -137,6 +137,7 @@ type KopsControlPlaneStatus struct {
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
 //+kubebuilder:printcolumn:name="Controller Class",type="string",JSONPath=".spec.controllerClass"
+//+kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.ready"
 //+kubebuilder:printcolumn:name="Last Reconciled",type="date",JSONPath=".status.lastReconciled"
 //+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 

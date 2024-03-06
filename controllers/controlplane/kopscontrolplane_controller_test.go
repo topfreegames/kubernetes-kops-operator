@@ -1301,13 +1301,22 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				g.Expect(result.RequeueAfter).To(Equal(time.Duration(5 * time.Minute)))
 			}
 
+			if result != resultNotRequeue {
+				err = fakeClient.Get(ctx, types.NamespacedName{
+					Namespace: kopsControlPlane.GetNamespace(),
+					Name:      kopsControlPlane.GetName(),
+				}, kopsControlPlane)
+				Expect(err).NotTo(HaveOccurred())
+
+				g.Expect(kopsControlPlane.Status.LastReconciliationTime.Time).To(BeTemporally("~", time.Now(), 5*time.Second))
+			}
+
 			if tc.expectedStatus != nil {
 				kcp := &controlplanev1alpha1.KopsControlPlane{}
 				err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsControlPlane), kcp)
 				g.Expect(err).NotTo(HaveOccurred())
 				kcp.Status.LastReconciled = nil
 				g.Expect(*tc.expectedStatus).To(BeEquivalentTo(kcp.Status))
-
 			}
 
 			if tc.conditionsToAssert != nil {
