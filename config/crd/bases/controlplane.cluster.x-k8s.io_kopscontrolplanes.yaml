@@ -5824,6 +5824,18 @@ spec:
                 - enabled
                 - featureFlags
                 type: object
+              terraformConfig:
+                description: TerraformConfig has some configurations that can be used
+                  to control the Terraform lifecycle
+                properties:
+                  cleanupTerraformDirectory:
+                    description: |-
+                      CleanupTerraformDirectory denotes whether the controller should
+                      cleanup the Terraform directory after the reconciliation
+                    type: boolean
+                required:
+                - cleanupTerraformDirectory
+                type: object
             required:
             - SSHPublicKey
             - identityRef
