@@ -1308,7 +1308,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				}, kopsControlPlane)
 				Expect(err).NotTo(HaveOccurred())
 
-				g.Expect(kopsControlPlane.Status.LastReconciliationTime.Time).To(BeTemporally("~", time.Now(), 5*time.Second))
+				g.Expect(kopsControlPlane.Status.LastReconciled.Time).To(BeTemporally("~", time.Now(), 5*time.Second))
 			}
 
 			if tc.expectedStatus != nil {
