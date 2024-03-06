@@ -860,7 +860,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	reconciler.log.Info(fmt.Sprintf("Terraform applied for %s", kopsControlPlane.ObjectMeta.GetName()))
 	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "TerraformApplied", "Terraform applied")
 
-	err = reconciler.updateKopsMachinePoolWithProviderIDList(ctx, kopsControlPlane, kmps, &reconciler.awsCredentials)
+	err = reconciler.updateKopsMachinePoolWithProviderIDList(kopsControlPlane, kmps, &reconciler.awsCredentials)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return requeue1min, nil
@@ -890,7 +890,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return resultDefault, nil
 }
 
-func (r *KopsControlPlaneReconciliation) updateKopsMachinePoolWithProviderIDList(ctx context.Context, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, credentials *aws.Credentials) error {
+func (r *KopsControlPlaneReconciliation) updateKopsMachinePoolWithProviderIDList(kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, credentials *aws.Credentials) error {
 	for i, kopsMachinePool := range kmps {
 		// TODO: retrieve karpenter providerIDList
 		if len(kopsMachinePool.Spec.SpotInstOptions) == 0 && kopsMachinePool.Spec.KopsInstanceGroupSpec.Manager != "Karpenter" {
