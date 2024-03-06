@@ -1108,7 +1108,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				"ReconciliationStarted",
 				"KopsMachinePoolReconcileSuccess",
 				"KubernetesClusterValidationSucceed",
-				"ClusterReconciledSuccessfully",
+				"ClusterReconciliationFinished",
 			},
 		},
 		{

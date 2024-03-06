@@ -848,13 +848,8 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	statusReady, err := utils.KopsClusterValidation(kopsControlPlane, r.Recorder, reconciler.log, val)
-	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToValidateKubernetesCluster", "failed trying to validate Kubernetes cluster: %v", err)
-		return resultError, err
-	}
-	kopsControlPlane.Status.Ready = statusReady
-	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ClusterReconciledSuccessfully", "cluster reconcile finished sucessfully")
+	kopsControlPlane.Status.Ready = utils.KopsClusterValidation(kopsControlPlane, r.Recorder, reconciler.log, val)
+	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ClusterReconciliationFinished", "cluster reconciliation finished")
 	return resultDefault, nil
 }
 
