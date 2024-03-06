@@ -604,6 +604,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultDefault, nil
 	}
 	kopsControlPlane.Status.Paused = false
+	kopsControlPlane.Status.Ready = false
 
 	awsCredentials, err := util.GetAWSCredentialsFromKopsControlPlaneSecret(ctx, r.Client, kopsControlPlane.Spec.IdentityRef.Name, kopsControlPlane.Spec.IdentityRef.Namespace)
 	if err != nil {
