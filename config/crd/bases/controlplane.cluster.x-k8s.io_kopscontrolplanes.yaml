@@ -23,6 +23,9 @@ spec:
     - jsonPath: .spec.controllerClass
       name: Controller Class
       type: string
+    - jsonPath: .status.ready
+      name: Ready
+      type: string
     - jsonPath: .status.lastReconciled
       name: Last Reconciled
       type: date
