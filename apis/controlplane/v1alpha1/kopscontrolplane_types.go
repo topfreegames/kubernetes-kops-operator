@@ -102,8 +102,8 @@ type KopsControlPlaneStatus struct {
 	// +kubebuilder:default=false
 	Ready bool `json:"ready,omitempty"`
 
-	// +kubebuilder:default=false
 	// Paused indicates that the controller is prevented from processing the KopsControlPlane and all its associated objects.
+	// +kubebuilder:default=false
 	// +optional
 	Paused bool `json:"paused,omitempty"`
 
@@ -118,6 +118,9 @@ type KopsControlPlaneStatus struct {
 
 	// Secrets are the list of custom secrets created with the controller
 	Secrets []string `json:"secrets,omitempty"`
+
+	// LastReconciliationTime is the last time the KopsControlPlane was reconciled.
+	LastReconciliationTime *metav1.Time `json:"lastReconciliationTime,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -126,6 +129,8 @@ type KopsControlPlaneStatus struct {
 //+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
 //+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 //+kubebuilder:printcolumn:name="ControllerClass",type="string",JSONPath=".spec.controllerClass"
+//+kubebuilder:printcolumn:name="LastReconciliationTime",type="string",JSONPath=".status.lastReconciliationTime"
+//+kubebuilder:printcolumn:name="Ready",type="string",JSONPath=".status.ready"
 
 // KopsControlPlane is the Schema for the kopscontrolplanes API
 type KopsControlPlane struct {
