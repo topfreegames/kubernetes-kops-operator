@@ -49,26 +49,30 @@ import (
 )
 
 func TestEvaluateKopsValidationResult(t *testing.T) {
-	testCases := []map[string]interface{}{
+	testCases := []struct {
+		description    string
+		input          *validation.ValidationCluster
+		expectedResult bool
+	}{
 		{
-			"description":    "should succeeded without failures and nodes",
-			"input":          &validation.ValidationCluster{},
-			"expectedResult": true,
+			description:    "should succeed without failures and nodes",
+			input:          &validation.ValidationCluster{},
+			expectedResult: true,
 		},
 		{
-			"description": "should fail with failures not empty",
-			"input": &validation.ValidationCluster{
+			description: "should fail with failures not empty",
+			input: &validation.ValidationCluster{
 				Failures: []*validation.ValidationError{
 					{
 						Name: "TestError",
 					},
 				},
 			},
-			"expectedResult": false,
+			expectedResult: false,
 		},
 		{
-			"description": "should succeed with nodes with condition true",
-			"input": &validation.ValidationCluster{
+			description: "should succeed with nodes with condition true",
+			input: &validation.ValidationCluster{
 				Failures: []*validation.ValidationError{},
 				Nodes: []*validation.ValidationNode{
 					{
@@ -81,11 +85,11 @@ func TestEvaluateKopsValidationResult(t *testing.T) {
 					},
 				},
 			},
-			"expectedResult": true,
+			expectedResult: true,
 		},
 		{
-			"description": "should fail if any node with condition false",
-			"input": &validation.ValidationCluster{
+			description: "should fail if any node with condition false",
+			input: &validation.ValidationCluster{
 				Failures: []*validation.ValidationError{},
 				Nodes: []*validation.ValidationNode{
 					{
@@ -98,7 +102,20 @@ func TestEvaluateKopsValidationResult(t *testing.T) {
 					},
 				},
 			},
-			"expectedResult": false,
+			expectedResult: false,
+		},
+		{
+			description: "should succeed with only pods failures",
+			input: &validation.ValidationCluster{
+				Failures: []*validation.ValidationError{
+					{
+						Name:    "pod-test",
+						Kind:    "Pod",
+						Message: "pod-test pod is not ready",
+					},
+				},
+			},
+			expectedResult: true,
 		},
 	}
 
@@ -106,8 +123,8 @@ func TestEvaluateKopsValidationResult(t *testing.T) {
 	g := NewWithT(t)
 
 	for _, tc := range testCases {
-		result, _ := utils.EvaluateKopsValidationResult(tc["input"].(*validation.ValidationCluster))
-		if tc["expectedResult"].(bool) {
+		result, _ := utils.EvaluateKopsValidationResult(tc.input)
+		if tc.expectedResult {
 			g.Expect(result).To(BeTrue())
 		} else {
 			g.Expect(result).To(BeFalse())
