@@ -136,16 +136,16 @@ func EvaluateKopsValidationResult(validation *validation.ValidationCluster) (boo
 	return result, errorMessages
 }
 
-func KopsClusterValidation(object runtime.Object, recorder record.EventRecorder, log logr.Logger, validation *validation.ValidationCluster) (bool, error) {
+func KopsClusterValidation(object runtime.Object, recorder record.EventRecorder, log logr.Logger, validation *validation.ValidationCluster) bool {
 	result, errorMessages := EvaluateKopsValidationResult(validation)
 	if result {
-		recorder.Eventf(object, corev1.EventTypeNormal, "KubernetesClusterValidationSucceed", "Kops validation succeed")
-		return true, nil
+		recorder.Eventf(object, corev1.EventTypeNormal, "KubernetesClusterValidationSucceeded", "kops validation succeeded")
+		return true
 	} else {
 		for _, errorMessage := range errorMessages {
 			recorder.Eventf(object, corev1.EventTypeWarning, "KubernetesClusterValidationFailed", errorMessage)
 		}
-		return false, nil
+		return false
 	}
 }
 
