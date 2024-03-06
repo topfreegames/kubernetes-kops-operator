@@ -118,8 +118,11 @@ func EvaluateKopsValidationResult(validation *validation.ValidationCluster) (boo
 
 	failures := validation.Failures
 	if len(failures) > 0 {
-		result = false
 		for _, failure := range failures {
+			// Ignore scheduling pod validations
+			if failure.Kind == "Pod" {
+				continue
+			}
 			errorMessages = append(errorMessages, failure.Message)
 		}
 	}
@@ -127,11 +130,13 @@ func EvaluateKopsValidationResult(validation *validation.ValidationCluster) (boo
 	nodes := validation.Nodes
 	for _, node := range nodes {
 		if node.Status == corev1.ConditionFalse {
-			result = false
 			errorMessages = append(errorMessages, fmt.Sprintf("node %s condition is %s", node.Hostname, node.Status))
 		}
 	}
 
+	if len(errorMessages) > 0 {
+		result = false
+	}
 	return result, errorMessages
 }
 
