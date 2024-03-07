@@ -27,3 +27,4 @@ testbin/*
 .vscode
 
 tilt_modules/
+.kubernetes/
