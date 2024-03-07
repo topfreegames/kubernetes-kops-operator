@@ -350,13 +350,13 @@ func (r *KopsControlPlaneReconciliation) createOrUpdateKopsCluster(ctx context.C
 // PopulateClusterSpec populates the full cluster spec with some values it fetchs from provider
 func PopulateClusterSpec(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error) {
 
-	err := cloudup.PerformAssignments(kopsCluster, cloud)
+	err := cloudup.PerformAssignments(kopsCluster, kopsClientset.VFSContext(), cloud)
 	if err != nil {
 		return nil, err
 	}
 
-	assetBuilder := assets.NewAssetBuilder(kopsCluster.Spec.Assets, kopsCluster.Spec.KubernetesVersion, true)
-	fullCluster, err := cloudup.PopulateClusterSpec(ctx, kopsClientset, kopsCluster, cloud, assetBuilder)
+	assetBuilder := assets.NewAssetBuilder(kopsClientset.VFSContext(), kopsCluster.Spec.Assets, kopsCluster.Spec.KubernetesVersion, true)
+	fullCluster, err := cloudup.PopulateClusterSpec(ctx, kopsClientset, kopsCluster, nil, cloud, assetBuilder)
 	if err != nil {
 		return nil, err
 	}
@@ -612,7 +612,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	reconciler.awsCredentials = *awsCredentials
 
-	kopsClientset, err := reconciler.GetKopsClientSetFactory(kopsControlPlane.Spec.KopsClusterSpec.ConfigBase)
+	kopsClientset, err := reconciler.GetKopsClientSetFactory(kopsControlPlane.Spec.KopsClusterSpec.ConfigStore.Base)
 	if err != nil {
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedInstantiateKopsClient", "failed to instantiate Kops client: %s", err)
 		return resultError, err
@@ -638,7 +638,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return resultError, err
 		}
 
-		err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, nil, false, kopsControlPlane.Spec.KopsClusterSpec.ConfigBase, terraformOutputDir, false)
+		err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, nil, false, kopsControlPlane.Spec.KopsClusterSpec.ConfigStore.Base, terraformOutputDir, false)
 		if err != nil {
 			return resultError, err
 		}
@@ -734,7 +734,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if shouldEnableKarpenter {
 		kopsControlPlane.Spec.KopsClusterSpec.Addons = []kopsapi.AddonSpec{
 			{
-				Manifest: kopsControlPlane.Spec.KopsClusterSpec.ConfigBase + "/custom-addons/addon.yaml",
+				Manifest: kopsControlPlane.Spec.KopsClusterSpec.ConfigStore.Base + "/custom-addons/addon.yaml",
 			},
 		}
 	}
@@ -789,7 +789,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	// Prepare custom cloud resources
-	err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, existingKopsMachinePool, shouldEnableKarpenter, fullCluster.Spec.ConfigBase, terraformOutputDir, shouldIgnoreSG)
+	err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, existingKopsMachinePool, shouldEnableKarpenter, fullCluster.Spec.ConfigStore.Base, terraformOutputDir, shouldIgnoreSG)
 	if err != nil {
 		return resultError, err
 	}

@@ -70,7 +70,9 @@ func NewKopsCluster(name string) *kopsapi.Cluster {
 			CloudProvider: kopsapi.CloudProviderSpec{
 				AWS: &kopsapi.AWSSpec{},
 			},
-			ConfigBase: fmt.Sprintf("memfs://tests/%s.test.k8s.cluster", name),
+			ConfigStore: kopsapi.ConfigStoreSpec{
+				Base: fmt.Sprintf("memfs://tests/%s.test.k8s.cluster", name),
+			},
 			Networking: kopsapi.NetworkingSpec{
 				NonMasqueradeCIDR: "172.0.0.0/21",
 				NetworkCIDR:       "10.0.0.0/21",
@@ -135,8 +137,10 @@ func NewKopsControlPlane(name, namespace string) *controlplanev1alpha1.KopsContr
 				CloudProvider: kopsapi.CloudProviderSpec{
 					AWS: &kopsapi.AWSSpec{},
 				},
-				Channel:    "none",
-				ConfigBase: fmt.Sprintf("memfs://tests/%s.test.k8s.cluster", name),
+				Channel: "none",
+				ConfigStore: kopsapi.ConfigStoreSpec{
+					Base: fmt.Sprintf("memfs://tests/%s.test.k8s.cluster", name),
+				},
 				Networking: kopsapi.NetworkingSpec{
 					NetworkCIDR:       "172.27.0.0/21",
 					NonMasqueradeCIDR: "10.0.0.0/21",
@@ -189,7 +193,7 @@ func NewFakeKopsClientset() simple.Clientset {
 	memFSContext := vfs.NewMemFSContext()
 	memfspath := vfs.NewMemFSPath(memFSContext, "memfs://tests")
 
-	return vfsclientset.NewVFSClientset(memfspath)
+	return vfsclientset.NewVFSClientset(vfs.Context, memfspath)
 }
 
 func GetFQDN(name string) string {

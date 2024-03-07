@@ -178,7 +178,9 @@ func Test_GetKopsClientset(t *testing.T) {
 			}
 			kopsCluster := &kopsapi.Cluster{
 				Spec: kopsapi.ClusterSpec{
-					ConfigBase: configBase,
+					ConfigStore: kopsapi.ConfigStoreSpec{
+						Base: configBase,
+					},
 				},
 			}
 			path, _ := clientset.ConfigBaseFor(kopsCluster)
@@ -284,7 +286,9 @@ func TestReconcileKopsSecretsDelete(t *testing.T) {
 					Name: "testCluster",
 				},
 				Spec: kopsapi.ClusterSpec{
-					ConfigBase: "memfs://bucket-test/testCluster",
+					ConfigStore: kopsapi.ConfigStoreSpec{
+						Base: "memfs://bucket-test/testCluster",
+					},
 				},
 			}
 			_, _ = fakeKopsClientset.CreateCluster(ctx, kopsCluster)
@@ -408,7 +412,9 @@ func TestReconcileKopsSecrets(t *testing.T) {
 					Name: "testCluster",
 				},
 				Spec: kopsapi.ClusterSpec{
-					ConfigBase: "memfs://bucket-test/testCluster",
+					ConfigStore: kopsapi.ConfigStoreSpec{
+						Base: "memfs://bucket-test/testCluster",
+					},
 				},
 			}
 			_, _ = fakeKopsClientset.CreateCluster(ctx, kopsCluster)

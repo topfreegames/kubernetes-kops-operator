@@ -3,8 +3,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.10.0
-  creationTimestamp: null
+    controller-gen.kubebuilder.io/version: v0.14.0
   name: kopsmachinepools.infrastructure.cluster.x-k8s.io
 spec:
   group: infrastructure.cluster.x-k8s.io
@@ -27,14 +26,19 @@ spec:
         description: KopsMachinePool is the Schema for the kopsmachinepools API
         properties:
           apiVersion:
-            description: 'APIVersion defines the versioned schema of this representation
-              of an object. Servers should convert recognized schemas to the latest
-              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
             type: string
           kind:
-            description: 'Kind is a string value representing the REST resource this
-              object represents. Servers may infer this from the endpoint the client
-              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
             type: string
           metadata:
             type: object
@@ -53,16 +57,19 @@ spec:
                   description: Provisioner is the Schema for the Provisioners API
                   properties:
                     apiVersion:
-                      description: 'APIVersion defines the versioned schema of this
-                        representation of an object. Servers should convert recognized
-                        schemas to the latest internal value, and may reject unrecognized
-                        values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+                      description: |-
+                        APIVersion defines the versioned schema of this representation of an object.
+                        Servers should convert recognized schemas to the latest internal value, and
+                        may reject unrecognized values.
+                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
                       type: string
                     kind:
-                      description: 'Kind is a string value representing the REST resource
-                        this object represents. Servers may infer this from the endpoint
-                        the client submits requests to. Cannot be updated. In CamelCase.
-                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+                      description: |-
+                        Kind is a string value representing the REST resource this object represents.
+                        Servers may infer this from the endpoint the client submits requests to.
+                        Cannot be updated.
+                        In CamelCase.
+                        More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
                       type: string
                     metadata:
                       properties:
@@ -84,11 +91,11 @@ spec:
                           type: string
                       type: object
                     spec:
-                      description: ProvisionerSpec is the top level provisioner specification.
-                        Provisioners launch nodes in response to pods that are unschedulable.
-                        A single provisioner is capable of managing a diverse set
-                        of nodes. Node properties are determined from a combination
-                        of provisioner and pod scheduling constraints.
+                      description: |-
+                        ProvisionerSpec is the top level provisioner specification. Provisioners
+                        launch nodes in response to pods that are unschedulable. A single provisioner
+                        is capable of managing a diverse set of nodes. Node properties are determined
+                        from a combination of provisioner and pod scheduling constraints.
                       properties:
                         annotations:
                           additionalProperties:
@@ -108,9 +115,9 @@ spec:
                             the kubelet when provisioning nodes
                           properties:
                             clusterDNS:
-                              description: clusterDNS is a list of IP addresses for
-                                the cluster DNS server. Note that not all providers
-                                may use all addresses.
+                              description: |-
+                                clusterDNS is a list of IP addresses for the cluster DNS server.
+                                Note that not all providers may use all addresses.
                               items:
                                 type: string
                               type: array
@@ -129,10 +136,9 @@ spec:
                                 to quantities that define hard eviction thresholds
                               type: object
                             evictionMaxPodGracePeriod:
-                              description: EvictionMaxPodGracePeriod is the maximum
-                                allowed grace period (in seconds) to use when terminating
-                                pods in response to soft eviction thresholds being
-                                met.
+                              description: |-
+                                EvictionMaxPodGracePeriod is the maximum allowed grace period (in seconds) to use when terminating pods in
+                                response to soft eviction thresholds being met.
                               format: int32
                               type: integer
                             evictionSoft:
@@ -149,24 +155,22 @@ spec:
                                 each eviction signal
                               type: object
                             imageGCHighThresholdPercent:
-                              description: ImageGCHighThresholdPercent is the percent
-                                of disk usage after which image garbage collection
-                                is always run. The percent is calculated by dividing
-                                this field value by 100, so this field must be between
-                                0 and 100, inclusive. When specified, the value must
-                                be greater than ImageGCLowThresholdPercent.
+                              description: |-
+                                ImageGCHighThresholdPercent is the percent of disk usage after which image
+                                garbage collection is always run. The percent is calculated by dividing this
+                                field value by 100, so this field must be between 0 and 100, inclusive.
+                                When specified, the value must be greater than ImageGCLowThresholdPercent.
                               format: int32
                               maximum: 100
                               minimum: 0
                               type: integer
                             imageGCLowThresholdPercent:
-                              description: ImageGCLowThresholdPercent is the percent
-                                of disk usage before which image garbage collection
-                                is never run. Lowest disk usage to garbage collect
-                                to. The percent is calculated by dividing this field
-                                value by 100, so the field value must be between 0
-                                and 100, inclusive. When specified, the value must
-                                be less than imageGCHighThresholdPercent
+                              description: |-
+                                ImageGCLowThresholdPercent is the percent of disk usage before which image
+                                garbage collection is never run. Lowest disk usage to garbage collect to.
+                                The percent is calculated by dividing this field value by 100,
+                                so the field value must be between 0 and 100, inclusive.
+                                When specified, the value must be less than imageGCHighThresholdPercent
                               format: int32
                               maximum: 100
                               minimum: 0
@@ -182,17 +186,17 @@ spec:
                                 for Kubernetes system components.
                               type: object
                             maxPods:
-                              description: MaxPods is an override for the maximum
-                                number of pods that can run on a worker node instance.
+                              description: |-
+                                MaxPods is an override for the maximum number of pods that can run on
+                                a worker node instance.
                               format: int32
                               minimum: 0
                               type: integer
                             podsPerCore:
-                              description: PodsPerCore is an override for the number
-                                of pods that can run on a worker node instance based
-                                on the number of cpu cores. This value cannot exceed
-                                MaxPods, so, if MaxPods is a lower value, that value
-                                will be used.
+                              description: |-
+                                PodsPerCore is an override for the number of pods that can run on a worker node
+                                instance based on the number of cpu cores. This value cannot exceed MaxPods, so, if
+                                MaxPods is a lower value, that value will be used.
                               format: int32
                               minimum: 0
                               type: integer
@@ -233,9 +237,9 @@ spec:
                           type: object
                           x-kubernetes-preserve-unknown-fields: true
                         providerRef:
-                          description: ProviderRef is a reference to a dedicated CRD
-                            for the chosen provider, that holds additional configuration
-                            options
+                          description: |-
+                            ProviderRef is a reference to a dedicated CRD for the chosen provider, that holds
+                            additional configuration options
                           properties:
                             apiVersion:
                               description: API version of the referent
@@ -253,27 +257,26 @@ spec:
                           description: Requirements are layered with Labels and applied
                             to every node.
                           items:
-                            description: A node selector requirement is a selector
-                              that contains values, a key, and an operator that relates
-                              the key and values.
+                            description: |-
+                              A node selector requirement is a selector that contains values, a key, and an operator
+                              that relates the key and values.
                             properties:
                               key:
                                 description: The label key that the selector applies
                                   to.
                                 type: string
                               operator:
-                                description: Represents a key's relationship to a
-                                  set of values. Valid operators are In, NotIn, Exists,
-                                  DoesNotExist. Gt, and Lt.
+                                description: |-
+                                  Represents a key's relationship to a set of values.
+                                  Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
                                 type: string
                               values:
-                                description: An array of string values. If the operator
-                                  is In or NotIn, the values array must be non-empty.
-                                  If the operator is Exists or DoesNotExist, the values
-                                  array must be empty. If the operator is Gt or Lt,
-                                  the values array must have a single element, which
-                                  will be interpreted as an integer. This array is
-                                  replaced during a strategic merge patch.
+                                description: |-
+                                  An array of string values. If the operator is In or NotIn,
+                                  the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                  the values array must be empty. If the operator is Gt or Lt, the values
+                                  array must have a single element, which will be interpreted as an integer.
+                                  This array is replaced during a strategic merge patch.
                                 items:
                                   type: string
                                 type: array
@@ -283,31 +286,30 @@ spec:
                             type: object
                           type: array
                         startupTaints:
-                          description: StartupTaints are taints that are applied to
-                            nodes upon startup which are expected to be removed automatically
-                            within a short period of time, typically by a DaemonSet
-                            that tolerates the taint. These are commonly used by daemonsets
-                            to allow initialization and enforce startup ordering.  StartupTaints
-                            are ignored for provisioning purposes in that pods are
-                            not required to tolerate a StartupTaint in order to have
-                            nodes provisioned for them.
+                          description: |-
+                            StartupTaints are taints that are applied to nodes upon startup which are expected to be removed automatically
+                            within a short period of time, typically by a DaemonSet that tolerates the taint. These are commonly used by
+                            daemonsets to allow initialization and enforce startup ordering.  StartupTaints are ignored for provisioning
+                            purposes in that pods are not required to tolerate a StartupTaint in order to have nodes provisioned for them.
                           items:
-                            description: The node this Taint is attached to has the
-                              "effect" on any pod that does not tolerate the Taint.
+                            description: |-
+                              The node this Taint is attached to has the "effect" on
+                              any pod that does not tolerate the Taint.
                             properties:
                               effect:
-                                description: Required. The effect of the taint on
-                                  pods that do not tolerate the taint. Valid effects
-                                  are NoSchedule, PreferNoSchedule and NoExecute.
+                                description: |-
+                                  Required. The effect of the taint on pods
+                                  that do not tolerate the taint.
+                                  Valid effects are NoSchedule, PreferNoSchedule and NoExecute.
                                 type: string
                               key:
                                 description: Required. The taint key to be applied
                                   to a node.
                                 type: string
                               timeAdded:
-                                description: TimeAdded represents the time at which
-                                  the taint was added. It is only written for NoExecute
-                                  taints.
+                                description: |-
+                                  TimeAdded represents the time at which the taint was added.
+                                  It is only written for NoExecute taints.
                                 format: date-time
                                 type: string
                               value:
@@ -320,28 +322,30 @@ spec:
                             type: object
                           type: array
                         taints:
-                          description: Taints will be applied to every node launched
-                            by the Provisioner. If specified, the provisioner will
-                            not provision nodes for pods that do not have matching
-                            tolerations. Additional taints will be created that match
+                          description: |-
+                            Taints will be applied to every node launched by the Provisioner. If
+                            specified, the provisioner will not provision nodes for pods that do not
+                            have matching tolerations. Additional taints will be created that match
                             pod tolerations on a per-node basis.
                           items:
-                            description: The node this Taint is attached to has the
-                              "effect" on any pod that does not tolerate the Taint.
+                            description: |-
+                              The node this Taint is attached to has the "effect" on
+                              any pod that does not tolerate the Taint.
                             properties:
                               effect:
-                                description: Required. The effect of the taint on
-                                  pods that do not tolerate the taint. Valid effects
-                                  are NoSchedule, PreferNoSchedule and NoExecute.
+                                description: |-
+                                  Required. The effect of the taint on pods
+                                  that do not tolerate the taint.
+                                  Valid effects are NoSchedule, PreferNoSchedule and NoExecute.
                                 type: string
                               key:
                                 description: Required. The taint key to be applied
                                   to a node.
                                 type: string
                               timeAdded:
-                                description: TimeAdded represents the time at which
-                                  the taint was added. It is only written for NoExecute
-                                  taints.
+                                description: |-
+                                  TimeAdded represents the time at which the taint was added.
+                                  It is only written for NoExecute taints.
                                 format: date-time
                                 type: string
                               value:
@@ -354,31 +358,33 @@ spec:
                             type: object
                           type: array
                         ttlSecondsAfterEmpty:
-                          description: "TTLSecondsAfterEmpty is the number of seconds
-                            the controller will wait before attempting to delete a
-                            node, measured from when the node is detected to be empty.
-                            A Node is considered to be empty when it does not have
-                            pods scheduled to it, excluding daemonsets. \n Termination
-                            due to no utilization is disabled if this field is not
-                            set."
+                          description: |-
+                            TTLSecondsAfterEmpty is the number of seconds the controller will wait
+                            before attempting to delete a node, measured from when the node is
+                            detected to be empty. A Node is considered to be empty when it does not
+                            have pods scheduled to it, excluding daemonsets.
+
+
+                            Termination due to no utilization is disabled if this field is not set.
                           format: int64
                           type: integer
                         ttlSecondsUntilExpired:
-                          description: "TTLSecondsUntilExpired is the number of seconds
-                            the controller will wait before terminating a node, measured
-                            from when the node is created. This is useful to implement
-                            features like eventually consistent node upgrade, memory
-                            leak protection, and disruption testing. \n Termination
-                            due to expiration is disabled if this field is not set."
+                          description: |-
+                            TTLSecondsUntilExpired is the number of seconds the controller will wait
+                            before terminating a node, measured from when the node is created. This
+                            is useful to implement features like eventually consistent node upgrade,
+                            memory leak protection, and disruption testing.
+
+
+                            Termination due to expiration is disabled if this field is not set.
                           format: int64
                           type: integer
                         weight:
-                          description: Weight is the priority given to the provisioner
-                            during scheduling. A higher numerical weight indicates
-                            that this provisioner will be ordered ahead of other provisioners
-                            with lower weights. A provisioner with no weight will
-                            be treated as if it is a provisioner with a weight of
-                            0.
+                          description: |-
+                            Weight is the priority given to the provisioner during scheduling. A higher
+                            numerical weight indicates that this provisioner will be ordered
+                            ahead of other provisioners with lower weights. A provisioner with no weight
+                            will be treated as if it is a provisioner with a weight of 0.
                           format: int32
                           maximum: 100
                           minimum: 1
@@ -389,19 +395,19 @@ spec:
                         Provisioner
                       properties:
                         conditions:
-                          description: Conditions is the set of conditions required
-                            for this provisioner to scale its target, and indicates
-                            whether or not those conditions are met.
+                          description: |-
+                            Conditions is the set of conditions required for this provisioner to scale
+                            its target, and indicates whether or not those conditions are met.
                           items:
-                            description: 'Condition defines a readiness condition
-                              for a Knative resource. See: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties'
+                            description: |-
+                              Condition defines a readiness condition for a Knative resource.
+                              See: https://github.com/kubernetes/community/blob/master/contributors/devel/sig-architecture/api-conventions.md#typical-status-properties
                             properties:
                               lastTransitionTime:
-                                description: LastTransitionTime is the last time the
-                                  condition transitioned from one status to another.
-                                  We use VolatileTime in place of metav1.Time to exclude
-                                  this from creating equality.Semantic differences
-                                  (all other things held constant).
+                                description: |-
+                                  LastTransitionTime is the last time the condition transitioned from one status to another.
+                                  We use VolatileTime in place of metav1.Time to exclude this from creating equality.Semantic
+                                  differences (all other things held constant).
                                 type: string
                               message:
                                 description: A human readable message indicating details
@@ -411,9 +417,9 @@ spec:
                                 description: The reason for the condition's last transition.
                                 type: string
                               severity:
-                                description: Severity with which to treat failures
-                                  of this type of condition. When this is not specified,
-                                  it defaults to Error.
+                                description: |-
+                                  Severity with which to treat failures of this type of condition.
+                                  When this is not specified, it defaults to Error.
                                 type: string
                               status:
                                 description: Status of the condition, one of True,
@@ -428,8 +434,9 @@ spec:
                             type: object
                           type: array
                         lastScaleTime:
-                          description: LastScaleTime is the last time the Provisioner
-                            scaled the number of nodes
+                          description: |-
+                            LastScaleTime is the last time the Provisioner scaled the number
+                            of nodes
                           format: date-time
                           type: string
                         resources:
@@ -527,13 +534,14 @@ spec:
                                 type: boolean
                             type: object
                           enabled:
-                            description: Enabled determines if kOps will install the
-                              Nvidia GPU runtime and drivers. They will only be installed
-                              on intances that has an Nvidia GPU.
+                            description: |-
+                              Enabled determines if kOps will install the Nvidia GPU runtime and drivers.
+                              They will only be installed on intances that has an Nvidia GPU.
                             type: boolean
                           package:
-                            description: Package is the name of the nvidia driver
-                              package that will be installed. Default is "nvidia-headless-510-server".
+                            description: |-
+                              Package is the name of the nvidia driver package that will be installed.
+                              Default is "nvidia-headless-510-server".
                             type: string
                         type: object
                       packages:
@@ -594,6 +602,9 @@ spec:
                             description: Version used to pick the runc package.
                             type: string
                         type: object
+                      selinuxEnabled:
+                        description: SelinuxEnabled enables SELinux support
+                        type: boolean
                       skipInstall:
                         description: SkipInstall prevents kOps from installing and
                           modifying containerd in any way (default "false").
@@ -663,10 +674,11 @@ spec:
                       type: object
                     type: array
                   gcpProvisioningModel:
-                    description: 'GCPProvisioningModel: Specifies the provisioning
-                      model of the GCP instance. Valid values: ''STANDARD'': (default)
-                      standard provisioning with user controlled run time, no discounts
-                      ''SPOT'': heavily discounted, no guaranteed run time.'
+                    description: |-
+                      GCPProvisioningModel: Specifies the provisioning model of the GCP instance.
+                      Valid values:
+                        'STANDARD': (default) standard provisioning with user controlled run time, no discounts
+                        'SPOT': heavily discounted, no guaranteed run time.
                     type: string
                   guestAccelerators:
                     description: GuestAccelerators configures additional accelerators
@@ -737,11 +749,10 @@ spec:
                             type: string
                           type: array
                         useRawManifest:
-                          description: UseRawManifest indicates that the contents
-                            of Manifest should be used as the contents of the systemd
-                            unit, unmodified. Before and Requires are ignored when
-                            used together with this value (and validation shouldn't
-                            allow them to be set)
+                          description: |-
+                            UseRawManifest indicates that the contents of Manifest should be used as the contents
+                            of the systemd unit, unmodified. Before and Requires are ignored when used together
+                            with this value (and validation shouldn't allow them to be set)
                           type: boolean
                       type: object
                     type: array
@@ -750,33 +761,33 @@ spec:
                       group IAM profile (AWS only).
                     properties:
                       profile:
-                        description: Profile is the AWS IAM Profile to attach to instances
-                          in this instance group. Specify the ARN for the IAM instance
-                          profile. (AWS only)
+                        description: |-
+                          Profile is the AWS IAM Profile to attach to instances in this instance group.
+                          Specify the ARN for the IAM instance profile. (AWS only)
                         type: string
                     type: object
                   image:
                     description: Image is the instance (ami etc) we should use
                     type: string
                   instanceInterruptionBehavior:
-                    description: InstanceInterruptionBehavior defines if a spot instance
-                      should be terminated, hibernated, or stopped after interruption
+                    description: |-
+                      InstanceInterruptionBehavior defines if a spot instance should be terminated, hibernated,
+                      or stopped after interruption
                     type: string
                   instanceMetadata:
                     description: InstanceMetadata defines the EC2 instance metadata
                       service options (AWS Only)
                     properties:
                       httpPutResponseHopLimit:
-                        description: HTTPPutResponseHopLimit is the desired HTTP PUT
-                          response hop limit for instance metadata requests. The larger
-                          the number, the further instance metadata requests can travel.
-                          The default value is 1.
+                        description: |-
+                          HTTPPutResponseHopLimit is the desired HTTP PUT response hop limit for instance metadata requests.
+                          The larger the number, the further instance metadata requests can travel. The default value is 1.
                         format: int64
                         type: integer
                       httpTokens:
-                        description: HTTPTokens is the state of token usage for the
-                          instance metadata requests. If the parameter is not specified
-                          in the request, the default state is "required".
+                        description: |-
+                          HTTPTokens is the state of token usage for the instance metadata requests.
+                          If the parameter is not specified in the request, the default state is "required".
                         type: string
                     type: object
                   instanceProtection:
@@ -937,9 +948,9 @@ spec:
                           Allocatable
                         type: boolean
                       experimentalAllowedUnsafeSysctls:
-                        description: ExperimentalAllowedUnsafeSysctls are passed to
-                          the kubelet config to whitelist allowable sysctls Was promoted
-                          to beta and renamed. https://github.com/kubernetes/kubernetes/pull/63717
+                        description: |-
+                          ExperimentalAllowedUnsafeSysctls are passed to the kubelet config to whitelist allowable sysctls
+                          Was promoted to beta and renamed. https://github.com/kubernetes/kubernetes/pull/63717
                         items:
                           type: string
                         type: array
@@ -954,16 +965,16 @@ spec:
                           feature gates for alpha/experimental features.
                         type: object
                       hairpinMode:
-                        description: 'How should the kubelet configure the container
-                          bridge for hairpin packets. Setting this flag allows endpoints
-                          in a Service to loadbalance back to themselves if they should
-                          try to access their own Service. Values: "promiscuous-bridge":
-                          make the container bridge promiscuous. "hairpin-veth":       set
-                          the hairpin flag on container veth interfaces. "none":               do
-                          nothing. Setting --configure-cbr0 to false implies that
-                          to achieve hairpin NAT one must set --hairpin-mode=veth-flag,
-                          because bridge assumes the existence of a container bridge
-                          named cbr0.'
+                        description: |-
+                          How should the kubelet configure the container bridge for hairpin packets.
+                          Setting this flag allows endpoints in a Service to loadbalance back to
+                          themselves if they should try to access their own Service. Values:
+                            "promiscuous-bridge": make the container bridge promiscuous.
+                            "hairpin-veth":       set the hairpin flag on container veth interfaces.
+                            "none":               do nothing.
+                          Setting --configure-cbr0 to false implies that to achieve hairpin NAT
+                          one must set --hairpin-mode=veth-flag, because bridge assumes the
+                          existence of a container bridge named cbr0.
                         type: string
                       hostnameOverride:
                         description: HostnameOverride is the hostname used to identify
@@ -974,21 +985,22 @@ spec:
                           between container housekeepings.
                         type: string
                       imageGCHighThresholdPercent:
-                        description: ImageGCHighThresholdPercent is the percent of
-                          disk usage after which image garbage collection is always
-                          run.
+                        description: |-
+                          ImageGCHighThresholdPercent is the percent of disk usage after which
+                          image garbage collection is always run.
                         format: int32
                         type: integer
                       imageGCLowThresholdPercent:
-                        description: ImageGCLowThresholdPercent is the percent of
-                          disk usage before which image garbage collection is never
-                          run. Lowest disk usage to garbage collect to.
+                        description: |-
+                          ImageGCLowThresholdPercent is the percent of disk usage before which
+                          image garbage collection is never run. Lowest disk usage to garbage
+                          collect to.
                         format: int32
                         type: integer
                       imagePullProgressDeadline:
-                        description: ImagePullProgressDeadline is the timeout for
-                          image pulls If no pulling progress is made before this deadline,
-                          the image pulling will be cancelled. (default 1m0s)
+                        description: |-
+                          ImagePullProgressDeadline is the timeout for image pulls
+                          If no pulling progress is made before this deadline, the image pulling will be cancelled. (default 1m0s)
                         type: string
                       kernelMemcgNotification:
                         description: Integrate with the kernel memcg notification
@@ -1014,8 +1026,10 @@ spec:
                           to isolate the kubelet in.
                         type: string
                       logFormat:
-                        description: 'LogFormat is the logging format of the kubelet.
-                          Supported values: text, json. Default: text'
+                        description: |-
+                          LogFormat is the logging format of the kubelet.
+                          Supported values: text, json.
+                          Default: text
                         type: string
                       logLevel:
                         description: LogLevel is the logging level of the kubelet
@@ -1027,13 +1041,15 @@ spec:
                         format: int32
                         type: integer
                       memorySwapBehavior:
-                        description: 'MemorySwapBehavior defines how swap is used
-                          by container workloads. Supported values: LimitedSwap, "UnlimitedSwap.'
+                        description: |-
+                          MemorySwapBehavior defines how swap is used by container workloads.
+                          Supported values: LimitedSwap, "UnlimitedSwap.
                         type: string
                       networkPluginMTU:
-                        description: NetworkPluginMTU is the MTU to be passed to the
-                          network plugin, and overrides the default MTU for cases
-                          where it cannot be automatically computed (such as IPSEC).
+                        description: |-
+                          NetworkPluginMTU is the MTU to be passed to the network plugin,
+                          and overrides the default MTU for cases where it cannot be automatically
+                          computed (such as IPSEC).
                         format: int32
                         type: integer
                       networkPluginName:
@@ -1047,9 +1063,9 @@ spec:
                           the cluster.
                         type: object
                       nodeStatusUpdateFrequency:
-                        description: NodeStatusUpdateFrequency Specifies how often
-                          kubelet posts node status to master (default 10s) must work
-                          with nodeMonitorGracePeriod in KubeControllerManagerConfig.
+                        description: |-
+                          NodeStatusUpdateFrequency Specifies how often kubelet posts node status to master (default 10s)
+                          must work with nodeMonitorGracePeriod in KubeControllerManagerConfig.
                         type: string
                       nonMasqueradeCIDR:
                         description: 'NonMasqueradeCIDR configures masquerading: traffic
@@ -1061,9 +1077,9 @@ spec:
                         format: int32
                         type: integer
                       podCIDR:
-                        description: PodCIDR is the CIDR to use for pod IP addresses,
-                          only used in standalone mode. In cluster mode, this is obtained
-                          from the master.
+                        description: |-
+                          PodCIDR is the CIDR to use for pod IP addresses, only used in standalone mode.
+                          In cluster mode, this is obtained from the master.
                         type: string
                       podInfraContainerImage:
                         description: PodInfraContainerImage is the image whose network/ipc
@@ -1079,11 +1095,9 @@ spec:
                         format: int64
                         type: integer
                       protectKernelDefaults:
-                        description: 'Default kubelet behaviour for kernel tuning.
-                          If set, kubelet errors if any of kernel tunables is different
-                          than kubelet defaults. (DEPRECATED: This parameter should
-                          be set via the config file specified by the Kubelet''s --config
-                          flag.'
+                        description: |-
+                          Default kubelet behaviour for kernel tuning. If set, kubelet errors if any of kernel tunables is different than kubelet defaults.
+                          (DEPRECATED: This parameter should be set via the config file specified by the Kubelet's --config flag.
                         type: boolean
                       readOnlyPort:
                         description: ReadOnlyPort is the port used by the kubelet
@@ -1091,9 +1105,9 @@ spec:
                         format: int32
                         type: integer
                       reconcileCIDR:
-                        description: ReconcileCIDR is Reconcile node CIDR with the
-                          CIDR specified by the API server. No-op if register-node
-                          or configure-cbr0 is false.
+                        description: |-
+                          ReconcileCIDR is Reconcile node CIDR with the CIDR specified by the
+                          API server. No-op if register-node or configure-cbr0 is false.
                         type: boolean
                       registerNode:
                         description: RegisterNode enables automatic registration with
@@ -1139,25 +1153,30 @@ spec:
                         description: RuntimeRequestTimeout is timeout for runtime
                           requests on - pull, logs, exec and attach
                         type: string
+                      seccompDefault:
+                        description: SeccompDefault enables the use of `RuntimeDefault`
+                          as the default seccomp profile for all workloads.
+                        type: boolean
                       seccompProfileRoot:
                         description: SeccompProfileRoot is the directory path for
                           seccomp profiles.
                         type: string
                       serializeImagePulls:
-                        description: '// SerializeImagePulls when enabled, tells the
-                          Kubelet to pull images one // at a time. We recommend *not*
-                          changing the default value on nodes that // run docker daemon
-                          with version  < 1.9 or an Aufs storage backend. // Issue
-                          #10959 has more details.'
+                        description: |-
+                          // SerializeImagePulls when enabled, tells the Kubelet to pull images one
+                          // at a time. We recommend *not* changing the default value on nodes that
+                          // run docker daemon with version  < 1.9 or an Aufs storage backend.
+                          // Issue #10959 has more details.
                         type: boolean
                       shutdownGracePeriod:
-                        description: 'ShutdownGracePeriod specifies the total duration
-                          that the node should delay the shutdown by. Default: 30s'
+                        description: |-
+                          ShutdownGracePeriod specifies the total duration that the node should delay the shutdown by.
+                          Default: 30s
                         type: string
                       shutdownGracePeriodCriticalPods:
-                        description: 'ShutdownGracePeriodCriticalPods specifies the
-                          duration used to terminate critical pods during a node shutdown.
-                          Default: 10s'
+                        description: |-
+                          ShutdownGracePeriodCriticalPods specifies the duration used to terminate critical pods during a node shutdown.
+                          Default: 10s
                         type: string
                       streamingConnectionIdleTimeout:
                         description: StreamingConnectionIdleTimeout is the maximum
@@ -1165,10 +1184,10 @@ spec:
                           is automatically closed
                         type: string
                       systemCgroups:
-                        description: SystemCgroups is absolute name of cgroups in
-                          which to place all non-kernel processes that are not already
-                          in a container. Empty for no container. Rolling back the
-                          flag requires a reboot.
+                        description: |-
+                          SystemCgroups is absolute name of cgroups in which to place
+                          all non-kernel processes that are not already in a container. Empty
+                          for no container. Rolling back the flag requires a reboot.
                         type: string
                       systemReserved:
                         additionalProperties:
@@ -1223,9 +1242,9 @@ spec:
                     description: Manager determines what is managing the node lifecycle
                     type: string
                   maxInstanceLifetime:
-                    description: MaxInstanceLifetime to the maximum amount of time,
-                      in seconds, that an instance can be in service. Value expected
-                      must be in form of duration ("ms", "s", "m", "h")
+                    description: |-
+                      MaxInstanceLifetime to the maximum amount of time, in seconds, that an instance can be in service.
+                      Value expected must be in form of duration ("ms", "s", "m", "h")
                     type: string
                   maxPrice:
                     description: MaxPrice indicates this is a spot-pricing group,
@@ -1285,11 +1304,10 @@ spec:
                           type: string
                         type: array
                       onDemandAboveBase:
-                        description: OnDemandAboveBase controls the percentages of
-                          On-Demand Instances and Spot Instances for your additional
-                          capacity beyond OnDemandBase. The range is 0–100. The default
-                          value is 100. If you leave this parameter set to 100, the
-                          percentages are 100% for On-Demand Instances and 0% for
+                        description: |-
+                          OnDemandAboveBase controls the percentages of On-Demand Instances and Spot Instances for your
+                          additional capacity beyond OnDemandBase. The range is 0–100. The default value is 100. If you
+                          leave this parameter set to 100, the percentages are 100% for On-Demand Instances and 0% for
                           Spot Instances.
                         format: int64
                         type: integer
@@ -1298,23 +1316,21 @@ spec:
                           instance types to fulfill On-Demand capacity
                         type: string
                       onDemandBase:
-                        description: OnDemandBase is the minimum amount of the Auto
-                          Scaling group's capacity that must be fulfilled by On-Demand
-                          Instances. This base portion is provisioned first as your
-                          group scales.
+                        description: |-
+                          OnDemandBase is the minimum amount of the Auto Scaling group's capacity that must be
+                          fulfilled by On-Demand Instances. This base portion is provisioned first as your group scales.
                         format: int64
                         type: integer
                       spotAllocationStrategy:
-                        description: SpotAllocationStrategy diversifies your Spot
-                          capacity across multiple instance types to find the best
-                          pricing. Higher Spot availability may result from a larger
-                          number of instance types to choose from.
+                        description: |-
+                          SpotAllocationStrategy diversifies your Spot capacity across multiple instance types to
+                          find the best pricing. Higher Spot availability may result from a larger number of
+                          instance types to choose from.
                         type: string
                       spotInstancePools:
-                        description: SpotInstancePools is the number of Spot pools
-                          to use to allocate your Spot capacity (defaults to 2) pools
-                          are determined from the different instance types in the
-                          Overrides array of LaunchTemplate
+                        description: |-
+                          SpotInstancePools is the number of Spot pools to use to allocate your Spot capacity (defaults to 2)
+                          pools are determined from the different instance types in the Overrides array of LaunchTemplate
                         format: int64
                         type: integer
                     type: object
@@ -1337,40 +1353,42 @@ spec:
                     description: RollingUpdate defines the rolling-update behavior
                     properties:
                       drainAndTerminate:
-                        description: DrainAndTerminate enables draining and terminating
-                          nodes during rolling updates. Defaults to true.
+                        description: |-
+                          DrainAndTerminate enables draining and terminating nodes during rolling updates.
+                          Defaults to true.
                         type: boolean
                       maxSurge:
                         anyOf:
                         - type: integer
                         - type: string
-                        description: 'MaxSurge is the maximum number of extra nodes
-                          that can be created during the update. The value can be
-                          an absolute number (for example 5) or a percentage of desired
-                          machines (for example 10%). The absolute number is calculated
-                          from a percentage by rounding up. Has no effect on instance
-                          groups with role "Master". Defaults to 1 on AWS, 0 otherwise.
-                          Example: when this is set to 30%, the InstanceGroup can
-                          be scaled up immediately when the rolling update starts,
-                          such that the total number of old and new nodes do not exceed
-                          130% of desired nodes.'
+                        description: |-
+                          MaxSurge is the maximum number of extra nodes that can be created
+                          during the update.
+                          The value can be an absolute number (for example 5) or a percentage of
+                          desired machines (for example 10%).
+                          The absolute number is calculated from a percentage by rounding up.
+                          Has no effect on instance groups with role "Master".
+                          Defaults to 1 on AWS, 0 otherwise.
+                          Example: when this is set to 30%, the InstanceGroup can be scaled
+                          up immediately when the rolling update starts, such that the total
+                          number of old and new nodes do not exceed 130% of desired
+                          nodes.
                         x-kubernetes-int-or-string: true
                       maxUnavailable:
                         anyOf:
                         - type: integer
                         - type: string
-                        description: 'MaxUnavailable is the maximum number of nodes
-                          that can be unavailable during the update. The value can
-                          be an absolute number (for example 5) or a percentage of
-                          desired nodes (for example 10%). The absolute number is
-                          calculated from a percentage by rounding down. Defaults
-                          to 1 if MaxSurge is 0, otherwise defaults to 0. Example:
-                          when this is set to 30%, the InstanceGroup can be scaled
-                          down to 70% of desired nodes immediately when the rolling
-                          update starts. Once new nodes are ready, more old nodes
-                          can be drained, ensuring that the total number of nodes
-                          available at all times during the update is at least 70%
-                          of desired nodes.'
+                        description: |-
+                          MaxUnavailable is the maximum number of nodes that can be unavailable during the update.
+                          The value can be an absolute number (for example 5) or a percentage of desired
+                          nodes (for example 10%).
+                          The absolute number is calculated from a percentage by rounding down.
+                          Defaults to 1 if MaxSurge is 0, otherwise defaults to 0.
+                          Example: when this is set to 30%, the InstanceGroup can be scaled
+                          down to 70% of desired nodes immediately when the rolling update
+                          starts. Once new nodes are ready, more old nodes can be drained,
+                          ensuring that the total number of nodes available at all times
+                          during the update is at least 70% of desired nodes.
                         x-kubernetes-int-or-string: true
                     type: object
                   rootVolume:
@@ -1431,9 +1449,10 @@ spec:
                       type: string
                     type: array
                   sysctlParameters:
-                    description: SysctlParameters will configure kernel parameters
-                      using sysctl(8). When specified, each parameter must follow
-                      the form variable=value, the way it would appear in sysctl.conf.
+                    description: |-
+                      SysctlParameters will configure kernel parameters using sysctl(8). When
+                      specified, each parameter must follow the form variable=value, the way
+                      it would appear in sysctl.conf.
                     items:
                       type: string
                     type: array
@@ -1448,13 +1467,12 @@ spec:
                       be either default or dedicated. Currently only applies to AWS.
                     type: string
                   updatePolicy:
-                    description: 'UpdatePolicy determines the policy for applying
-                      upgrades automatically. If specified, this value overrides a
-                      value specified in the Cluster''s "spec.updatePolicy" field.
-                      Valid values: ''automatic'' (default): apply updates automatically
-                      (apply OS security upgrades, avoiding rebooting when possible)
-                      ''external'': do not apply updates automatically; they are applied
-                      manually or by an external system'
+                    description: |-
+                      UpdatePolicy determines the policy for applying upgrades automatically.
+                      If specified, this value overrides a value specified in the Cluster's "spec.updatePolicy" field.
+                      Valid values:
+                        'automatic' (default): apply updates automatically (apply OS security upgrades, avoiding rebooting when possible)
+                        'external': do not apply updates automatically; they are applied manually or by an external system
                     type: string
                   volumeMounts:
                     description: VolumeMounts a collection of volume mounts
@@ -1494,10 +1512,9 @@ spec:
                         attached to the instance group
                       properties:
                         deleteOnTermination:
-                          description: DeleteOnTermination configures volume retention
-                            policy upon instance termination. The volume is deleted
-                            by default. Cluster deletion does not remove retained
-                            volumes.
+                          description: |-
+                            DeleteOnTermination configures volume retention policy upon instance termination.
+                            The volume is deleted by default. Cluster deletion does not remove retained volumes.
                           type: boolean
                         device:
                           description: Device is an optional device name of the block
@@ -1536,17 +1553,16 @@ spec:
                       for later use (AWS only).
                     properties:
                       enableLifecycleHook:
-                        description: EnableLifecyleHook determines if an ASG lifecycle
-                          hook will be added ensuring that nodeup runs to completion.
-                          Note that the metadata API must be protected from arbitrary
-                          Pods when this is enabled.
+                        description: |-
+                          EnableLifecyleHook determines if an ASG lifecycle hook will be added ensuring that nodeup runs to completion.
+                          Note that the metadata API must be protected from arbitrary Pods when this is enabled.
                         type: boolean
                       maxSize:
-                        description: MaxSize is the maximum size of the warm pool.
-                          The desired size of the instance group is subtracted from
-                          this number to determine the desired size of the warm pool
-                          (unless the resulting number is smaller than MinSize). The
-                          default is the instance group's MaxSize.
+                        description: |-
+                          MaxSize is the maximum size of the warm pool. The desired size of the instance group
+                          is subtracted from this number to determine the desired size of the warm pool
+                          (unless the resulting number is smaller than MinSize).
+                          The default is the instance group's MaxSize.
                         format: int64
                         type: integer
                       minSize:
@@ -1555,9 +1571,9 @@ spec:
                         type: integer
                     type: object
                   zones:
-                    description: Zones is the names of the Zones where machines in
-                      this instance group should be placed This is needed for regional
-                      subnets (e.g. GCE), to restrict placement to particular zones
+                    description: |-
+                      Zones is the names of the Zones where machines in this instance group should be placed
+                      This is needed for regional subnets (e.g. GCE), to restrict placement to particular zones
                     items:
                       type: string
                     type: array
@@ -1566,10 +1582,9 @@ spec:
                 description: ProviderID is the ARN of the associated ASG
                 type: string
               providerIDList:
-                description: ProviderIDList are the identification IDs of machine
-                  instances provided by the provider. This field must match the provider
-                  IDs as seen on the node objects corresponding to a machine pool's
-                  machine instances.
+                description: |-
+                  ProviderIDList are the identification IDs of machine instances provided by the provider.
+                  This field must match the provider IDs as seen on the node objects corresponding to a machine pool's machine instances.
                 items:
                   type: string
                 type: array
@@ -1592,37 +1607,37 @@ spec:
                     operational state.
                   properties:
                     lastTransitionTime:
-                      description: Last time the condition transitioned from one status
-                        to another. This should be when the underlying condition changed.
-                        If that is not known, then using the time when the API field
-                        changed is acceptable.
+                      description: |-
+                        Last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed. If that is not known, then using the time when
+                        the API field changed is acceptable.
                       format: date-time
                       type: string
                     message:
-                      description: A human readable message indicating details about
-                        the transition. This field may be empty.
+                      description: |-
+                        A human readable message indicating details about the transition.
+                        This field may be empty.
                       type: string
                     reason:
-                      description: The reason for the condition's last transition
-                        in CamelCase. The specific API may choose whether or not this
-                        field is considered a guaranteed API. This field may not be
-                        empty.
+                      description: |-
+                        The reason for the condition's last transition in CamelCase.
+                        The specific API may choose whether or not this field is considered a guaranteed API.
+                        This field may not be empty.
                       type: string
                     severity:
-                      description: Severity provides an explicit classification of
-                        Reason code, so the users or machines can immediately understand
-                        the current situation and act accordingly. The Severity field
-                        MUST be set only when Status=False.
+                      description: |-
+                        Severity provides an explicit classification of Reason code, so the users or machines can immediately
+                        understand the current situation and act accordingly.
+                        The Severity field MUST be set only when Status=False.
                       type: string
                     status:
                       description: Status of the condition, one of True, False, Unknown.
                       type: string
                     type:
-                      description: Type of condition in CamelCase or in foo.example.com/CamelCase.
-                        Many .condition.type values are consistent across resources
-                        like Available, but because arbitrary conditions can be useful
-                        (see .node.status.conditions), the ability to deconflict is
-                        important.
+                      description: |-
+                        Type of condition in CamelCase or in foo.example.com/CamelCase.
+                        Many .condition.type values are consistent across resources like Available, but because arbitrary conditions
+                        can be useful (see .node.status.conditions), the ability to deconflict is important.
                       type: string
                   required:
                   - lastTransitionTime
@@ -1631,13 +1646,15 @@ spec:
                   type: object
                 type: array
               failureMessage:
-                description: ErrorMessage indicates that there is a terminal problem
-                  reconciling the state, and will be set to a descriptive error message.
+                description: |-
+                  ErrorMessage indicates that there is a terminal problem reconciling the
+                  state, and will be set to a descriptive error message.
                 type: string
               ready:
                 default: false
-                description: Ready denotes that the API Server is ready to receive
-                  requests.
+                description: |-
+                  Ready denotes that the API Server is ready to
+                  receive requests.
                 type: boolean
               replicas:
                 description: Replicas is the most recently observed number of replicas
