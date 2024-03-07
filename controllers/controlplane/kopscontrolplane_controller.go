@@ -169,75 +169,22 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 	}
 
 	if shouldEnableKarpenter {
-		karpenterProvisionersContent, err := os.Create(terraformOutputDir + "/data/aws_s3_object_karpenter_provisioners_content")
-		if err != nil {
-			return err
+		karpenterKindNames := []string{
+			KarpenterProvisionersLabel,
+			KarpenterNodePoolsLabel,
 		}
-		defer karpenterProvisionersContent.Close()
-
-		// This is needed because the apply will fail if the file is empty
-		placeholder := corev1.ConfigMap{
-			TypeMeta: metav1.TypeMeta{
-				Kind:       "ConfigMap",
-				APIVersion: "v1",
-			},
-			ObjectMeta: metav1.ObjectMeta{
-				Name:      "placeholder-karpenter-provisioners",
-				Namespace: "kube-system",
-			},
-		}
-
-		output, err := yaml.Marshal(placeholder)
-		if err != nil {
-			return err
-		}
-
-		if _, err := karpenterProvisionersContent.Write([]byte("---\n")); err != nil {
-			return err
-		}
-
-		if _, err := karpenterProvisionersContent.Write(output); err != nil {
-			return err
-		}
-
-		for _, kmp := range kmps {
-			for _, provisioner := range kmp.Spec.KarpenterProvisioners {
-				provisioner.SetLabels(map[string]string{
-					"kops.k8s.io/managed-by": "kops-controller",
-				})
-				if _, err := karpenterProvisionersContent.Write([]byte("---\n")); err != nil {
-					return err
-				}
-				output, err := yaml.Marshal(provisioner)
-				if err != nil {
-					return err
-				}
-				if _, err := karpenterProvisionersContent.Write(output); err != nil {
-					return err
-				}
+		for _, kindName := range karpenterKindNames {
+			err = r.EnableKarpenter(EnableKarpenterParams{
+				S3BucketName:       s3Bucket,
+				KindName:           kindName,
+				TerraformOutputDir: terraformOutputDir,
+				KopsCluster:        kopsCluster,
+				KMPS:               kmps,
+			})
+			if err != nil {
+				return err
 			}
 		}
-		fileData, err := os.ReadFile(karpenterProvisionersContent.Name())
-		if err != nil {
-			return err
-		}
-		contentHash := fmt.Sprintf("%x", sha256.Sum256(fileData))
-
-		karpenterTemplate := struct {
-			Bucket       string
-			ClusterName  string
-			ManifestHash string
-		}{
-			s3Bucket,
-			kopsCluster.Name,
-			contentHash,
-		}
-
-		err = utils.CreateTerraformFilesFromTemplate("templates/karpenter_custom_addon_boostrap.tf.tpl", "karpenter_custom_addon_boostrap.tf", terraformOutputDir, karpenterTemplate)
-		if err != nil {
-			return err
-		}
-
 	}
 
 	// TODO: Refactor to assert if spot is enabled in a better way
@@ -501,6 +448,97 @@ func (r *KopsControlPlaneReconciliation) reconcileClusterAddons(ctx context.Cont
 	return nil
 }
 
+func (r *KopsControlPlaneReconciler) EnableKarpenter(params EnableKarpenterParams) (err error) {
+	karpenterKindContent, err := os.Create(params.TerraformOutputDir + "/data/aws_s3_object_karpenter_" + params.KindName + "_content")
+	if err != nil {
+		return err
+	}
+	defer karpenterKindContent.Close()
+
+	// This is needed because the apply will fail if the file is empty
+	placeholder := corev1.ConfigMap{
+		TypeMeta: metav1.TypeMeta{
+			Kind:       "ConfigMap",
+			APIVersion: "v1",
+		},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "placeholder-karpenter-" + params.KindName,
+			Namespace: "kube-system",
+		},
+	}
+
+	output, err := yaml.Marshal(placeholder)
+	if err != nil {
+		return err
+	}
+
+	if _, err := karpenterKindContent.Write([]byte("---\n")); err != nil {
+		return err
+	}
+
+	if _, err := karpenterKindContent.Write(output); err != nil {
+		return err
+	}
+
+	for _, kmp := range params.KMPS {
+		switch params.KindName {
+		case KarpenterProvisionersLabel:
+			for _, provisioner := range kmp.Spec.KarpenterProvisioners {
+				provisioner.SetLabels(map[string]string{
+					"kops.k8s.io/managed-by": "kops-controller",
+				})
+				if _, err := karpenterKindContent.Write([]byte("---\n")); err != nil {
+					return err
+				}
+				output, err := yaml.Marshal(provisioner)
+				if err != nil {
+					return err
+				}
+				if _, err := karpenterKindContent.Write(output); err != nil {
+					return err
+				}
+			}
+		case KarpenterNodePoolsLabel:
+			for _, nodepool := range kmp.Spec.KarpenterNodePools {
+				nodepool.SetLabels(map[string]string{
+					"kops.k8s.io/managed-by": "kops-controller",
+				})
+				if _, err := karpenterKindContent.Write([]byte("---\n")); err != nil {
+					return err
+				}
+				output, err := yaml.Marshal(nodepool)
+				if err != nil {
+					return err
+				}
+				if _, err := karpenterKindContent.Write(output); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	fileData, err := os.ReadFile(karpenterKindContent.Name())
+	if err != nil {
+		return err
+	}
+	contentHash := fmt.Sprintf("%x", sha256.Sum256(fileData))
+
+	karpenterTemplate := struct {
+		Bucket       string
+		ClusterName  string
+		ManifestHash string
+	}{
+		params.S3BucketName,
+		params.KopsCluster.Name,
+		contentHash,
+	}
+
+	err = utils.CreateTerraformFilesFromTemplate("templates/karpenter_custom_addon_boostrap.tf.tpl", "karpenter_custom_addon_boostrap.tf", params.TerraformOutputDir, karpenterTemplate)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes,verbs=get;list;watch;create;update;patch;delete
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/status,verbs=get;update;patch
 //+kubebuilder:rbac:groups=controlplane.cluster.x-k8s.io,resources=kopscontrolplanes/finalizers,verbs=update
@@ -727,6 +765,9 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			existingKopsMachinePool = append(existingKopsMachinePool, kopsMachinePool)
 		}
 		if len(kopsMachinePool.Spec.KarpenterProvisioners) > 0 {
+			shouldEnableKarpenter = true
+		}
+		if len(kopsMachinePool.Spec.KarpenterNodePools) > 0 {
 			shouldEnableKarpenter = true
 		}
 	}
