@@ -6,7 +6,7 @@ metadata:
   name: placeholder-karpenter-nodepool
   namespace: kube-system
 ---
-apiVersion: karpenter.sh/v1alpha5
+apiVersion: karpenter.sh/v1beta1
 kind: NodePool
 metadata:
   creationTimestamp: null

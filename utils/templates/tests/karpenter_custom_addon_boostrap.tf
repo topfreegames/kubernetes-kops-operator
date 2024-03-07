@@ -11,18 +11,18 @@ spec:
     selector:
       k8s-addon: karpenter-provisioners.wildlife.io
     manifest: karpenter-provisioners.wildlife.io/provisioners.yaml
-    manifestHash: "b3d32a0baf397c2f500b8936bad9e0581c6b234b7549d5aa624bc383722daaae"
+    manifestHash: "5bac255e7afd3072f86c42ca20bb87137010affde05fb0bf933a9af7a180f891"
     prune:
       kinds:
       - group: karpenter.sh
         kind: Provisioner
         labelSelector: "kops.k8s.io/managed-by=kops-controller"
-  - name: karpenter-nodepool.wildlife.io
+  - name: karpenter-nodepools.wildlife.io
     version: 0.0.1
     selector:
-      k8s-addon: karpenter-nodepool.wildlife.io
-    manifest: karpenter-nodepool.wildlife.io/nodepool.yaml
-    manifestHash: "b3d32a0baf397c2f500b8936bad9e0581c6b234b7549d5aa624bc383722daaae"
+      k8s-addon: karpenter-nodepools.wildlife.io
+    manifest: karpenter-nodepools.wildlife.io/nodepools.yaml
+    manifestHash: "5bac255e7afd3072f86c42ca20bb87137010affde05fb0bf933a9af7a180f891"
     prune:
       kinds:
       - group: karpenter.sh

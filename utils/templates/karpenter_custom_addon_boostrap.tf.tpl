@@ -17,11 +17,11 @@ spec:
       - group: karpenter.sh
         kind: Provisioner
         labelSelector: "kops.k8s.io/managed-by=kops-controller"
-  - name: karpenter-nodepool.wildlife.io
+  - name: karpenter-nodepools.wildlife.io
     version: 0.0.1
     selector:
-      k8s-addon: karpenter-nodepool.wildlife.io
-    manifest: karpenter-nodepool.wildlife.io/nodepool.yaml
+      k8s-addon: karpenter-nodepools.wildlife.io
+    manifest: karpenter-nodepools.wildlife.io/nodepools.yaml
     manifestHash: "{{ .ManifestHash }}"
     prune:
       kinds:
@@ -40,9 +40,9 @@ resource "aws_s3_object" "custom-addon-karpenter-provisioners" {
   provider = aws.files
 }
 
-resource "aws_s3_object" "custom-addon-karpenter-nodepool" {
+resource "aws_s3_object" "custom-addon-karpenter-nodepools" {
   bucket  = "{{ .Bucket }}"
-  content = file("${path.module}/data/aws_s3_object_karpenter_nodepool_content")
-  key = "{{ .ClusterName }}/custom-addons/karpenter-nodepool.wildlife.io/nodepool.yaml"
+  content = file("${path.module}/data/aws_s3_object_karpenter_nodepools_content")
+  key = "{{ .ClusterName }}/custom-addons/karpenter-nodepools.wildlife.io/nodepools.yaml"
   provider = aws.files
 }
