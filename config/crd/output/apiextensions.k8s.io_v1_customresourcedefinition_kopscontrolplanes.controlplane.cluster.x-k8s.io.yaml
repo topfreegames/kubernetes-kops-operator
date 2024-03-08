@@ -27,6 +27,12 @@ spec:
     - jsonPath: .spec.controllerClass
       name: ControllerClass
       type: string
+    - jsonPath: .status.lastReconciliationTime
+      name: LastReconciliationTime
+      type: string
+    - jsonPath: .status.ready
+      name: Ready
+      type: string
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -5164,6 +5170,10 @@ spec:
                 description: |-
                   ErrorMessage indicates that there is a terminal problem reconciling the
                   state, and will be set to a descriptive error message.
+                type: string
+              lastReconciliationTime:
+                description: LastReconciliationTime is the last time the KopsControlPlane was reconciled.
+                format: date-time
                 type: string
               paused:
                 default: false

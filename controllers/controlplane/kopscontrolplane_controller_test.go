@@ -49,26 +49,30 @@ import (
 )
 
 func TestEvaluateKopsValidationResult(t *testing.T) {
-	testCases := []map[string]interface{}{
+	testCases := []struct {
+		description    string
+		input          *validation.ValidationCluster
+		expectedResult bool
+	}{
 		{
-			"description":    "should succeeded without failures and nodes",
-			"input":          &validation.ValidationCluster{},
-			"expectedResult": true,
+			description:    "should succeed without failures and nodes",
+			input:          &validation.ValidationCluster{},
+			expectedResult: true,
 		},
 		{
-			"description": "should fail with failures not empty",
-			"input": &validation.ValidationCluster{
+			description: "should fail with failures not empty",
+			input: &validation.ValidationCluster{
 				Failures: []*validation.ValidationError{
 					{
 						Name: "TestError",
 					},
 				},
 			},
-			"expectedResult": false,
+			expectedResult: false,
 		},
 		{
-			"description": "should succeed with nodes with condition true",
-			"input": &validation.ValidationCluster{
+			description: "should succeed with nodes with condition true",
+			input: &validation.ValidationCluster{
 				Failures: []*validation.ValidationError{},
 				Nodes: []*validation.ValidationNode{
 					{
@@ -81,11 +85,11 @@ func TestEvaluateKopsValidationResult(t *testing.T) {
 					},
 				},
 			},
-			"expectedResult": true,
+			expectedResult: true,
 		},
 		{
-			"description": "should fail if any node with condition false",
-			"input": &validation.ValidationCluster{
+			description: "should fail if any node with condition false",
+			input: &validation.ValidationCluster{
 				Failures: []*validation.ValidationError{},
 				Nodes: []*validation.ValidationNode{
 					{
@@ -98,7 +102,20 @@ func TestEvaluateKopsValidationResult(t *testing.T) {
 					},
 				},
 			},
-			"expectedResult": false,
+			expectedResult: false,
+		},
+		{
+			description: "should succeed with only pods failures",
+			input: &validation.ValidationCluster{
+				Failures: []*validation.ValidationError{
+					{
+						Name:    "pod-test",
+						Kind:    "Pod",
+						Message: "pod-test pod is not ready",
+					},
+				},
+			},
+			expectedResult: true,
 		},
 	}
 
@@ -106,8 +123,8 @@ func TestEvaluateKopsValidationResult(t *testing.T) {
 	g := NewWithT(t)
 
 	for _, tc := range testCases {
-		result, _ := utils.EvaluateKopsValidationResult(tc["input"].(*validation.ValidationCluster))
-		if tc["expectedResult"].(bool) {
+		result, _ := utils.EvaluateKopsValidationResult(tc.input)
+		if tc.expectedResult {
 			g.Expect(result).To(BeTrue())
 		} else {
 			g.Expect(result).To(BeFalse())
@@ -294,7 +311,7 @@ kind: RandomObject`
 				kcp:                        tc.kcp,
 			}
 
-			err = reconciliation.reconcileClusterAddons(ctx, fakeKopsClientset, kopsCluster)
+			err = reconciliation.reconcileClusterAddons(fakeKopsClientset, kopsCluster)
 			g.Expect(tc.assertFunction(fakeKopsClientset, kopsCluster, err)).To(BeTrue())
 		})
 	}
@@ -1108,7 +1125,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				"ReconciliationStarted",
 				"KopsMachinePoolReconcileSuccess",
 				"KubernetesClusterValidationSucceed",
-				"ClusterReconciledSuccessfully",
+				"ClusterReconciliationFinished",
 			},
 		},
 		{
@@ -1284,12 +1301,23 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				g.Expect(result.RequeueAfter).To(Equal(time.Duration(5 * time.Minute)))
 			}
 
+			if result != resultNotRequeue {
+				err = fakeClient.Get(ctx, types.NamespacedName{
+					Namespace: kopsControlPlane.GetNamespace(),
+					Name:      kopsControlPlane.GetName(),
+				}, kopsControlPlane)
+				Expect(err).NotTo(HaveOccurred())
+
+				g.Expect(kopsControlPlane.Status.LastReconciliationTime.Time).To(BeTemporally("~", time.Now(), 5*time.Second))
+			}
+
 			if tc.expectedStatus != nil {
 				kcp := &controlplanev1alpha1.KopsControlPlane{}
 				err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsControlPlane), kcp)
 				g.Expect(err).NotTo(HaveOccurred())
+				// we don't want to compare the LastReconciliationTime here
+				kcp.Status.LastReconciliationTime = nil
 				g.Expect(*tc.expectedStatus).To(BeEquivalentTo(kcp.Status))
-
 			}
 
 			if tc.conditionsToAssert != nil {

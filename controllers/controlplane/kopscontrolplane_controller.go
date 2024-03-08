@@ -415,7 +415,7 @@ func (r *KopsControlPlaneReconciler) getClusterOwnerRef(ctx context.Context, obj
 	return nil, nil
 }
 
-func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, kubeConfig *rest.Config, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, cluster *unstructured.Unstructured) error {
+func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cluster *unstructured.Unstructured) error {
 
 	clusterName := cluster.GetName()
 
@@ -479,7 +479,7 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ku
 	return nil
 }
 
-func (r *KopsControlPlaneReconciliation) reconcileClusterAddons(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error {
+func (r *KopsControlPlaneReconciliation) reconcileClusterAddons(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error {
 
 	if r.kcp.Spec.KopsClusterAddons == "" {
 		err := kopsClientset.AddonsFor(kopsCluster).Replace(nil)
@@ -577,6 +577,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 		}
 
+		kopsControlPlane.Status.LastReconciliationTime = &metav1.Time{Time: time.Now()}
 		kopsControlPlaneHelper := kopsControlPlane.DeepCopy()
 		if err := reconciler.Update(ctx, kopsControlPlane); err != nil {
 			reconciler.log.Info(fmt.Sprintf("%+v", kopsControlPlane))
@@ -604,6 +605,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultDefault, nil
 	}
 	kopsControlPlane.Status.Paused = false
+	kopsControlPlane.Status.Ready = false
 
 	awsCredentials, err := util.GetAWSCredentialsFromKopsControlPlaneSecret(ctx, r.Client, kopsControlPlane.Spec.IdentityRef.Name, kopsControlPlane.Spec.IdentityRef.Namespace)
 	if err != nil {
@@ -739,7 +741,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	err = reconciler.reconcileClusterAddons(ctx, kopsClientset, kopsCluster)
+	err = reconciler.reconcileClusterAddons(kopsClientset, kopsCluster)
 	if err != nil {
 		return resultError, err
 	}
@@ -809,7 +811,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	err = reconciler.reconcileKubeconfig(ctx, kubeConfig, kopsClientset, kopsCluster, owner)
+	err = reconciler.reconcileKubeconfig(ctx, kubeConfig, kopsCluster, owner)
 	if err != nil {
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToReconcileKubeconfig", "failed to reconcile kubeconfig: %s", err)
 		return resultError, err
@@ -826,7 +828,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition)
 
-	err = reconciler.updateKopsMachinePoolWithProviderIDList(ctx, kopsControlPlane, kmps, &reconciler.awsCredentials)
+	err = reconciler.updateKopsMachinePoolWithProviderIDList(kopsControlPlane, kmps, &reconciler.awsCredentials)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return requeue1min, nil
@@ -847,17 +849,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	statusReady, err := utils.KopsClusterValidation(kopsControlPlane, r.Recorder, reconciler.log, val)
-	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToValidateKubernetesCluster", "failed trying to validate Kubernetes cluster: %v", err)
-		return resultError, err
-	}
-	kopsControlPlane.Status.Ready = statusReady
-	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ClusterReconciledSuccessfully", "cluster reconcile finished sucessfully")
+	kopsControlPlane.Status.Ready = utils.KopsClusterValidation(kopsControlPlane, r.Recorder, reconciler.log, val)
+	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ClusterReconciliationFinished", "cluster reconciliation finished")
 	return resultDefault, nil
 }
 
-func (r *KopsControlPlaneReconciliation) updateKopsMachinePoolWithProviderIDList(ctx context.Context, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, credentials *aws.Credentials) error {
+func (r *KopsControlPlaneReconciliation) updateKopsMachinePoolWithProviderIDList(kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, credentials *aws.Credentials) error {
 	for i, kopsMachinePool := range kmps {
 		// TODO: retrieve karpenter providerIDList
 		if len(kopsMachinePool.Spec.SpotInstOptions) == 0 && kopsMachinePool.Spec.KopsInstanceGroupSpec.Manager != "Karpenter" {

@@ -118,8 +118,11 @@ func EvaluateKopsValidationResult(validation *validation.ValidationCluster) (boo
 
 	failures := validation.Failures
 	if len(failures) > 0 {
-		result = false
 		for _, failure := range failures {
+			// Ignore scheduling pod validations
+			if failure.Kind == "Pod" {
+				continue
+			}
 			errorMessages = append(errorMessages, failure.Message)
 		}
 	}
@@ -127,24 +130,26 @@ func EvaluateKopsValidationResult(validation *validation.ValidationCluster) (boo
 	nodes := validation.Nodes
 	for _, node := range nodes {
 		if node.Status == corev1.ConditionFalse {
-			result = false
 			errorMessages = append(errorMessages, fmt.Sprintf("node %s condition is %s", node.Hostname, node.Status))
 		}
 	}
 
+	if len(errorMessages) > 0 {
+		result = false
+	}
 	return result, errorMessages
 }
 
-func KopsClusterValidation(object runtime.Object, recorder record.EventRecorder, log logr.Logger, validation *validation.ValidationCluster) (bool, error) {
+func KopsClusterValidation(object runtime.Object, recorder record.EventRecorder, log logr.Logger, validation *validation.ValidationCluster) bool {
 	result, errorMessages := EvaluateKopsValidationResult(validation)
 	if result {
-		recorder.Eventf(object, corev1.EventTypeNormal, "KubernetesClusterValidationSucceed", "Kops validation succeed")
-		return true, nil
+		recorder.Eventf(object, corev1.EventTypeNormal, "KubernetesClusterValidationSucceeded", "kops validation succeeded")
+		return true
 	} else {
 		for _, errorMessage := range errorMessages {
 			recorder.Eventf(object, corev1.EventTypeWarning, "KubernetesClusterValidationFailed", errorMessage)
 		}
-		return false, nil
+		return false
 	}
 }
 
