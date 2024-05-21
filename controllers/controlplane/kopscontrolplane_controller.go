@@ -303,11 +303,13 @@ func PrepareKopsCloudResources(ctx context.Context, kopsClientset simple.Clients
 		TargetName:         "terraform",
 	}
 
+	// Disable stdout to avoid printing the terraform output
 	stdout := os.Stdout
 	defer func() {
 		os.Stdout = stdout
 	}()
 	os.Stdout = nil
+
 	if err := applyCmd.Run(ctx); err != nil {
 		return err
 	}
@@ -633,16 +635,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if r.shouldDeleteCluster(kopsControlPlane) {
 		log.Info(fmt.Sprintf("deleting cluster %s", owner.GetName()))
 
-		kmps, err = kopsutils.GetKopsMachinePoolsWithLabel(ctx, reconciler.Client, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
-		if err != nil {
-			return resultError, err
-		}
-
 		err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, nil, false, kopsControlPlane.Spec.KopsClusterSpec.ConfigStore.Base, terraformOutputDir, false)
 		if err != nil {
 			return resultError, err
 		}
 
+		// This is needed because this is normally created, but when deleting we don't create the kops resources files
 		err = utils.CreateTerraformFilesFromTemplate("templates/provider.tf.tpl", "provider.tf", terraformOutputDir, nil)
 		if err != nil {
 			return resultError, err
@@ -653,7 +651,10 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToDestroyTerraform", "failed to destroy terraform: %s", err)
 			return resultError, err
 		}
+
 		reconciler.Mux.Lock()
+		shouldUnlock = true
+
 		err = util.SetEnvVarsFromAWSCredentials(reconciler.awsCredentials)
 		if err != nil {
 			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToSetAWSEnvVars", "failed to set AWS environment variables: %s", err)
@@ -666,12 +667,16 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return resultError, err
 		}
 
-		reconciler.Mux.Unlock()
-
+		// Decided to let the kops leftover deletion inside the lock as a safeguard 
+		// since in the past they used to use singleton and as the deletion is not
+		// a common operation
 		err = r.KopsDeleteResourcesFactory(ctx, cloud, kopsClientset, kopsCluster)
 		if err != nil {
 			return resultError, err
 		}
+
+		reconciler.Mux.Unlock()
+		shouldUnlock = false
 
 		for i := range kmps {
 
