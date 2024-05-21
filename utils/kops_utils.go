@@ -296,6 +296,13 @@ func KopsDeleteResources(ctx context.Context, cloud fi.Cloud, kopsClientset simp
 		return errors.New("cluster name is required")
 	}
 
+	// Disable stdout to avoid printing the kops output
+	stdout := os.Stdout
+	defer func() {
+		os.Stdout = stdout
+	}()
+	os.Stdout = nil
+
 	allResources, err := resourceops.ListResources(cloud, kopsCluster)
 	if err != nil {
 		return err
