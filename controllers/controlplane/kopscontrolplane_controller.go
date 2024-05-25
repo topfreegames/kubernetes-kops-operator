@@ -20,6 +20,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
+	"net"
 	"os"
 	"sync"
 	"time"
@@ -590,10 +591,10 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 		}
 
-		err := utils.CleanupTerraformDirectory(terraformOutputDir)
-		if err != nil {
-			r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedCleanupTerraformDirectory", "failed to cleanup terraform directory from cluster: %s", err)
-		}
+		// err := utils.CleanupTerraformDirectory(terraformOutputDir)
+		// if err != nil {
+		// 	r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedCleanupTerraformDirectory", "failed to cleanup terraform directory from cluster: %s", err)
+		// }
 
 		reconciler.log.Info(fmt.Sprintf("finished reconcile loop for %s, took %s", kopsControlPlane.ObjectMeta.GetName(), time.Since(initTime)))
 	}()
@@ -624,6 +625,21 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		},
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
+
+	_, nonMasqueradeCIDR, err := net.ParseCIDR(kopsCluster.Spec.Networking.NonMasqueradeCIDR)
+	if err != nil {
+		return resultError, err
+	}
+
+	nmOnes, nmBits := nonMasqueradeCIDR.Mask.Size()
+	// Allocate from the '0' subnet; but only carve off 1/4 of that (i.e. add 1 + 2 bits to the netmask)
+	serviceOnes := nmOnes + 3
+	// Max size of network is 20 bits
+	if nmBits-serviceOnes > 20 {
+		serviceOnes = nmBits - 20
+	}
+	cidr := net.IPNet{IP: nonMasqueradeCIDR.IP.Mask(nonMasqueradeCIDR.Mask), Mask: net.CIDRMask(serviceOnes, nmBits)}
+	kopsCluster.Spec.Networking.ServiceClusterIPRange = cidr.String()
 
 	kmps, err = kopsutils.GetKopsMachinePoolsWithLabel(ctx, reconciler.Client, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
 	if err != nil {
