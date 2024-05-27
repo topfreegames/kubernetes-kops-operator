@@ -3,6 +3,7 @@ package kops
 import (
 	"context"
 	"fmt"
+	"net"
 
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -85,4 +86,23 @@ func GetCloudResourceNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.KopsMac
 	}
 
 	return cloudName, nil
+}
+
+func CalculateServiceClusterIPRange(nonMasqueradeCIDRString string) (string, error) {
+
+	_, nonMasqueradeCIDR, err := net.ParseCIDR(nonMasqueradeCIDRString)
+	if err != nil {
+		return "", err
+	}
+
+	nmOnes, nmBits := nonMasqueradeCIDR.Mask.Size()
+	// Allocate from the '0' subnet; but only carve off 1/4 of that (i.e. add 1 + 2 bits to the netmask)
+	serviceOnes := nmOnes + 3
+	// Max size of network is 20 bits
+	if nmBits-serviceOnes > 20 {
+		serviceOnes = nmBits - 20
+	}
+	cidr := net.IPNet{IP: nonMasqueradeCIDR.IP.Mask(nonMasqueradeCIDR.Mask), Mask: net.CIDRMask(serviceOnes, nmBits)}
+
+	return cidr.String(), nil
 }

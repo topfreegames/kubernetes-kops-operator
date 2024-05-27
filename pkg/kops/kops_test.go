@@ -2,6 +2,7 @@ package kops
 
 import (
 	"context"
+	"net"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -315,6 +316,53 @@ func TestGetKopsMachinePoolsWithLabel(t *testing.T) {
 				if tc.expectedError != nil {
 					g.Expect(err).To(Equal(tc.expectedError))
 				}
+			}
+		})
+	}
+}
+
+func TestCalculateServiceClusterIPRange(t *testing.T) {
+	type testCase struct {
+		description    string
+		input          string
+		expectedOutput string
+		expectedError  error
+	}
+	testCases := []testCase{
+		{
+			description:    "should return 1/8th of the input range",
+			input:          "10.1.0.0/16",
+			expectedOutput: "10.1.0.0/19",
+		},
+		{
+			description:    "should return 1/8th of the input range",
+			input:          "10.1.0.0/24",
+			expectedOutput: "10.1.0.0/27",
+		},
+		{
+			description:    "should return /12 as it's the maximum allowed range",
+			input:          "10.0.0.0/8",
+			expectedOutput: "10.0.0.0/12",
+		},
+		{
+			description:    "should return error with invalid network CIDR",
+			input:          "10.x.0.0/16",
+			expectedOutput: "10.1.0.0/12",
+			expectedError:  &net.ParseError{Type: "CIDR address", Text: "10.x.0.0/16"},
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+
+		t.Run(tc.description, func(t *testing.T) {
+			serviceClusterIPRange, err := CalculateServiceClusterIPRange(tc.input)
+			if tc.expectedError == nil {
+				g.Expect(err).To(BeNil())
+				g.Expect(serviceClusterIPRange).To(BeEquivalentTo(tc.expectedOutput))
+			} else {
+				g.Expect(err).To(BeEquivalentTo(tc.expectedError))
 			}
 		})
 	}
