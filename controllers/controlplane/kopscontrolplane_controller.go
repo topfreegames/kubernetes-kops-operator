@@ -625,6 +625,16 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
+	// the default IPv4 service cluster range is now 100.64.0.0/13, we now need to explicitly set the service cluster IP range.
+	// as most of our clusters are using the previous default range we need to calculate it to keep compatibility
+	// more on https://github.com/kubernetes/kops/pull/15866
+	if kopsCluster.Spec.Networking.ServiceClusterIPRange == "" {
+		kopsCluster.Spec.Networking.ServiceClusterIPRange, err = kopsutils.CalculateServiceClusterIPRange(kopsCluster.Spec.Networking.NonMasqueradeCIDR)
+		if err != nil {
+			return resultError, fmt.Errorf("error parsing NonMasqueradeCIDR %q: %v", kopsCluster.Spec.Networking.NonMasqueradeCIDR, err)
+		}
+	}
+
 	kmps, err = kopsutils.GetKopsMachinePoolsWithLabel(ctx, reconciler.Client, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
 	if err != nil {
 		return resultError, err
