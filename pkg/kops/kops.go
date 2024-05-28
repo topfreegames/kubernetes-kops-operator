@@ -88,6 +88,8 @@ func GetCloudResourceNameFromKopsMachinePool(kmp kinfrastructurev1alpha1.KopsMac
 	return cloudName, nil
 }
 
+// CalculateServiceClusterIPRange calculates the service cluster IP range based on the nonMasqueradeCIDR
+// it returns at most a /20 network
 func CalculateServiceClusterIPRange(nonMasqueradeCIDRString string) (string, error) {
 
 	_, nonMasqueradeCIDR, err := net.ParseCIDR(nonMasqueradeCIDRString)
@@ -98,10 +100,11 @@ func CalculateServiceClusterIPRange(nonMasqueradeCIDRString string) (string, err
 	nmOnes, nmBits := nonMasqueradeCIDR.Mask.Size()
 	// Allocate from the '0' subnet; but only carve off 1/4 of that (i.e. add 1 + 2 bits to the netmask)
 	serviceOnes := nmOnes + 3
-	// Max size of network is 20 bits
-	if nmBits-serviceOnes > 20 {
-		serviceOnes = nmBits - 20
+	// Max size of network is /20 (4096 addresses)
+	if serviceOnes < 20 {
+		serviceOnes = 20
 	}
+
 	cidr := net.IPNet{IP: nonMasqueradeCIDR.IP.Mask(nonMasqueradeCIDR.Mask), Mask: net.CIDRMask(serviceOnes, nmBits)}
 
 	return cidr.String(), nil
