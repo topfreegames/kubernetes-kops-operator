@@ -93,6 +93,7 @@ deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in
 
 gen-k8s-manifests: manifests kustomize ## 
 	cd config/manager && $(KUSTOMIZE) edit set image manager=${IMG}
+	$(KUSTOMIZE) build config/crd     > .kubernetes/crds.yaml
 	$(KUSTOMIZE) build config/default > .kubernetes/manifests.yaml
 
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
