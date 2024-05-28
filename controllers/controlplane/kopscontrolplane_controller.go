@@ -590,9 +590,13 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 		}
 
-		err := utils.CleanupTerraformDirectory(terraformOutputDir)
-		if err != nil {
-			r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedCleanupTerraformDirectory", "failed to cleanup terraform directory from cluster: %s", err)
+		if kopsControlPlane.Spec.TerraformConfig.CleanupTerraformDirectory {
+			err := utils.CleanupTerraformDirectory(terraformOutputDir)
+			if err != nil {
+				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedCleanupTerraformDirectory", "failed to cleanup terraform directory from cluster: %s", err)
+			}
+		} else {
+			reconciler.log.Info(fmt.Sprintf("skipping cleanup of terraform directory for %s", kopsControlPlane.Name))
 		}
 
 		reconciler.log.Info(fmt.Sprintf("finished reconcile loop for %s, took %s", kopsControlPlane.ObjectMeta.GetName(), time.Since(initTime)))
