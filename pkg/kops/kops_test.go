@@ -331,8 +331,8 @@ func TestCalculateServiceClusterIPRange(t *testing.T) {
 	testCases := []testCase{
 		{
 			description:    "should return 1/8th of the input range",
-			input:          "10.1.0.0/16",
-			expectedOutput: "10.1.0.0/19",
+			input:          "10.1.0.0/18",
+			expectedOutput: "10.1.0.0/21",
 		},
 		{
 			description:    "should return 1/8th of the input range",
@@ -340,14 +340,19 @@ func TestCalculateServiceClusterIPRange(t *testing.T) {
 			expectedOutput: "10.1.0.0/27",
 		},
 		{
-			description:    "should return /12 as it's the maximum allowed range",
+			description:    "should return /20 as it's the maximum allowed range",
+			input:          "10.1.0.0/16",
+			expectedOutput: "10.1.0.0/20",
+		},
+		{
+			description:    "should return /20 as it's the maximum allowed range",
 			input:          "10.0.0.0/8",
-			expectedOutput: "10.0.0.0/12",
+			expectedOutput: "10.0.0.0/20",
 		},
 		{
 			description:    "should return error with invalid network CIDR",
 			input:          "10.x.0.0/16",
-			expectedOutput: "10.1.0.0/12",
+			expectedOutput: "10.1.0.0/20",
 			expectedError:  &net.ParseError{Type: "CIDR address", Text: "10.x.0.0/16"},
 		},
 	}
