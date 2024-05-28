@@ -87,12 +87,20 @@ type KopsControlPlaneSpec struct {
 	SpotInst SpotInstSpec `json:"spotInst,omitempty"`
 	// KopsClusterAddons is intended to pass additional objects to the cluster: https://kops.sigs.k8s.io/addon_objects/#kubeschedulerconfiguration-group-kubeschedulerconfigk8sio
 	KopsClusterAddons string `json:"kopsClusterAddons,omitempty"`
+	// TerraformConfig has some configurations that can be used to control the Terraform lifecycle
+	TerraformConfig TerraformConfigSpec `json:"terraformConfig,omitempty"`
 }
 
 type IdentityRefSpec struct {
 	Kind      string `json:"kind"`
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
+}
+
+type TerraformConfigSpec struct {
+	// CleanupTerraformDirectory denotes whether the controller should
+	// cleanup the Terraform directory after the reconciliation
+	CleanupTerraformDirectory bool `json:"cleanupTerraformDirectory"`
 }
 
 // KopsControlPlaneStatus defines the observed state of KopsControlPlane
