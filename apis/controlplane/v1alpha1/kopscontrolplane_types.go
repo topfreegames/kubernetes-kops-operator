@@ -118,6 +118,10 @@ type KopsControlPlaneStatus struct {
 
 	// Secrets are the list of custom secrets created with the controller
 	Secrets []string `json:"secrets,omitempty"`
+
+	// LastReconciled is the timestamp of the last reconciliation.
+	// +optional
+	LastReconciled *metav1.Time `json:"lastReconciled,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -126,6 +130,7 @@ type KopsControlPlaneStatus struct {
 //+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
 //+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
 //+kubebuilder:printcolumn:name="ControllerClass",type="string",JSONPath=".spec.controllerClass"
+//+kubebuilder:printcolumn:name="LastReconciled",type="date",JSONPath=".status.lastReconciled"
 
 // KopsControlPlane is the Schema for the kopscontrolplanes API
 type KopsControlPlane struct {
