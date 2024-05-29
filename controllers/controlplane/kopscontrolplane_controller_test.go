@@ -1288,6 +1288,7 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 				kcp := &controlplanev1alpha1.KopsControlPlane{}
 				err = fakeClient.Get(ctx, client.ObjectKeyFromObject(kopsControlPlane), kcp)
 				g.Expect(err).NotTo(HaveOccurred())
+				kcp.Status.LastReconciled = nil
 				g.Expect(*tc.expectedStatus).To(BeEquivalentTo(kcp.Status))
 
 			}

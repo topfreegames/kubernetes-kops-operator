@@ -577,6 +577,8 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 		}
 
+		kopsControlPlane.Status.LastReconciled = &metav1.Time{Time: time.Now()}
+
 		kopsControlPlaneHelper := kopsControlPlane.DeepCopy()
 		if err := reconciler.Update(ctx, kopsControlPlane); err != nil {
 			reconciler.log.Info(fmt.Sprintf("%+v", kopsControlPlane))

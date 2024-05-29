@@ -27,6 +27,9 @@ spec:
     - jsonPath: .spec.controllerClass
       name: ControllerClass
       type: string
+    - jsonPath: .status.lastReconciled
+      name: LastReconciled
+      type: date
     name: v1alpha1
     schema:
       openAPIV3Schema:
@@ -5164,6 +5167,10 @@ spec:
                 description: |-
                   ErrorMessage indicates that there is a terminal problem reconciling the
                   state, and will be set to a descriptive error message.
+                type: string
+              lastReconciled:
+                description: LastReconciled is the timestamp of the last reconciliation.
+                format: date-time
                 type: string
               paused:
                 default: false
