@@ -572,7 +572,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			if kopsMachinePoolHelper.ObjectMeta.DeletionTimestamp.IsZero() && kopsControlPlane.ObjectMeta.DeletionTimestamp.IsZero() {
 				kopsMachinePool.Status = kopsMachinePoolHelper.Status
 				if err := reconciler.Status().Update(ctx, &kopsMachinePool); err != nil {
-					r.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeWarning, infrastructurev1alpha1.FailedToUpdateKopsMachinePool, "failed to update kopsMachinePool: %s", err)
+					r.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeWarning, infrastructurev1alpha1.FailedToUpdateKopsMachinePool, "failed to update status of kopsMachinePool: %s", err)
 				}
 			}
 		}
@@ -586,7 +586,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if kopsControlPlaneHelper.ObjectMeta.DeletionTimestamp.IsZero() {
 			kopsControlPlane.Status = kopsControlPlaneHelper.Status
 			if err := reconciler.Status().Update(ctx, kopsControlPlane); err != nil {
-				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, controlplanev1alpha1.FailedToUpdateKopsControlPlane, "failed to update kopsControlPlane: %s", err)
+				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, controlplanev1alpha1.FailedToUpdateKopsControlPlane, "failed to update status of kopsControlPlane: %s", err)
 			}
 		}
 
@@ -798,6 +798,8 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		shouldIgnoreSG = true
 	}
 
+	reconciler.log.Info(fmt.Sprintf("generating Terraform files for %s", kopsControlPlane.ObjectMeta.GetName()))
+
 	// Prepare custom cloud resources
 	err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, existingKopsMachinePool, shouldEnableKarpenter, fullCluster.Spec.ConfigStore.Base, terraformOutputDir, shouldIgnoreSG)
 	if err != nil {
@@ -828,6 +830,8 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	reconciler.Mux.Unlock()
 	shouldUnlock = false
 
+	reconciler.log.Info(fmt.Sprintf("applying Terraform for %s", kopsControlPlane.ObjectMeta.GetName()))
+
 	err = reconciler.ApplyTerraformFactory(ctx, terraformOutputDir, r.TfExecPath, reconciler.awsCredentials)
 	if err != nil {
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition, controlplanev1alpha1.TerraformApplyReconciliationFailedReason, clusterv1.ConditionSeverityError, err.Error())
@@ -835,6 +839,9 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition)
+
+	reconciler.log.Info(fmt.Sprintf("Terraform applied for %s", kopsControlPlane.ObjectMeta.GetName()))
+	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "TerraformApplied", "Terraform applied")
 
 	err = reconciler.updateKopsMachinePoolWithProviderIDList(ctx, kopsControlPlane, kmps, &reconciler.awsCredentials)
 	if err != nil {
@@ -851,7 +858,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	val, err := reconciler.ValidateKopsClusterFactory(kubeConfig, kopsCluster, cloud, igList)
-
 	if err != nil {
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToValidateKubernetesCluster", "failed trying to validate Kubernetes cluster: %v", err)
 		return resultError, err
