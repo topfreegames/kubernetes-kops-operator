@@ -21,14 +21,14 @@ spec:
     - jsonPath: .status.paused
       name: Paused
       type: string
-    - jsonPath: .metadata.creationTimestamp
-      name: Age
-      type: date
     - jsonPath: .spec.controllerClass
-      name: ControllerClass
+      name: Controller Class
       type: string
     - jsonPath: .status.lastReconciled
-      name: LastReconciled
+      name: Last Reconciled
+      type: date
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
       type: date
     name: v1alpha1
     schema:

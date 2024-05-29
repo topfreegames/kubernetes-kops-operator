@@ -128,9 +128,9 @@ type KopsControlPlaneStatus struct {
 //+kubebuilder:resource:path=kopscontrolplanes,scope=Namespaced,shortName=kcp
 //+kubebuilder:subresource:status
 //+kubebuilder:printcolumn:name="Paused",type="string",JSONPath=".status.paused"
+//+kubebuilder:printcolumn:name="Controller Class",type="string",JSONPath=".spec.controllerClass"
+//+kubebuilder:printcolumn:name="Last Reconciled",type="date",JSONPath=".status.lastReconciled"
 //+kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"
-//+kubebuilder:printcolumn:name="ControllerClass",type="string",JSONPath=".spec.controllerClass"
-//+kubebuilder:printcolumn:name="LastReconciled",type="date",JSONPath=".status.lastReconciled"
 
 // KopsControlPlane is the Schema for the kopscontrolplanes API
 type KopsControlPlane struct {
