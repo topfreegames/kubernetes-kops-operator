@@ -294,7 +294,7 @@ kind: RandomObject`
 				kcp:                        tc.kcp,
 			}
 
-			err = reconciliation.reconcileClusterAddons(ctx, fakeKopsClientset, kopsCluster)
+			err = reconciliation.reconcileClusterAddons(fakeKopsClientset, kopsCluster)
 			g.Expect(tc.assertFunction(fakeKopsClientset, kopsCluster, err)).To(BeTrue())
 		})
 	}
