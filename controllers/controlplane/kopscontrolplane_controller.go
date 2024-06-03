@@ -620,12 +620,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	reconciler.awsCredentials = *awsCredentials
 
-	kopsClientset, err := reconciler.GetKopsClientSetFactory(kopsControlPlane.Spec.KopsClusterSpec.ConfigStore.Base)
-	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedInstantiateKopsClient", "failed to instantiate Kops client: %s", err)
-		return resultError, err
-	}
-
 	kopsCluster := &kopsapi.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: owner.GetName(),
@@ -671,6 +665,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		reconciler.Mux.Lock()
 		shouldUnlock = true
 
+		kopsClientset, err := reconciler.GetKopsClientSetFactory(kopsControlPlane.Spec.KopsClusterSpec.ConfigStore.Base)
+		if err != nil {
+			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedInstantiateKopsClient", "failed to instantiate Kops client: %s", err)
+			return resultError, err
+		}
+
 		err = util.SetEnvVarsFromAWSCredentials(reconciler.awsCredentials)
 		if err != nil {
 			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToSetAWSEnvVars", "failed to set AWS environment variables: %s", err)
@@ -683,7 +683,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return resultError, err
 		}
 
-		// Decided to let the kops leftover deletion inside the lock as a safeguard 
+		// Decided to let the kops leftover deletion inside the lock as a safeguard
 		// since in the past they used to use singleton and as the deletion is not
 		// a common operation
 		err = r.KopsDeleteResourcesFactory(ctx, cloud, kopsClientset, kopsCluster)
@@ -728,6 +728,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	reconciler.log.Info(fmt.Sprintf("starting reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
 	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ReconciliationStarted", "reconciliation started")
+
+	kopsClientset, err := reconciler.GetKopsClientSetFactory(kopsControlPlane.Spec.KopsClusterSpec.ConfigStore.Base)
+	if err != nil {
+		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedInstantiateKopsClient", "failed to instantiate Kops client: %s", err)
+		return resultError, err
+	}
 
 	err = util.SetEnvVarsFromAWSCredentials(reconciler.awsCredentials)
 	if err != nil {
@@ -825,7 +831,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition)
 
-	// TODO: This is needed because we are using a method from kops lib, we should be
+	// TODO: This is needed because we are using a method from kops lib
 	// we should check alternatives
 	kubeConfig, err := utils.GetKubeconfigFromKopsState(ctx, kopsCluster, kopsClientset)
 	if err != nil {

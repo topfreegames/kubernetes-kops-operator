@@ -48,6 +48,7 @@ func GetKopsClientset(configBase string) (simple.Clientset, error) {
 	}
 
 	factory := util.NewFactory(factoryOptions)
+	// Context holds the global VFS state.
 	vfs.Context = vfs.NewVFSContext()
 	kopsClientset, err := factory.KopsClient()
 	if err != nil {
