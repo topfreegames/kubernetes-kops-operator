@@ -417,7 +417,7 @@ func (r *KopsControlPlaneReconciler) getClusterOwnerRef(ctx context.Context, obj
 	return nil, nil
 }
 
-func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, kubeConfig *rest.Config, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, cluster *unstructured.Unstructured) error {
+func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cluster *unstructured.Unstructured) error {
 
 	clusterName := cluster.GetName()
 
@@ -481,7 +481,7 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ku
 	return nil
 }
 
-func (r *KopsControlPlaneReconciliation) reconcileClusterAddons(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error {
+func (r *KopsControlPlaneReconciliation) reconcileClusterAddons(kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error {
 
 	if r.kcp.Spec.KopsClusterAddons == "" {
 		err := kopsClientset.AddonsFor(kopsCluster).Replace(nil)
@@ -766,7 +766,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	}
 
-	err = reconciler.reconcileClusterAddons(ctx, kopsClientset, kopsCluster)
+	err = reconciler.reconcileClusterAddons(kopsClientset, kopsCluster)
 	if err != nil {
 		return resultError, err
 	}
@@ -838,7 +838,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	err = reconciler.reconcileKubeconfig(ctx, kubeConfig, kopsClientset, kopsCluster, owner)
+	err = reconciler.reconcileKubeconfig(ctx, kubeConfig, kopsCluster, owner)
 	if err != nil {
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToReconcileKubeconfig", "failed to reconcile kubeconfig: %s", err)
 		return resultError, err
