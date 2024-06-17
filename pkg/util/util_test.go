@@ -141,7 +141,7 @@ func TestSetAWSEnvFromKopsControlPlaneSecret(t *testing.T) {
 			description:   "Should successfully set AWS envs",
 			expectedError: false,
 			k8sObjects: []client.Object{
-				newAWSCredentialSecret("11111111-credential", "kubernetes-kops-operator-system"),
+				newAWSCredentialSecret("11111111-credential", "kubernetes-kops-operator-system", "session-token"),
 			},
 		},
 	}
@@ -154,12 +154,14 @@ func TestSetAWSEnvFromKopsControlPlaneSecret(t *testing.T) {
 			awsCredentials := aws.Credentials{
 				AccessKeyID:     "11111111-credential",
 				SecretAccessKey: "kubernetes-kops-operator-system",
+				SessionToken:    "session-token",
 			}
 			err := SetEnvVarsFromAWSCredentials(awsCredentials)
 			if !tc.expectedError {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(os.Getenv("AWS_ACCESS_KEY_ID")).To(Equal("11111111-credential"))
 				g.Expect(os.Getenv("AWS_SECRET_ACCESS_KEY")).To(Equal("kubernetes-kops-operator-system"))
+				g.Expect(os.Getenv("AWS_SESSION_TOKEN")).To(Equal("session-token"))
 			} else {
 				g.Expect(err).To(HaveOccurred())
 			}
@@ -176,12 +178,20 @@ func TestGetAwsCredentialsFromKopsControlPlaneSecret(t *testing.T) {
 		expectedError         bool
 	}{
 		{
-			description:   "Should successfully set AWS envs",
+			description:   "Should successfully set AWS envs without session token",
 			expectedError: false,
 			k8sObjects: []client.Object{
-				newAWSCredentialSecret("accessTest", "secretTest"),
+				newAWSCredentialSecret("accessTest", "secretTest", ""),
 			},
 			expectedAwsCredential: &aws.Credentials{AccessKeyID: "accessTest", SecretAccessKey: "secretTest"},
+		},
+		{
+			description:   "Should successfully set AWS envs with session token",
+			expectedError: false,
+			k8sObjects: []client.Object{
+				newAWSCredentialSecret("accessTest", "secretTest", "sessionToken"),
+			},
+			expectedAwsCredential: &aws.Credentials{AccessKeyID: "accessTest", SecretAccessKey: "secretTest", SessionToken: "sessionToken"},
 		},
 		{
 			description:   "Should fail if can't get secret",
@@ -209,7 +219,7 @@ func TestGetAwsCredentialsFromKopsControlPlaneSecret(t *testing.T) {
 	}
 }
 
-func newAWSCredentialSecret(accessKey, secret string) *corev1.Secret {
+func newAWSCredentialSecret(accessKey, secret, sessionToken string) *corev1.Secret {
 	return &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "11111111-credential",
@@ -218,6 +228,7 @@ func newAWSCredentialSecret(accessKey, secret string) *corev1.Secret {
 		Data: map[string][]byte{
 			"AccessKeyID":     []byte(accessKey),
 			"SecretAccessKey": []byte(secret),
+			"SessionToken":    []byte(sessionToken),
 		},
 	}
 }
