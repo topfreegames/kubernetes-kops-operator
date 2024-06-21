@@ -60,6 +60,10 @@ func SetEnvVarsFromAWSCredentials(awsConfig aws.Credentials) error {
 	if err != nil {
 		return err
 	}
+	err = os.Unsetenv("AWS_SESSION_TOKEN")
+	if err != nil {
+		return err
+	}
 
 	err = os.Setenv("AWS_ACCESS_KEY_ID", awsConfig.AccessKeyID)
 	if err != nil {
@@ -68,6 +72,12 @@ func SetEnvVarsFromAWSCredentials(awsConfig aws.Credentials) error {
 	err = os.Setenv("AWS_SECRET_ACCESS_KEY", awsConfig.SecretAccessKey)
 	if err != nil {
 		return err
+	}
+	if awsConfig.SessionToken != "" {
+		err = os.Setenv("AWS_SESSION_TOKEN", awsConfig.SessionToken)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -84,10 +94,12 @@ func GetAWSCredentialsFromKopsControlPlaneSecret(ctx context.Context, c client.C
 	}
 	accessKeyID := string(secret.Data["AccessKeyID"])
 	secretAccessKey := string(secret.Data["SecretAccessKey"])
+	sessionToken := string(secret.Data["SessionToken"])
 
 	creds := &aws.Credentials{
 		AccessKeyID:     accessKeyID,
 		SecretAccessKey: secretAccessKey,
+		SessionToken:    sessionToken,
 	}
 
 	return creds, nil
