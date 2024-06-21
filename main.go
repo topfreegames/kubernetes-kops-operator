@@ -92,7 +92,7 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         enableLeaderElection,
 		LeaderElectionID:       "a7b2d45c.cluster.x-k8s.io",
-		PprofBindAddress:       ":8081",
+		PprofBindAddress:       ":8082",
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to start manager")
