@@ -12,7 +12,7 @@ var (
 		prometheus.GaugeOpts{
 			Name: "custom_reconciliation_consecutive_errors_total",
 			Help: "Total number of consecutive reconciliation errors labeled by controller, cluster and environment",
-		}, []string{"controller", "cluster", "environment"},
+		}, []string{"controller", "cluster_name", "cluster_environment"},
 	)
 )
 
