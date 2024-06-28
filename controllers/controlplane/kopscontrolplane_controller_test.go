@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	dto "github.com/prometheus/client_model/go"
+
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +26,8 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
+	custommetrics "github.com/topfreegames/kubernetes-kops-operator/metrics"
+
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -840,6 +845,149 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(fakeSecret.Data).NotTo(BeNil())
 			}
+		})
+	}
+}
+
+func TestCustomMetrics(t *testing.T) {
+	var reconciler *KopsControlPlaneReconciler
+
+	testCases := []struct {
+		description                string
+		expectedResult             float64
+		reconciliationStatusResult []string
+	}{
+		{
+			description:                "should be zero on successful reconciliation",
+			expectedResult:             0.0,
+			reconciliationStatusResult: []string{"succeed"},
+		},
+		{
+			description:                "should get incremented on reconcile errors",
+			expectedResult:             1.0,
+			reconciliationStatusResult: []string{"fail"},
+		},
+		{
+			description:                "should get incremented on consecutive reconcile errors",
+			expectedResult:             2.0,
+			reconciliationStatusResult: []string{"fail", "fail"},
+		},
+		{
+			description:                "should be zero after a successful reconciliation",
+			expectedResult:             0.0,
+			reconciliationStatusResult: []string{"fail", "succeed"},
+		},
+	}
+	RegisterFailHandler(Fail)
+	custommetrics.ReconciliationConsecutiveErrorsTotal.Reset()
+	vfs.Context.ResetMemfsContext(true)
+	g := NewWithT(t)
+	ctx := context.TODO()
+	err := controlplanev1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = clusterv1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+	err = infrastructurev1alpha1.AddToScheme(scheme.Scheme)
+	Expect(err).NotTo(HaveOccurred())
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			custommetrics.ReconciliationConsecutiveErrorsTotal.Reset()
+
+			kopsControlPlane := helpers.NewKopsControlPlane("testCluster", metav1.NamespaceDefault)
+			kopsControlPlaneSecret := helpers.NewAWSCredentialSecret()
+
+			cluster := helpers.NewCluster("testCluster", helpers.GetFQDN(kopsControlPlane.Name), metav1.NamespaceDefault)
+			kopsMachinePool := helpers.NewKopsMachinePool("testIG", kopsControlPlane.Namespace, cluster.Name)
+			fakeKopsClientset := helpers.NewFakeKopsClientset()
+
+			kopsCluster := &kopsapi.Cluster{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: helpers.GetFQDN("testCluster"),
+				},
+				Spec: kopsControlPlane.Spec.KopsClusterSpec,
+			}
+
+			kopsCluster, err := fakeKopsClientset.CreateCluster(ctx, kopsCluster)
+			g.Expect(cluster).NotTo(BeNil())
+			g.Expect(err).NotTo(HaveOccurred())
+
+			fakeClient := fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster, kopsControlPlaneSecret, kopsMachinePool).WithScheme(scheme.Scheme).Build()
+
+			keyStore, err := fakeKopsClientset.KeyStore(kopsCluster)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			err = helpers.CreateFakeKopsKeyPair(ctx, keyStore)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			reconciler = &KopsControlPlaneReconciler{
+				Client: fakeClient,
+				GetKopsClientSetFactory: func(configBase string) (simple.Clientset, error) {
+					return fakeKopsClientset, nil
+				},
+				Mux:      new(sync.Mutex),
+				Recorder: record.NewFakeRecorder(10),
+				PopulateClusterSpecFactory: func(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error) {
+					return kopsCluster, nil
+				},
+				PrepareKopsCloudResourcesFactory: func(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, terraformOutputDir string, cloud fi.Cloud) error {
+					return nil
+				},
+				ApplyTerraformFactory: func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error {
+					return nil
+				},
+				GetClusterStatusFactory: func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
+					return nil, nil
+				},
+				ValidateKopsClusterFactory: func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error) {
+					return &validation.ValidationCluster{}, nil
+				},
+				GetASGByNameFactory: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error) {
+					return &asgTypes.AutoScalingGroup{
+						Instances: []asgTypes.Instance{
+							{
+								AvailabilityZone: aws.String("us-east-1"),
+								InstanceId:       aws.String("<teste>"),
+							},
+						},
+					}, nil
+				},
+			}
+
+			var buildCloudFactory func(*kopsapi.Cluster) (fi.Cloud, error)
+			for _, reconciliationStatus := range tc.reconciliationStatusResult {
+				reconciler.Recorder = record.NewFakeRecorder(10)
+				// This is just to force a reconciliation error so we can increment the metric
+				if reconciliationStatus == "fail" {
+					buildCloudFactory = func(*kopsapi.Cluster) (fi.Cloud, error) {
+						return nil, errors.New("error")
+					}
+				} else {
+					buildCloudFactory = func(*kopsapi.Cluster) (fi.Cloud, error) {
+						return nil, nil
+					}
+				}
+				reconciler.BuildCloudFactory = buildCloudFactory
+
+				_, _ = reconciler.Reconcile(context.TODO(), ctrl.Request{
+					NamespacedName: client.ObjectKey{
+						Namespace: metav1.NamespaceDefault,
+						Name:      helpers.GetFQDN("testCluster"),
+					},
+				})
+
+			}
+
+			var reconciliationConsecutiveErrorsTotal dto.Metric
+			Expect(func() error {
+				Expect(custommetrics.ReconciliationConsecutiveErrorsTotal.WithLabelValues("kops-operator", "testcluster.test.k8s.cluster", "testing").Write(&reconciliationConsecutiveErrorsTotal)).To(Succeed())
+				metricValue := reconciliationConsecutiveErrorsTotal.GetGauge().GetValue()
+				if metricValue != tc.expectedResult {
+					return fmt.Errorf("metric value differs from expected: %f != %f", metricValue, tc.expectedResult)
+				}
+				return nil
+			}()).Should(Succeed())
+
 		})
 	}
 }
