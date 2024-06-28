@@ -15,6 +15,7 @@ COPY apis/ apis/
 COPY controllers/ controllers/
 COPY utils/ utils/
 COPY pkg/ pkg/
+COPY metrics/ metrics/
 
 # Build
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
