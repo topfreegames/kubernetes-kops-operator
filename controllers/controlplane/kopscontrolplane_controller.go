@@ -34,6 +34,7 @@ import (
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
+	custommetrics "github.com/topfreegames/kubernetes-kops-operator/metrics"
 	kopsutils "github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/util"
 	"github.com/topfreegames/kubernetes-kops-operator/utils"
@@ -516,7 +517,7 @@ func (r *KopsControlPlaneReconciliation) reconcileClusterAddons(kopsClientset si
 //+kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;patch
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update
 
-func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, reconciliationErr error) {
 	var lockInitTime time.Time
 	var shouldUnlock bool
 
@@ -601,6 +602,14 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 		} else {
 			reconciler.log.Info(fmt.Sprintf("skipping cleanup of terraform directory for %s", kopsControlPlane.Name))
+		}
+
+		// the environment is retrieved from the Cluster object labels
+		environment := owner.GetLabels()["environment"]
+		if reconciliationErr != nil {
+			custommetrics.ReconciliationConsecutiveErrorsTotal.WithLabelValues("kops-operator", kopsControlPlane.Name, environment).Inc()
+		} else {
+			custommetrics.ReconciliationConsecutiveErrorsTotal.WithLabelValues("kops-operator", kopsControlPlane.Name, environment).Set(0)
 		}
 
 		reconciler.log.Info(fmt.Sprintf("finished reconcile loop for %s, took %s", kopsControlPlane.ObjectMeta.GetName(), time.Since(initTime)))

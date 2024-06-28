@@ -36,6 +36,9 @@ func NewCluster(name, controlplane, namespace string) *clusterv1.Cluster {
 			Namespace: namespace,
 			Name:      GetFQDN(name),
 			UID:       "12793d7abd2813dnba87e6",
+			Labels: map[string]string{
+				"environment": "testing",
+			},
 		},
 		Spec: clusterv1.ClusterSpec{
 			ControlPlaneRef: &corev1.ObjectReference{
