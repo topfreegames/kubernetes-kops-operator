@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/go-logr/logr"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
@@ -322,7 +323,7 @@ func KopsDeleteResources(ctx context.Context, cloud fi.Cloud, kopsClientset simp
 		clusterResources[k] = resource
 	}
 
-	err = resourceops.DeleteResources(cloud, clusterResources)
+	err = resourceops.DeleteResources(cloud, clusterResources, 42, 10*time.Second, 3600*time.Second)
 	if err != nil {
 		return err
 	}
