@@ -192,9 +192,6 @@ spec:
                                         type: string
                                       description: EvictionHard is the map of signal names to quantities that define hard eviction thresholds
                                       type: object
-                                      x-kubernetes-validations:
-                                      - message: valid keys for evictionHard are ['memory.available','nodefs.available','nodefs.inodesFree','imagefs.available','imagefs.inodesFree','pid.available']
-                                        rule: self.all(x, x in ['memory.available','nodefs.available','nodefs.inodesFree','imagefs.available','imagefs.inodesFree','pid.available'])
                                     evictionMaxPodGracePeriod:
                                       description: |-
                                         EvictionMaxPodGracePeriod is the maximum allowed grace period (in seconds) to use when terminating pods in
@@ -206,17 +203,11 @@ spec:
                                         type: string
                                       description: EvictionSoft is the map of signal names to quantities that define soft eviction thresholds
                                       type: object
-                                      x-kubernetes-validations:
-                                      - message: valid keys for evictionSoft are ['memory.available','nodefs.available','nodefs.inodesFree','imagefs.available','imagefs.inodesFree','pid.available']
-                                        rule: self.all(x, x in ['memory.available','nodefs.available','nodefs.inodesFree','imagefs.available','imagefs.inodesFree','pid.available'])
                                     evictionSoftGracePeriod:
                                       additionalProperties:
                                         type: string
                                       description: EvictionSoftGracePeriod is the map of signal names to quantities that define grace periods for each eviction signal
                                       type: object
-                                      x-kubernetes-validations:
-                                      - message: valid keys for evictionSoftGracePeriod are ['memory.available','nodefs.available','nodefs.inodesFree','imagefs.available','imagefs.inodesFree','pid.available']
-                                        rule: self.all(x, x in ['memory.available','nodefs.available','nodefs.inodesFree','imagefs.available','imagefs.inodesFree','pid.available'])
                                     imageGCHighThresholdPercent:
                                       description: |-
                                         ImageGCHighThresholdPercent is the percent of disk usage after which image
@@ -247,11 +238,6 @@ spec:
                                         x-kubernetes-int-or-string: true
                                       description: KubeReserved contains resources reserved for Kubernetes system components.
                                       type: object
-                                      x-kubernetes-validations:
-                                      - message: valid keys for kubeReserved are ['cpu','memory','ephemeral-storage','pid']
-                                        rule: self.all(x, x=='cpu' || x=='memory' || x=='ephemeral-storage' || x=='pid')
-                                      - message: kubeReserved value cannot be a negative resource quantity
-                                        rule: self.all(x, !self[x].startsWith('-'))
                                     maxPods:
                                       description: |-
                                         MaxPods is an override for the maximum number of pods that can run on
@@ -276,19 +262,7 @@ spec:
                                         x-kubernetes-int-or-string: true
                                       description: SystemReserved contains resources reserved for OS system daemons and kernel memory.
                                       type: object
-                                      x-kubernetes-validations:
-                                      - message: valid keys for systemReserved are ['cpu','memory','ephemeral-storage','pid']
-                                        rule: self.all(x, x=='cpu' || x=='memory' || x=='ephemeral-storage' || x=='pid')
-                                      - message: systemReserved value cannot be a negative resource quantity
-                                        rule: self.all(x, !self[x].startsWith('-'))
                                   type: object
-                                  x-kubernetes-validations:
-                                  - message: imageGCHighThresholdPercent must be greater than imageGCLowThresholdPercent
-                                    rule: 'has(self.imageGCHighThresholdPercent) && has(self.imageGCLowThresholdPercent) ?  self.imageGCHighThresholdPercent > self.imageGCLowThresholdPercent  : true'
-                                  - message: evictionSoft OwnerKey does not have a matching evictionSoftGracePeriod
-                                    rule: has(self.evictionSoft) ? self.evictionSoft.all(e, (e in self.evictionSoftGracePeriod)):true
-                                  - message: evictionSoftGracePeriod OwnerKey does not have a matching evictionSoft
-                                    rule: has(self.evictionSoftGracePeriod) ? self.evictionSoftGracePeriod.all(e, (e in self.evictionSoft)):true
                                 nodeClassRef:
                                   description: NodeClassRef is a reference to an object that defines provider specific configuration
                                   properties:
@@ -336,11 +310,6 @@ spec:
                                     type: object
                                   maxItems: 30
                                   type: array
-                                  x-kubernetes-validations:
-                                  - message: requirements with operator 'In' must have a value defined
-                                    rule: 'self.all(x, x.operator == ''In'' ? x.values.size() != 0 : true)'
-                                  - message: requirements operator 'Gt' or 'Lt' must have a single positive integer value
-                                    rule: 'self.all(x, (x.operator == ''Gt'' || x.operator == ''Lt'') ? (x.values.size() == 1 && int(x.values[0]) >= 0) : true)'
                                 resources:
                                   description: Resources models the resource requirements for the NodeClaim to launch
                                   properties:
