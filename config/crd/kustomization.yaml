@@ -9,6 +9,9 @@ resources:
 - bases/infrastructure.cluster.x-k8s.io_kopsmachinepools.yaml
 #+kubebuilder:scaffold:crdkustomizeresource
 
+transformers:
+- patches/remove-x-kubernetes-validations.yaml
+
 patchesStrategicMerge:
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix.
 # patches here are for enabling the conversion webhook for each CRD
