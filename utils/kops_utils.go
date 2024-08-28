@@ -101,7 +101,7 @@ func ParseSpotinstFeatureflags(kopsControlPlane *controlplanev1alpha1.KopsContro
 func BuildCloud(kopscluster *kopsapi.Cluster) (_ fi.Cloud, rerr error) {
 	defer func() {
 		if r := recover(); r != nil {
-			rerr = fmt.Errorf(fmt.Sprintf("failed to instantiate cloud for %s", kopscluster.ObjectMeta.GetName()))
+            rerr = fmt.Errorf("failed to instantiate cloud for %s", kopscluster.ObjectMeta.GetName())
 		}
 	}()
 	awsup.ResetAWSCloudInstances()

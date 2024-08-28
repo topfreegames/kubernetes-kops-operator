@@ -181,7 +181,7 @@ func TestCleanupTerraformDirectory(t *testing.T) {
 		},
 		{
 			description: "should return error when the file isn't a directory",
-			input:       fmt.Sprintf(tmpDir + "/a"),
+			input:       tmpDir + "/a",
 			files: []string{
 				"a",
 			},
