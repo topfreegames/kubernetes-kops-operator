@@ -239,7 +239,8 @@ func NewKopsMachinePool(name, namespace, clusterName string) *infrastructurev1al
 		Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
 			ClusterName: clusterName,
 			KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
-				Role: "ControlPlane",
+				Image: "xxxx/ubuntu-v1",
+				Role:  "ControlPlane",
 				Subnets: []string{
 					"dummy-subnet",
 				},

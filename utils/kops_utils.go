@@ -6,6 +6,7 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -101,7 +102,7 @@ func ParseSpotinstFeatureflags(kopsControlPlane *controlplanev1alpha1.KopsContro
 func BuildCloud(kopscluster *kopsapi.Cluster) (_ fi.Cloud, rerr error) {
 	defer func() {
 		if r := recover(); r != nil {
-            rerr = fmt.Errorf("failed to instantiate cloud for %s", kopscluster.ObjectMeta.GetName())
+			rerr = fmt.Errorf("failed to instantiate cloud for %s", kopscluster.ObjectMeta.GetName())
 		}
 	}()
 	awsup.ResetAWSCloudInstances()
@@ -334,4 +335,29 @@ func KopsDeleteResources(ctx context.Context, cloud fi.Cloud, kopsClientset simp
 
 	return nil
 
+}
+
+func GetAmiNameFromImageSource(image string) (string, error) {
+	parts := strings.SplitN(image, "/", 2)
+	if len(parts) > 1 {
+		return parts[1], nil
+	} else {
+		return "", errors.New("invalid image format, should receive image source")
+	}
+}
+
+func GetUserDataFromTerraformFile(clusterName, igName, terraformOutputDir string) (string, error) {
+	userDataFile, err := os.Open(fmt.Sprintf(terraformOutputDir+"/data/aws_launch_template_%s.%s_user_data", igName, clusterName))
+	if err != nil {
+		return "", err
+	}
+	defer userDataFile.Close()
+	userData, err := io.ReadAll(userDataFile)
+	if err != nil {
+		return "", err
+	}
+	if len(userData) == 0 {
+		return "", errors.New("user data file is empty")
+	}
+	return string(userData), nil
 }

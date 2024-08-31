@@ -3,8 +3,12 @@ package utils
 import (
 	"bytes"
 	"context"
+	"errors"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
@@ -442,4 +446,108 @@ func TestReconcileKopsSecrets(t *testing.T) {
 			assert.ElementsMatch(t, tc.expectedStatusKopsSecrets, kopsControlPlane.Status.Secrets)
 		})
 	}
+}
+
+func TestGetAmiNameFromImageSource(t *testing.T) {
+	testCases := []struct {
+		description   string
+		input         string
+		output        string
+		expectedError error
+	}{
+		{
+			description: "should return the ami name from the image source",
+			input:       "000000000000/ubuntu-v1.0.0",
+			output:      "ubuntu-v1.0.0",
+		},
+		{
+			description:   "should fail when receiving ami id",
+			input:         "ami-000000000000",
+			expectedError: errors.New("invalid image format, should receive image source"),
+		},
+		{
+			description:   "should fail when receiving ami name",
+			input:         "ubuntu-v1.0.0",
+			expectedError: errors.New("invalid image format, should receive image source"),
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+
+		t.Run(tc.description, func(t *testing.T) {
+
+			amiName, err := GetAmiNameFromImageSource(tc.input)
+			if tc.expectedError != nil {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err).To(Equal(tc.expectedError))
+			} else {
+				g.Expect(err).To(BeNil())
+				g.Expect(amiName).To(Equal(tc.output))
+			}
+
+		})
+	}
+
+}
+
+func TestGetUserDataFromTerraformFile(t *testing.T) {
+	testCases := []struct {
+		description        string
+		userData           string
+		terraformFile      string
+		expectedError      error
+		writeTerraformFile bool
+	}{
+		{
+			description:        "should return the user data from the terraform file",
+			userData:           "dummy content",
+			writeTerraformFile: true,
+		},
+		{
+			description:   "should fail if the user data is not found",
+			expectedError: &fs.PathError{Op: "open", Path: "/tmp/test-cluster.test.k8s.cluster/data/aws_launch_template_test-machine-pool.test-cluster.test.k8s.cluster_user_data", Err: syscall.Errno(0x2)},
+		},
+		{
+			description:        "should fail if the user data is empty",
+			writeTerraformFile: true,
+			expectedError:      errors.New("user data file is empty"),
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+
+		t.Run(tc.description, func(t *testing.T) {
+
+			kopsCluster := helpers.NewKopsCluster("test-cluster")
+
+			terraformOutputDir := filepath.Join(os.TempDir(), kopsCluster.Name)
+
+			err := os.RemoveAll(terraformOutputDir)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			err = os.MkdirAll(filepath.Join(terraformOutputDir, "data"), os.ModePerm)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			kmp := helpers.NewKopsMachinePool("test-machine-pool", "default", "test-cluster")
+
+			if tc.writeTerraformFile {
+				err := os.WriteFile(terraformOutputDir+"/data/aws_launch_template_"+kmp.Name+"."+kopsCluster.Name+"_user_data", []byte(tc.userData), 0644)
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+			userDataString, err := GetUserDataFromTerraformFile(kopsCluster.Name, kmp.Name, terraformOutputDir)
+			if tc.expectedError != nil {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err).To(Equal(tc.expectedError))
+			} else {
+				g.Expect(err).To(BeNil())
+				g.Expect(userDataString).To(Equal(tc.userData))
+			}
+
+		})
+	}
+
 }

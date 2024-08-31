@@ -21,13 +21,13 @@ type Template struct {
 }
 
 //go:embed templates/*.tpl
-var terraformTemplates embed.FS
+var templates embed.FS
 
 // CreateTerraformFileFromTemplate populates a Terraform template and create files in the state
 func CreateTerraformFilesFromTemplate(terraformTemplateFilePath string, TerraformOutputFileName string, terraformOutputDir string, templateData any) error {
 	template := Template{
 		TemplateFilename: terraformTemplateFilePath,
-		EmbeddedFiles:    terraformTemplates,
+		EmbeddedFiles:    templates,
 		OutputFilename:   fmt.Sprintf("%s/%s", terraformOutputDir, TerraformOutputFileName),
 		Data:             templateData,
 	}

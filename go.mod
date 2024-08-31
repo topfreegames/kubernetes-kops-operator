@@ -7,7 +7,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.11.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.6.5
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.28.3
-	github.com/aws/karpenter v0.32.4
 	github.com/aws/karpenter-core v0.32.4
 	github.com/crossplane-contrib/provider-aws v0.30.1
 	github.com/go-logr/logr v1.4.2
@@ -119,7 +118,7 @@ require (
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.20.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
-	github.com/Masterminds/sprig/v3 v3.2.3 // indirect
+	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.26.0 // indirect
 	github.com/aws/smithy-go v1.13.5 // indirect
