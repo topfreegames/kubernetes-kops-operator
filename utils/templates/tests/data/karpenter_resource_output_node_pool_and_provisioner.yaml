@@ -134,5 +134,6 @@ spec:
     Name: test-cluster.test.k8s.cluster/test-ig
     k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node: ''
     kops.k8s.io/instancegroup: test-ig
+    KubernetesCluster: test-cluster.test.k8s.cluster
   userData: |
     dummy content
