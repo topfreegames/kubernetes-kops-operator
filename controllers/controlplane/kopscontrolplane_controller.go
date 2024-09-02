@@ -256,6 +256,8 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 					return err
 				}
 
+				// This line is needed to separate the following resources from the UserData of the EC2NodeClass
+				// without this line the following resource can be considered as part of the UserData
 				if _, err := karpenterResourcesContent.Write([]byte("\n")); err != nil {
 					return err
 				}
