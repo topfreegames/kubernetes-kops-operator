@@ -34,6 +34,11 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
 
+type Subnet struct {
+	Name        string
+	ClusterName string
+}
+
 func GetBucketName(configBase string) (string, error) {
 	configBaseList := strings.Split(configBase, "/")
 	if len(configBaseList) < 3 || len(configBaseList[2]) == 0 {
@@ -360,4 +365,21 @@ func GetUserDataFromTerraformFile(clusterName, igName, terraformOutputDir string
 		return "", errors.New("user data file is empty")
 	}
 	return string(userData), nil
+}
+
+func EnableAutoPublicIPAssignToPublicSubnets(kopsSubnets []kopsapi.ClusterSubnetSpec, clusterName, terraformOutputDir string) error {
+	publicSubnets := []Subnet{}
+	for _, subnet := range kopsSubnets {
+		if subnet.Type == kopsapi.SubnetTypePublic || subnet.Type == kopsapi.SubnetTypeUtility {
+			publicSubnets = append(publicSubnets, Subnet{
+				Name:        subnet.Name,
+				ClusterName: clusterName,
+			})
+		}
+	}
+	err := CreateTerraformFilesFromTemplate("templates/subnet_auto_assign_ipv4_override.tf.tpl", "subnet_auto_assign_ipv4_override.tf", terraformOutputDir, publicSubnets)
+	if err != nil {
+		return err
+	}
+	return nil
 }

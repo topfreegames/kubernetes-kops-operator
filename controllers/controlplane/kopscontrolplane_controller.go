@@ -177,6 +177,15 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 		}
 		defer karpenterResourcesContent.Close()
 
+		// Workaround to enable auto assign public IPs in public subnets
+		// This is needed because Karpenter in the current version does not support configuring
+		// public IPs in the EC2NodeClass yet, this is already available in the newers versions,
+		// but it's needed now during the migration and upgrade.
+		err = utils.EnableAutoPublicIPAssignToPublicSubnets(kopsCluster.Spec.Networking.Subnets, kopsCluster.Name, terraformOutputDir)
+		if err != nil {
+			return err
+		}
+
 		// This is needed because the apply will fail if the file is empty
 		placeholder := corev1.ConfigMap{
 			TypeMeta: metav1.TypeMeta{
