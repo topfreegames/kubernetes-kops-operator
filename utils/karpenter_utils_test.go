@@ -13,7 +13,7 @@ import (
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
 )
 
-func TestCreateEC2NodeClassFromKops(t *testing.T) {
+func TestCreateEC2NodeClassFromKopsLaunchTemplateInfo(t *testing.T) {
 	testCases := []struct {
 		description             string
 		kopsMachinePoolFunction func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool
@@ -66,7 +66,7 @@ func TestCreateEC2NodeClassFromKops(t *testing.T) {
 				kmp = tc.kopsMachinePoolFunction(kmp)
 			}
 
-			ec2NodeClassString, err := CreateEC2NodeClassFromKops(kopsCluster, kmp, kmp.Name, terraformOutputDir)
+			ec2NodeClassString, err := CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster, kmp, kmp.Name, terraformOutputDir)
 			if tc.expectedError != nil {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err).To(Equal(tc.expectedError))

@@ -247,7 +247,7 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
 					return err
 				}
-				ec2NodeClassString, err := utils.CreateEC2NodeClassFromKops(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
+				ec2NodeClassString, err := utils.CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
 				if err != nil {
 					return err
 				}
