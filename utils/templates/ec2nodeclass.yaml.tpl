@@ -26,6 +26,7 @@ spec:
     Name: {{ .ClusterName }}/{{ .IGName }}
     k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node: ''
     kops.k8s.io/instancegroup: {{ .IGName }}
+    KubernetesCluster: {{ .ClusterName }}
   {{- range $key, $value := .Tags }}
     {{ $key }}: {{ $value | quote }}
   {{- end }}
