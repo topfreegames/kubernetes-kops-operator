@@ -19,9 +19,9 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/karpenter-core/pkg/apis/v1alpha5"
-	"github.com/aws/karpenter-core/pkg/apis/v1beta1"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	karpenterv1beta1 "sigs.k8s.io/karpenter/pkg/apis/v1beta1"
 
 	asgTypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
@@ -1976,7 +1976,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
 					"kops.k8s.io/instance-group-role": "Node",
 				}
-				kmp.Spec.KarpenterNodePools = []v1beta1.NodePool{
+				kmp.Spec.KarpenterNodePools = []karpenterv1beta1.NodePool{
 					{
 						TypeMeta: metav1.TypeMeta{
 							Kind:       "NodePool",
@@ -1985,12 +1985,12 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test-node-pool",
 						},
-						Spec: v1beta1.NodePoolSpec{
-							Disruption: v1beta1.Disruption{
-								ConsolidationPolicy: v1beta1.ConsolidationPolicyWhenUnderutilized,
+						Spec: karpenterv1beta1.NodePoolSpec{
+							Disruption: karpenterv1beta1.Disruption{
+								ConsolidationPolicy: karpenterv1beta1.ConsolidationPolicyWhenUnderutilized,
 							},
-							Template: v1beta1.NodeClaimTemplate{
-								ObjectMeta: v1beta1.ObjectMeta{
+							Template: karpenterv1beta1.NodeClaimTemplate{
+								ObjectMeta: karpenterv1beta1.ObjectMeta{
 									Labels: map[string]string{
 										"kops.k8s.io/cluster":             helpers.GetFQDN("test-cluster"),
 										"kops.k8s.io/cluster-name":        helpers.GetFQDN("test-cluster"),
@@ -2000,37 +2000,44 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 										"kops.k8s.io/managed-by":          "kops-controller",
 									},
 								},
-								Spec: v1beta1.NodeClaimSpec{
-									Kubelet: &v1beta1.KubeletConfiguration{
-										KubeReserved: corev1.ResourceList{
-											corev1.ResourceCPU:              resource.MustParse("150m"),
-											corev1.ResourceMemory:           resource.MustParse("150Mi"),
-											corev1.ResourceEphemeralStorage: resource.MustParse("1Gi"),
+								Spec: karpenterv1beta1.NodeClaimSpec{
+									Kubelet: &karpenterv1beta1.KubeletConfiguration{
+										KubeReserved: map[string]string{
+											"cpu":               "150m",
+											"memory":            "150Mi",
+											"ephemeral-storage": "1Gi",
 										},
-										SystemReserved: corev1.ResourceList{
-											corev1.ResourceCPU:              resource.MustParse("150m"),
-											corev1.ResourceMemory:           resource.MustParse("200Mi"),
-											corev1.ResourceEphemeralStorage: resource.MustParse("1Gi"),
+										SystemReserved: map[string]string{
+											"cpu":               "150m",
+											"memory":            "200Mi",
+											"ephemeral-storage": "1Gi",
 										},
 									},
-									NodeClassRef: &v1beta1.NodeClassReference{
+									NodeClassRef: &karpenterv1beta1.NodeClassReference{
 										Name: "test-ig",
 									},
-									Requirements: []corev1.NodeSelectorRequirement{
+									Requirements: []karpenterv1beta1.NodeSelectorRequirementWithMinValues{
 										{
+											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
 											Key:      "kubernetes.io/arch",
 											Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
 											Values:   []string{"amd64"},
+											},
 										},
 										{
+
+											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
 											Key:      "kubernetes.io/os",
 											Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
 											Values:   []string{"linux"},
+											},
 										},
 										{
+											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
 											Key:      "node.kubernetes.io/instance-type",
 											Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
 											Values:   []string{"m5.large"},
+											},
 										},
 									},
 									StartupTaints: []corev1.Taint{
@@ -2055,7 +2062,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
 					"kops.k8s.io/instance-group-role": "Node",
 				}
-				kmp.Spec.KarpenterNodePools = []v1beta1.NodePool{
+				kmp.Spec.KarpenterNodePools = []karpenterv1beta1.NodePool{
 					{
 						TypeMeta: metav1.TypeMeta{
 							Kind:       "NodePool",
@@ -2064,12 +2071,12 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test-node-pool",
 						},
-						Spec: v1beta1.NodePoolSpec{
-							Disruption: v1beta1.Disruption{
-								ConsolidationPolicy: v1beta1.ConsolidationPolicyWhenUnderutilized,
+						Spec: karpenterv1beta1.NodePoolSpec{
+							Disruption: karpenterv1beta1.Disruption{
+								ConsolidationPolicy: karpenterv1beta1.ConsolidationPolicyWhenUnderutilized,
 							},
-							Template: v1beta1.NodeClaimTemplate{
-								ObjectMeta: v1beta1.ObjectMeta{
+							Template: karpenterv1beta1.NodeClaimTemplate{
+								ObjectMeta: karpenterv1beta1.ObjectMeta{
 									Labels: map[string]string{
 										"kops.k8s.io/cluster":             helpers.GetFQDN("test-cluster"),
 										"kops.k8s.io/cluster-name":        helpers.GetFQDN("test-cluster"),
@@ -2079,37 +2086,44 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 										"kops.k8s.io/managed-by":          "kops-controller",
 									},
 								},
-								Spec: v1beta1.NodeClaimSpec{
-									Kubelet: &v1beta1.KubeletConfiguration{
-										KubeReserved: corev1.ResourceList{
-											corev1.ResourceCPU:              resource.MustParse("150m"),
-											corev1.ResourceMemory:           resource.MustParse("150Mi"),
-											corev1.ResourceEphemeralStorage: resource.MustParse("1Gi"),
+								Spec: karpenterv1beta1.NodeClaimSpec{
+									Kubelet: &karpenterv1beta1.KubeletConfiguration{
+										KubeReserved: map[string]string{
+											"cpu":               "150m",
+											"memory":            "150Mi",
+											"ephemeral-storage": "1Gi",
 										},
-										SystemReserved: corev1.ResourceList{
-											corev1.ResourceCPU:              resource.MustParse("150m"),
-											corev1.ResourceMemory:           resource.MustParse("200Mi"),
-											corev1.ResourceEphemeralStorage: resource.MustParse("1Gi"),
+										SystemReserved: map[string]string{
+											"cpu":               "150m",
+											"memory":            "200Mi",
+											"ephemeral-storage": "1Gi",
 										},
 									},
-									NodeClassRef: &v1beta1.NodeClassReference{
+									NodeClassRef: &karpenterv1beta1.NodeClassReference{
 										Name: "test-ig",
 									},
-									Requirements: []corev1.NodeSelectorRequirement{
+									Requirements: []karpenterv1beta1.NodeSelectorRequirementWithMinValues{
 										{
+											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
 											Key:      "kubernetes.io/arch",
 											Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
 											Values:   []string{"amd64"},
+											},
 										},
 										{
+
+											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
 											Key:      "kubernetes.io/os",
 											Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
 											Values:   []string{"linux"},
+											},
 										},
 										{
+											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
 											Key:      "node.kubernetes.io/instance-type",
 											Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
 											Values:   []string{"m5.large"},
+											},
 										},
 									},
 									StartupTaints: []corev1.Taint{

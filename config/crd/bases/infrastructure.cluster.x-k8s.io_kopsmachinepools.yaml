@@ -91,10 +91,10 @@ spec:
                       type: object
                     spec:
                       description: |-
-                        NodePoolSpec is the top level provisioner specification. Provisioners
-                        launch nodes in response to pods that are unschedulable. A single provisioner
+                        NodePoolSpec is the top level nodepool specification. Nodepools
+                        launch nodes in response to pods that are unschedulable. A single nodepool
                         is capable of managing a diverse set of nodes. Node properties are determined
-                        from a combination of provisioner and pod scheduling constraints.
+                        from a combination of nodepool and pod scheduling constraints.
                       properties:
                         disruption:
                           default:
@@ -103,6 +103,57 @@ spec:
                           description: Disruption contains the parameters that relate
                             to Karpenter's disruption logic
                           properties:
+                            budgets:
+                              default:
+                              - nodes: 10%
+                              description: |-
+                                Budgets is a list of Budgets.
+                                If there are multiple active budgets, Karpenter uses
+                                the most restrictive value. If left undefined,
+                                this will default to one budget with a value to 10%.
+                              items:
+                                description: |-
+                                  Budget defines when Karpenter will restrict the
+                                  number of Node Claims that can be terminating simultaneously.
+                                properties:
+                                  duration:
+                                    description: |-
+                                      Duration determines how long a Budget is active since each Schedule hit.
+                                      Only minutes and hours are accepted, as cron does not work in seconds.
+                                      If omitted, the budget is always active.
+                                      This is required if Schedule is set.
+                                      This regex has an optional 0s at the end since the duration.String() always adds
+                                      a 0s at the end.
+                                    pattern: ^((([0-9]+(h|m))|([0-9]+h[0-9]+m))(0s)?)$
+                                    type: string
+                                  nodes:
+                                    default: 10%
+                                    description: |-
+                                      Nodes dictates the maximum number of NodeClaims owned by this NodePool
+                                      that can be terminating at once. This is calculated by counting nodes that
+                                      have a deletion timestamp set, or are actively being deleted by Karpenter.
+                                      This field is required when specifying a budget.
+                                      This cannot be of type intstr.IntOrString since kubebuilder doesn't support pattern
+                                      checking for int nodes for IntOrString nodes.
+                                      Ref: https://github.com/kubernetes-sigs/controller-tools/blob/55efe4be40394a288216dab63156b0a64fb82929/pkg/crd/markers/validation.go#L379-L388
+                                    pattern: ^((100|[0-9]{1,2})%|[0-9]+)$
+                                    type: string
+                                  schedule:
+                                    description: |-
+                                      Schedule specifies when a budget begins being active, following
+                                      the upstream cronjob syntax. If omitted, the budget is always active.
+                                      Timezones are not supported.
+                                      This field is required if Duration is set.
+                                    pattern: ^(@(annually|yearly|monthly|weekly|daily|midnight|hourly))|((.+)\s(.+)\s(.+)\s(.+)\s(.+))$
+                                    type: string
+                                required:
+                                - nodes
+                                type: object
+                              maxItems: 50
+                              type: array
+                              x-kubernetes-validations:
+                              - message: '''schedule'' must be set with ''duration'''
+                                rule: self.all(x, has(x.schedule) == has(x.duration))
                             consolidateAfter:
                               description: |-
                                 ConsolidateAfter is the duration the controller will wait
@@ -255,11 +306,7 @@ spec:
                                       type: integer
                                     kubeReserved:
                                       additionalProperties:
-                                        anyOf:
-                                        - type: integer
-                                        - type: string
-                                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                                        x-kubernetes-int-or-string: true
+                                        type: string
                                       description: KubeReserved contains resources
                                         reserved for Kubernetes system components.
                                       type: object
@@ -287,11 +334,7 @@ spec:
                                       type: integer
                                     systemReserved:
                                       additionalProperties:
-                                        anyOf:
-                                        - type: integer
-                                        - type: string
-                                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
-                                        x-kubernetes-int-or-string: true
+                                        type: string
                                       description: SystemReserved contains resources
                                         reserved for OS system daemons and kernel
                                         memory.
@@ -342,13 +385,20 @@ spec:
                                     and applied to every node.
                                   items:
                                     description: |-
-                                      A node selector requirement is a selector that contains values, a key, and an operator
-                                      that relates the key and values.
+                                      A node selector requirement with min values is a selector that contains values, a key, an operator that relates the key and values
+                                      and minValues that represent the requirement to have at least that many values.
                                     properties:
                                       key:
                                         description: The label key that the selector
                                           applies to.
                                         type: string
+                                      minValues:
+                                        description: |-
+                                          This field is ALPHA and can be dropped or replaced at any time
+                                          MinValues is the minimum number of unique values required to define the flexibility of the specific requirement.
+                                        maximum: 50
+                                        minimum: 1
+                                        type: integer
                                       operator:
                                         description: |-
                                           Represents a key's relationship to a set of values.
@@ -369,7 +419,7 @@ spec:
                                     - key
                                     - operator
                                     type: object
-                                  maxItems: 30
+                                  maxItems: 100
                                   type: array
                                   x-kubernetes-validations:
                                   - message: requirements with operator 'In' must
@@ -381,6 +431,11 @@ spec:
                                     rule: 'self.all(x, (x.operator == ''Gt'' || x.operator
                                       == ''Lt'') ? (x.values.size() == 1 && int(x.values[0])
                                       >= 0) : true)'
+                                  - message: requirements with 'minValues' must have
+                                      at least that many values specified in the 'values'
+                                      field
+                                    rule: 'self.all(x, (x.operator == ''In'' && has(x.minValues))
+                                      ? x.values.size() >= x.minValues : true)'
                                 resources:
                                   description: Resources models the resource requirements
                                     for the NodeClaim to launch
@@ -474,10 +529,10 @@ spec:
                           type: object
                         weight:
                           description: |-
-                            Weight is the priority given to the provisioner during scheduling. A higher
-                            numerical weight indicates that this provisioner will be ordered
-                            ahead of other provisioners with lower weights. A provisioner with no weight
-                            will be treated as if it is a provisioner with a weight of 0.
+                            Weight is the priority given to the nodepool during scheduling. A higher
+                            numerical weight indicates that this nodepool will be ordered
+                            ahead of other nodepools with lower weights. A nodepool with no weight
+                            will be treated as if it is a nodepool with a weight of 0.
                           format: int32
                           maximum: 100
                           minimum: 1
@@ -499,6 +554,8 @@ spec:
                             been provisioned.
                           type: object
                       type: object
+                  required:
+                  - spec
                   type: object
                 type: array
               karpenterProvisioners:
