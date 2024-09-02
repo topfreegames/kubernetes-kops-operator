@@ -6,6 +6,7 @@ import (
 	"crypto/x509/pkix"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -32,6 +33,11 @@ import (
 	"k8s.io/kops/util/pkg/vfs"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 )
+
+type Subnet struct {
+	Name        string
+	ClusterName string
+}
 
 func GetBucketName(configBase string) (string, error) {
 	configBaseList := strings.Split(configBase, "/")
@@ -101,7 +107,7 @@ func ParseSpotinstFeatureflags(kopsControlPlane *controlplanev1alpha1.KopsContro
 func BuildCloud(kopscluster *kopsapi.Cluster) (_ fi.Cloud, rerr error) {
 	defer func() {
 		if r := recover(); r != nil {
-            rerr = fmt.Errorf("failed to instantiate cloud for %s", kopscluster.ObjectMeta.GetName())
+			rerr = fmt.Errorf("failed to instantiate cloud for %s", kopscluster.ObjectMeta.GetName())
 		}
 	}()
 	awsup.ResetAWSCloudInstances()
@@ -334,4 +340,46 @@ func KopsDeleteResources(ctx context.Context, cloud fi.Cloud, kopsClientset simp
 
 	return nil
 
+}
+
+func GetAmiNameFromImageSource(image string) (string, error) {
+	parts := strings.SplitN(image, "/", 2)
+	if len(parts) > 1 {
+		return parts[1], nil
+	} else {
+		return "", errors.New("invalid image format, should receive image source")
+	}
+}
+
+func GetUserDataFromTerraformFile(clusterName, igName, terraformOutputDir string) (string, error) {
+	userDataFile, err := os.Open(fmt.Sprintf(terraformOutputDir+"/data/aws_launch_template_%s.%s_user_data", igName, clusterName))
+	if err != nil {
+		return "", err
+	}
+	defer userDataFile.Close()
+	userData, err := io.ReadAll(userDataFile)
+	if err != nil {
+		return "", err
+	}
+	if len(userData) == 0 {
+		return "", errors.New("user data file is empty")
+	}
+	return string(userData), nil
+}
+
+func EnableAutoPublicIPAssignToPublicSubnets(kopsSubnets []kopsapi.ClusterSubnetSpec, clusterName, terraformOutputDir string) error {
+	publicSubnets := []Subnet{}
+	for _, subnet := range kopsSubnets {
+		if subnet.Type == kopsapi.SubnetTypePublic || subnet.Type == kopsapi.SubnetTypeUtility {
+			publicSubnets = append(publicSubnets, Subnet{
+				Name:        subnet.Name,
+				ClusterName: clusterName,
+			})
+		}
+	}
+	err := CreateTerraformFilesFromTemplate("templates/subnet_auto_assign_ipv4_override.tf.tpl", "subnet_auto_assign_ipv4_override.tf", terraformOutputDir, publicSubnets)
+	if err != nil {
+		return err
+	}
+	return nil
 }

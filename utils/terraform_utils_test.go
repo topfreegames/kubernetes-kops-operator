@@ -13,7 +13,7 @@ import (
 
 var (
 	//go:embed fixtures/*.tpl
-	templates embed.FS
+	testTemplates embed.FS
 )
 
 func TestCreateAdditionalTerraformFiles(t *testing.T) {
@@ -38,7 +38,7 @@ func TestCreateAdditionalTerraformFiles(t *testing.T) {
 				{
 					TemplateFilename: "fixtures/test_template.tpl",
 					OutputFilename:   fmt.Sprintf("%s/test_output", tmpDir),
-					EmbeddedFiles:    templates,
+					EmbeddedFiles:    testTemplates,
 					Data:             "test.test.us-east-1.k8s.tfgco.com",
 				},
 			},
@@ -59,13 +59,13 @@ func TestCreateAdditionalTerraformFiles(t *testing.T) {
 				{
 					TemplateFilename: "fixtures/test_multiple_template_a.tpl",
 					OutputFilename:   fmt.Sprintf("%s/test_output_A", tmpDir),
-					EmbeddedFiles:    templates,
+					EmbeddedFiles:    testTemplates,
 					Data:             "test.test.us-east-1.k8s.tfgco.com",
 				},
 				{
 					TemplateFilename: "fixtures/test_multiple_template_b.tpl",
 					OutputFilename:   fmt.Sprintf("%s/test_output_B", tmpDir),
-					EmbeddedFiles:    templates,
+					EmbeddedFiles:    testTemplates,
 					Data:             "test.test.us-east-1.k8s.tfgco.com",
 				},
 			},
@@ -90,7 +90,7 @@ func TestCreateAdditionalTerraformFiles(t *testing.T) {
 				{
 					TemplateFilename: "fixtures/test_template.tpl",
 					OutputFilename:   fmt.Sprintf("%s/invalid-directory/test_output", tmpDir),
-					EmbeddedFiles:    templates,
+					EmbeddedFiles:    testTemplates,
 					Data:             "test.test.us-east-1.k8s.tfgco.com",
 				},
 			},
@@ -102,7 +102,7 @@ func TestCreateAdditionalTerraformFiles(t *testing.T) {
 				{
 					TemplateFilename: "fixtures/inexisting_template.tpl",
 					OutputFilename:   fmt.Sprintf("%s/test_output", tmpDir),
-					EmbeddedFiles:    templates,
+					EmbeddedFiles:    testTemplates,
 					Data:             "test.test.us-east-1.k8s.tfgco.com",
 				},
 			},
@@ -114,7 +114,7 @@ func TestCreateAdditionalTerraformFiles(t *testing.T) {
 				{
 					TemplateFilename: "fixtures/test_invalid_template.tpl",
 					OutputFilename:   fmt.Sprintf("%s/test_output", tmpDir),
-					EmbeddedFiles:    templates,
+					EmbeddedFiles:    testTemplates,
 					Data:             "test.test.us-east-1.k8s.tfgco.com",
 				},
 			},

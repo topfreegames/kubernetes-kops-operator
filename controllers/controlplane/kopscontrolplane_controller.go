@@ -59,6 +59,7 @@ import (
 	"k8s.io/kops/pkg/kubemanifest"
 	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
+
 	"k8s.io/kops/upup/pkg/fi/cloudup"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/cluster-api/controllers/external"
@@ -170,11 +171,20 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 	}
 
 	if shouldEnableKarpenter {
-		karpenterProvisionersContent, err := os.Create(terraformOutputDir + "/data/aws_s3_object_karpenter_provisioners_content")
+		karpenterResourcesContent, err := os.Create(terraformOutputDir + "/data/aws_s3_object_karpenter_resources_content")
 		if err != nil {
 			return err
 		}
-		defer karpenterProvisionersContent.Close()
+		defer karpenterResourcesContent.Close()
+
+		// Workaround to enable auto assign public IPs in public subnets
+		// This is needed because Karpenter in the current version does not support configuring
+		// public IPs in the EC2NodeClass yet, this is already available in the newers versions,
+		// but it's needed now during the migration and upgrade.
+		err = utils.EnableAutoPublicIPAssignToPublicSubnets(kopsCluster.Spec.Networking.Subnets, kopsCluster.Name, terraformOutputDir)
+		if err != nil {
+			return err
+		}
 
 		// This is needed because the apply will fail if the file is empty
 		placeholder := corev1.ConfigMap{
@@ -183,21 +193,21 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 				APIVersion: "v1",
 			},
 			ObjectMeta: metav1.ObjectMeta{
-				Name:      "placeholder-karpenter-provisioners",
+				Name:      "placeholder-karpenter-resources",
 				Namespace: "kube-system",
 			},
 		}
 
-		output, err := yaml.Marshal(placeholder)
+		placeholderBytes, err := yaml.Marshal(placeholder)
 		if err != nil {
 			return err
 		}
 
-		if _, err := karpenterProvisionersContent.Write([]byte("---\n")); err != nil {
+		if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
 			return err
 		}
 
-		if _, err := karpenterProvisionersContent.Write(output); err != nil {
+		if _, err := karpenterResourcesContent.Write(placeholderBytes); err != nil {
 			return err
 		}
 
@@ -206,19 +216,54 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 				provisioner.SetLabels(map[string]string{
 					"kops.k8s.io/managed-by": "kops-controller",
 				})
-				if _, err := karpenterProvisionersContent.Write([]byte("---\n")); err != nil {
+				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
 					return err
 				}
-				output, err := yaml.Marshal(provisioner)
+				provisionerBytes, err := yaml.Marshal(provisioner)
 				if err != nil {
 					return err
 				}
-				if _, err := karpenterProvisionersContent.Write(output); err != nil {
+				if _, err := karpenterResourcesContent.Write(provisionerBytes); err != nil {
+					return err
+				}
+			}
+
+			for _, nodePool := range kmp.Spec.KarpenterNodePools {
+				nodePool.SetLabels(map[string]string{
+					"kops.k8s.io/managed-by": "kops-controller",
+				})
+				// Create NodePool
+				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
+					return err
+				}
+				nodePoolBytes, err := yaml.Marshal(nodePool)
+				if err != nil {
+					return err
+				}
+				if _, err := karpenterResourcesContent.Write(nodePoolBytes); err != nil {
+					return err
+				}
+				// Create EC2NodeClass
+				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
+					return err
+				}
+				ec2NodeClassString, err := utils.CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
+				if err != nil {
+					return err
+				}
+
+				if _, err := karpenterResourcesContent.Write([]byte(ec2NodeClassString)); err != nil {
+					return err
+				}
+
+				// This line is needed to separate the following resources from the UserData of the EC2NodeClass
+				// without this line the following resource can be considered as part of the UserData
+				if _, err := karpenterResourcesContent.Write([]byte("\n")); err != nil {
 					return err
 				}
 			}
 		}
-		fileData, err := os.ReadFile(karpenterProvisionersContent.Name())
+		fileData, err := os.ReadFile(karpenterResourcesContent.Name())
 		if err != nil {
 			return err
 		}
@@ -584,7 +629,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 		kopsControlPlaneHelper := kopsControlPlane.DeepCopy()
 		if err := reconciler.Update(ctx, kopsControlPlane); err != nil {
-			reconciler.log.Info(fmt.Sprintf("%+v", kopsControlPlane))
 			r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, controlplanev1alpha1.FailedToUpdateKopsControlPlane, "failed to update kopsControlPlane: %s", err)
 		}
 
@@ -766,6 +810,9 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if len(kopsMachinePool.Spec.KarpenterProvisioners) > 0 {
 			shouldEnableKarpenter = true
 		}
+		if len(kopsMachinePool.Spec.KarpenterNodePools) > 0 {
+			shouldEnableKarpenter = true
+		}
 	}
 
 	if shouldEnableKarpenter {
@@ -827,12 +874,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	reconciler.log.Info(fmt.Sprintf("generating Terraform files for %s", kopsControlPlane.ObjectMeta.GetName()))
 
-	// Prepare custom cloud resources
-	err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, existingKopsMachinePool, shouldEnableKarpenter, fullCluster.Spec.ConfigStore.Base, terraformOutputDir, shouldIgnoreSG)
-	if err != nil {
-		return resultError, err
-	}
-
 	err = reconciler.PrepareKopsCloudResourcesFactory(ctx, kopsClientset, kopsCluster, terraformOutputDir, cloud)
 	if err != nil {
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, "failed to prepare cloud resources: %s", err.Error())
@@ -840,6 +881,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition)
+
+	// Prepare custom cloud resources
+	err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, existingKopsMachinePool, shouldEnableKarpenter, fullCluster.Spec.ConfigStore.Base, terraformOutputDir, shouldIgnoreSG)
+	if err != nil {
+		return resultError, err
+	}
 
 	// TODO: This is needed because we are using a method from kops lib
 	// we should check alternatives
@@ -870,7 +917,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	reconciler.log.Info(fmt.Sprintf("Terraform applied for %s", kopsControlPlane.ObjectMeta.GetName()))
 	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "TerraformApplied", "Terraform applied")
 
-	err = reconciler.updateKopsMachinePoolWithProviderIDList(ctx, kopsControlPlane, kmps, &reconciler.awsCredentials)
+	err = reconciler.updateKopsMachinePoolWithProviderIDList(kopsControlPlane, kmps, &reconciler.awsCredentials)
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return requeue1min, nil
@@ -895,7 +942,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	return resultDefault, nil
 }
 
-func (r *KopsControlPlaneReconciliation) updateKopsMachinePoolWithProviderIDList(ctx context.Context, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, credentials *aws.Credentials) error {
+func (r *KopsControlPlaneReconciliation) updateKopsMachinePoolWithProviderIDList(kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, credentials *aws.Credentials) error {
 	for i, kopsMachinePool := range kmps {
 		// TODO: retrieve karpenter providerIDList
 		if len(kopsMachinePool.Spec.SpotInstOptions) == 0 && kopsMachinePool.Spec.KopsInstanceGroupSpec.Manager != "Karpenter" {

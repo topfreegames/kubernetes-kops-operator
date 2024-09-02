@@ -3,8 +3,13 @@ package utils
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
@@ -442,4 +447,204 @@ func TestReconcileKopsSecrets(t *testing.T) {
 			assert.ElementsMatch(t, tc.expectedStatusKopsSecrets, kopsControlPlane.Status.Secrets)
 		})
 	}
+}
+
+func TestGetAmiNameFromImageSource(t *testing.T) {
+	testCases := []struct {
+		description   string
+		input         string
+		output        string
+		expectedError error
+	}{
+		{
+			description: "should return the ami name from the image source",
+			input:       "000000000000/ubuntu-v1.0.0",
+			output:      "ubuntu-v1.0.0",
+		},
+		{
+			description:   "should fail when receiving ami id",
+			input:         "ami-000000000000",
+			expectedError: errors.New("invalid image format, should receive image source"),
+		},
+		{
+			description:   "should fail when receiving ami name",
+			input:         "ubuntu-v1.0.0",
+			expectedError: errors.New("invalid image format, should receive image source"),
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+
+		t.Run(tc.description, func(t *testing.T) {
+
+			amiName, err := GetAmiNameFromImageSource(tc.input)
+			if tc.expectedError != nil {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err).To(Equal(tc.expectedError))
+			} else {
+				g.Expect(err).To(BeNil())
+				g.Expect(amiName).To(Equal(tc.output))
+			}
+
+		})
+	}
+
+}
+
+func TestGetUserDataFromTerraformFile(t *testing.T) {
+	testCases := []struct {
+		description        string
+		userData           string
+		terraformFile      string
+		expectedError      error
+		writeTerraformFile bool
+	}{
+		{
+			description:        "should return the user data from the terraform file",
+			userData:           "dummy content",
+			writeTerraformFile: true,
+		},
+		{
+			description:   "should fail if the user data is not found",
+			expectedError: &fs.PathError{Op: "open", Path: "/tmp/test-cluster.test.k8s.cluster/data/aws_launch_template_test-machine-pool.test-cluster.test.k8s.cluster_user_data", Err: syscall.Errno(0x2)},
+		},
+		{
+			description:        "should fail if the user data is empty",
+			writeTerraformFile: true,
+			expectedError:      errors.New("user data file is empty"),
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+
+		t.Run(tc.description, func(t *testing.T) {
+
+			kopsCluster := helpers.NewKopsCluster("test-cluster")
+
+			terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
+
+			err := os.RemoveAll(terraformOutputDir)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			err = os.MkdirAll(filepath.Join(terraformOutputDir, "data"), os.ModePerm)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			kmp := helpers.NewKopsMachinePool("test-machine-pool", "default", "test-cluster")
+
+			if tc.writeTerraformFile {
+				err := os.WriteFile(terraformOutputDir+"/data/aws_launch_template_"+kmp.Name+"."+kopsCluster.Name+"_user_data", []byte(tc.userData), 0644)
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+			userDataString, err := GetUserDataFromTerraformFile(kopsCluster.Name, kmp.Name, terraformOutputDir)
+			if tc.expectedError != nil {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err).To(Equal(tc.expectedError))
+			} else {
+				g.Expect(err).To(BeNil())
+				g.Expect(userDataString).To(Equal(tc.userData))
+			}
+
+		})
+	}
+
+}
+
+func TestEnableAutoPublicIPAssignToPublicSubnets(t *testing.T) {
+	testCases := []struct {
+		description        string
+		kopsSubnets        []kopsapi.ClusterSubnetSpec
+		expectedOutputFile string
+	}{
+		{
+			description: "should create a override file with subnet-a",
+			kopsSubnets: []kopsapi.ClusterSubnetSpec{
+				{
+					Name: "subnet-a",
+					Type: kopsapi.SubnetTypePublic,
+				},
+			},
+			expectedOutputFile: "templates/tests/overrides/subnet_auto_assign_ipv4_override_1_public.tf",
+		},
+		{
+			description: "should create a override file with all subnets",
+			kopsSubnets: []kopsapi.ClusterSubnetSpec{
+				{
+					Name: "subnet-a",
+					Type: kopsapi.SubnetTypePublic,
+				},
+				{
+					Name: "subnet-b",
+					Type: kopsapi.SubnetTypePublic,
+				},
+				{
+					Name: "subnet-c",
+					Type: kopsapi.SubnetTypePublic,
+				},
+			},
+			expectedOutputFile: "templates/tests/overrides/subnet_auto_assign_ipv4_override_all_subnets.tf",
+		},
+		{
+			description: "should create a override file with only subnet-b",
+			kopsSubnets: []kopsapi.ClusterSubnetSpec{
+				{
+					Name: "subnet-a",
+					Type: kopsapi.SubnetTypePrivate,
+				},
+				{
+					Name: "subnet-b",
+					Type: kopsapi.SubnetTypePublic,
+				},
+				{
+					Name: "subnet-c",
+					Type: kopsapi.SubnetTypePrivate,
+				},
+			},
+			expectedOutputFile: "templates/tests/overrides/subnet_auto_assign_ipv4_override_only_b.tf",
+		},
+		{
+			description: "should create a override file with with subnets b and c being utility",
+			kopsSubnets: []kopsapi.ClusterSubnetSpec{
+				{
+					Name: "subnet-a",
+					Type: kopsapi.SubnetTypePrivate,
+				},
+				{
+					Name: "subnet-b",
+					Type: kopsapi.SubnetTypePublic,
+				},
+				{
+					Name: "subnet-c",
+					Type: kopsapi.SubnetTypeUtility,
+				},
+			},
+			expectedOutputFile: "templates/tests/overrides/subnet_auto_assign_ipv4_override_b_and_c.tf",
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+
+		t.Run(tc.description, func(t *testing.T) {
+			clusterName := helpers.GetFQDN("test-cluster")
+			terraformOutputDir := fmt.Sprintf("/tmp/%s", clusterName)
+
+			err := EnableAutoPublicIPAssignToPublicSubnets(tc.kopsSubnets, clusterName, terraformOutputDir)
+			g.Expect(err).To(BeNil())
+
+			expectedOutput, err := os.ReadFile(tc.expectedOutputFile)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			generatedOutput, err := os.ReadFile(filepath.Join(terraformOutputDir, "subnet_auto_assign_ipv4_override.tf"))
+			g.Expect(err).NotTo(HaveOccurred())
+
+			g.Expect(string(expectedOutput)).To(Equal(string(generatedOutput)))
+
+		})
+	}
+
 }

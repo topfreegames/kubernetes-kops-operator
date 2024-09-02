@@ -7,7 +7,6 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.11.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.6.5
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.28.3
-	github.com/aws/karpenter v0.32.4
 	github.com/aws/karpenter-core v0.32.4
 	github.com/crossplane-contrib/provider-aws v0.30.1
 	github.com/go-logr/logr v1.4.2
@@ -25,6 +24,7 @@ require (
 	k8s.io/kubectl v0.30.3
 	sigs.k8s.io/cluster-api v1.8.1
 	sigs.k8s.io/controller-runtime v0.18.5
+	sigs.k8s.io/karpenter v0.37.2
 )
 
 require (
@@ -38,6 +38,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.9.26 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sso v1.12.8 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sts v1.18.9 // indirect
+	github.com/awslabs/operatorpkg v0.0.0-20240514175841-edb8fe5824b4 // indirect
 	github.com/cert-manager/cert-manager v1.12.3 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.14.3 // indirect
 	github.com/emicklei/go-restful/v3 v3.12.1 // indirect
@@ -72,6 +73,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pelletier/go-toml/v2 v2.2.2 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/sagikazarmark/locafero v0.4.0 // indirect
 	github.com/sagikazarmark/slog-shim v0.1.0 // indirect
 	github.com/samber/lo v1.46.0 // indirect
@@ -119,7 +121,7 @@ require (
 	github.com/GoogleCloudPlatform/k8s-cloud-provider v1.20.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.2.1 // indirect
-	github.com/Masterminds/sprig/v3 v3.2.3 // indirect
+	github.com/Masterminds/sprig/v3 v3.2.3
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.26.0 // indirect
 	github.com/aws/smithy-go v1.13.5 // indirect
