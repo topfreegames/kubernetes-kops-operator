@@ -524,7 +524,7 @@ func TestGetUserDataFromTerraformFile(t *testing.T) {
 
 			kopsCluster := helpers.NewKopsCluster("test-cluster")
 
-			terraformOutputDir := filepath.Join(os.TempDir(), kopsCluster.Name)
+			terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
 
 			err := os.RemoveAll(terraformOutputDir)
 			g.Expect(err).NotTo(HaveOccurred())

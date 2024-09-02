@@ -2019,24 +2019,24 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 									Requirements: []karpenterv1beta1.NodeSelectorRequirementWithMinValues{
 										{
 											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-											Key:      "kubernetes.io/arch",
-											Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
-											Values:   []string{"amd64"},
+												Key:      "kubernetes.io/arch",
+												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+												Values:   []string{"amd64"},
 											},
 										},
 										{
 
 											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-											Key:      "kubernetes.io/os",
-											Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
-											Values:   []string{"linux"},
+												Key:      "kubernetes.io/os",
+												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+												Values:   []string{"linux"},
 											},
 										},
 										{
 											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-											Key:      "node.kubernetes.io/instance-type",
-											Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
-											Values:   []string{"m5.large"},
+												Key:      "node.kubernetes.io/instance-type",
+												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+												Values:   []string{"m5.large"},
 											},
 										},
 									},
@@ -2054,7 +2054,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				return kmp
 			},
 			karpenterResourcesOutput: "karpenter_resource_output_node_pool.yaml",
-			manifestHash:             "3c4ab5f41dc8a8148fd93d7d5b3e0fd0c2127b7f7eed5c547444d1817cec275d",
+			manifestHash:             "21e937a12016f39a20f07651d3ebe5e70b312a627379d2d05c154260dd0ab87c",
 		},
 		{
 			description: "Should generate files based on template with one NodePool and one Provisioner",
@@ -2105,24 +2105,24 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 									Requirements: []karpenterv1beta1.NodeSelectorRequirementWithMinValues{
 										{
 											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-											Key:      "kubernetes.io/arch",
-											Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
-											Values:   []string{"amd64"},
+												Key:      "kubernetes.io/arch",
+												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+												Values:   []string{"amd64"},
 											},
 										},
 										{
 
 											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-											Key:      "kubernetes.io/os",
-											Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
-											Values:   []string{"linux"},
+												Key:      "kubernetes.io/os",
+												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+												Values:   []string{"linux"},
 											},
 										},
 										{
 											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-											Key:      "node.kubernetes.io/instance-type",
-											Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
-											Values:   []string{"m5.large"},
+												Key:      "node.kubernetes.io/instance-type",
+												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+												Values:   []string{"m5.large"},
 											},
 										},
 									},
@@ -2202,7 +2202,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				return kmp
 			},
 			karpenterResourcesOutput: "karpenter_resource_output_node_pool_and_provisioner.yaml",
-			manifestHash:             "0ac4ecf6655af3b0e163f109a98d88e5b500a045cbe52e47aa0052d977289bd5",
+			manifestHash:             "38f8e21d8e1bedd7867e6300bfe2afada9c8908c06d05eecdc482d960dd4f338",
 		},
 		{
 			description: "Should generate files based on with spotinst enabled",

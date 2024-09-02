@@ -17,13 +17,15 @@ spec:
   securityGroupSelectorTerms:
   - name: nodes.{{ .ClusterName }}
   - tags:
-      karpenter/owner: {{ .ClusterName }}/{{ .Name }}
+      karpenter/owner: {{ .ClusterName }}/{{ .IGName }}
   subnetSelectorTerms:
   - tags:
-      kops.k8s.io/instance-group/{{ .Name }}: '*'
+      kops.k8s.io/instance-group/{{ .IGName }}: '*'
       kubernetes.io/cluster/{{ .ClusterName }}: '*'
   tags: 
+    Name: {{ .ClusterName }}/{{ .IGName }}
     k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node: ''
+    kops.k8s.io/instancegroup: {{ .IGName }}
   {{- range $key, $value := .Tags }}
     {{ $key }}: {{ $value | quote }}
   {{- end }}

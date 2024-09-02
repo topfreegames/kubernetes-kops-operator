@@ -9,7 +9,7 @@ import (
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 )
 
-func CreateEC2NodeClassFromKops(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, terraformOutputDir string) (string, error) {
+func CreateEC2NodeClassFromKops(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string) (string, error) {
 	amiName, err := GetAmiNameFromImageSource(kmp.Spec.KopsInstanceGroupSpec.Image)
 	if err != nil {
 		return "", err
@@ -24,11 +24,13 @@ func CreateEC2NodeClassFromKops(kopsCluster *kopsapi.Cluster, kmp *infrastructur
 		Name        string
 		AmiName     string
 		ClusterName string
+		IGName      string
 		Tags        map[string]string
 		UserData    string
 	}{
-		Name:        kmp.Name,
+		Name:        nodePoolName,
 		AmiName:     amiName,
+		IGName:      kmp.Name,
 		ClusterName: kopsCluster.Name,
 		Tags:        kopsCluster.Spec.CloudLabels,
 		UserData:    userData,

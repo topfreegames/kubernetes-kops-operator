@@ -66,7 +66,7 @@ func TestCreateEC2NodeClassFromKops(t *testing.T) {
 				kmp = tc.kopsMachinePoolFunction(kmp)
 			}
 
-			ec2NodeClassString, err := CreateEC2NodeClassFromKops(kopsCluster, kmp, terraformOutputDir)
+			ec2NodeClassString, err := CreateEC2NodeClassFromKops(kopsCluster, kmp, kmp.Name, terraformOutputDir)
 			if tc.expectedError != nil {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err).To(Equal(tc.expectedError))
