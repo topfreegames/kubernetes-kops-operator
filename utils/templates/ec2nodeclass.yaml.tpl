@@ -13,6 +13,16 @@ spec:
     httpProtocolIPv6: disabled
     httpPutResponseHopLimit: 2
     httpTokens: required
+  blockDeviceMappings:
+  - deviceName: /dev/sda1
+    ebs:
+      volumeSize: {{ .RootVolume.VolumeSize }}
+      volumeType: {{ .RootVolume.VolumeType }}
+      iops: {{ .RootVolume.IOPS }}
+      encrypted: {{ .RootVolume.Encrypted }}
+      throughput: {{ .RootVolume.Throughput }}
+      deleteOnTermination: true
+    rootVolume: true
   role: nodes.{{ .ClusterName }}
   securityGroupSelectorTerms:
   - name: nodes.{{ .ClusterName }}

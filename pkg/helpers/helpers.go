@@ -9,6 +9,7 @@ import (
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	corev1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"k8s.io/kops/pkg/client/simple"
@@ -316,4 +317,24 @@ Y/C1Lox4f1ROJnCjc/hfcOjcxX5M8A8peecHWlVtUPKTJgxQ7oMKcw==
 	}
 	err := keyStore.StoreKeyset(ctx, fi.CertificateIDCA, keyset)
 	return err
+}
+
+func ResourceToPointer(resource resource.Quantity) *resource.Quantity {
+	return &resource
+}
+
+func StringPtr(s string) *string {
+	return &s
+}
+
+func Int32Ptr(i int32) *int32 {
+	return &i
+}
+
+func Int64Ptr(i int64) *int64 {
+	return &i
+}
+
+func BoolPtr(b bool) *bool {
+	return &b
 }
