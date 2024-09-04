@@ -15,6 +15,11 @@ metadata:
   name: test-node-pool
 spec:
   disruption:
+    budgets:
+    - nodes: 10%
+    - duration: 40m0s
+      nodes: "0"
+      schedule: 0 * * * *
     consolidationPolicy: WhenUnderutilized
     expireAfter: Never
   template:
