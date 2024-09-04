@@ -11,7 +11,7 @@ spec:
   metadataOptions:
     httpEndpoint: enabled
     httpProtocolIPv6: disabled
-    httpPutResponseHopLimit: 2
+    httpPutResponseHopLimit: 3
     httpTokens: required
   blockDeviceMappings:
   - deviceName: /dev/sda1
@@ -27,7 +27,7 @@ spec:
   securityGroupSelectorTerms:
   - name: nodes.{{ .ClusterName }}
   - tags:
-      karpenter/owner: {{ .ClusterName }}/{{ .IGName }}
+      karpenter/{{ .ClusterName }}/{{ .IGName }}: "true"
   subnetSelectorTerms:
   - tags:
       kops.k8s.io/instance-group/{{ .IGName }}: '*'
