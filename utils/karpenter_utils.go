@@ -90,22 +90,31 @@ func CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster, 
 		return "", err
 	}
 
+	var associatePublicIP bool
+	if kmp.Spec.KopsInstanceGroupSpec.AssociatePublicIP != nil {
+		associatePublicIP = *kmp.Spec.KopsInstanceGroupSpec.AssociatePublicIP
+	} else {
+		associatePublicIP = false
+	}
+
 	data := struct {
-		Name        string
-		AmiName     string
-		ClusterName string
-		IGName      string
-		Tags        map[string]string
-		RootVolume  *karpenterv1beta1.BlockDevice
-		UserData    string
+		Name              string
+		AmiName           string
+		ClusterName       string
+		IGName            string
+		Tags              map[string]string
+		RootVolume        *karpenterv1beta1.BlockDevice
+		UserData          string
+		AssociatePublicIP bool
 	}{
-		Name:        nodePoolName,
-		AmiName:     amiName,
-		IGName:      kmp.Name,
-		ClusterName: kopsCluster.Name,
-		Tags:        kopsCluster.Spec.CloudLabels,
-		RootVolume:  BuildKarpenterVolumeConfigFromKops(kmp.Spec.KopsInstanceGroupSpec.RootVolume),
-		UserData:    userData,
+		Name:              nodePoolName,
+		AmiName:           amiName,
+		IGName:            kmp.Name,
+		ClusterName:       kopsCluster.Name,
+		Tags:              kopsCluster.Spec.CloudLabels,
+		RootVolume:        BuildKarpenterVolumeConfigFromKops(kmp.Spec.KopsInstanceGroupSpec.RootVolume),
+		UserData:          userData,
+		AssociatePublicIP: associatePublicIP,
 	}
 
 	content, err := templates.ReadFile("templates/ec2nodeclass.yaml.tpl")
