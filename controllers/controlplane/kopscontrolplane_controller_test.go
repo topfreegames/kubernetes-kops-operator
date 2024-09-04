@@ -3,6 +3,8 @@ package controlplane
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -1894,7 +1896,6 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 		description              string
 		kopsMachinePoolFunction  func(*infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool
 		karpenterResourcesOutput string
-		manifestHash             string
 		spotInstEnabled          bool
 	}{
 		{
@@ -1968,7 +1969,6 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				return kmp
 			},
 			karpenterResourcesOutput: "karpenter_resource_output_provisioner.yaml",
-			manifestHash:             "d67c9504589dd859e46f1913780fb69bafb8df5328d90e6675affc79d3573f78",
 		},
 		{
 			description: "Should generate files based on template with one NodePool",
@@ -2054,7 +2054,6 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				return kmp
 			},
 			karpenterResourcesOutput: "karpenter_resource_output_node_pool.yaml",
-			manifestHash:             "faae88e64643f1ab57172001063176e665a9519f6a939242557ea136ec4c4f21",
 		},
 		{
 			description: "Should generate files based on template with one NodePool and one Provisioner",
@@ -2202,7 +2201,6 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				return kmp
 			},
 			karpenterResourcesOutput: "karpenter_resource_output_node_pool_and_provisioner.yaml",
-			manifestHash:             "b9b15e8457b2e877c708a44d2edbbd33dc5ed696063dd30134d825c1eb5d255a",
 		},
 		{
 			description: "Should generate files based on with spotinst enabled",
@@ -2275,7 +2273,6 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				return kmp
 			},
 			karpenterResourcesOutput: "karpenter_resource_output_provisioner.yaml",
-			manifestHash:             "d67c9504589dd859e46f1913780fb69bafb8df5328d90e6675affc79d3573f78",
 			spotInstEnabled:          true,
 		},
 	}
@@ -2332,11 +2329,20 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			templ, err := template.New(templateTestDir + "/karpenter_custom_addon_boostrap.tf").Parse(string(content))
 			g.Expect(err).NotTo(HaveOccurred())
 
+			generatedKarpenterResources, err := os.ReadFile(terraformOutputDir + "/data/aws_s3_object_karpenter_resources_content")
+			g.Expect(err).NotTo(HaveOccurred())
+			templatedKarpenterResources, err := os.ReadFile(templateTestDir + "/data/" + tc.karpenterResourcesOutput)
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(string(generatedKarpenterResources)).To(BeEquivalentTo(string(templatedKarpenterResources)))
+
+			hash := sha256.New()
+			hash.Write(templatedKarpenterResources)
+
 			var templatedKarpenterBoostrapTF bytes.Buffer
 			data := struct {
 				ManifestHash string
 			}{
-				ManifestHash: tc.manifestHash,
+				ManifestHash: hex.EncodeToString(hash.Sum(nil)),
 			}
 
 			err = templ.Execute(&templatedKarpenterBoostrapTF, data)
@@ -2349,12 +2355,6 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			templatedLaunchTemplateTF, err := os.ReadFile(templateTestDir + "/launch_template_override.tf")
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(string(generatedLaunchTemplateTF)).To(BeEquivalentTo(string(templatedLaunchTemplateTF)))
-
-			generatedKarpenterResources, err := os.ReadFile(terraformOutputDir + "/data/aws_s3_object_karpenter_resources_content")
-			g.Expect(err).NotTo(HaveOccurred())
-			templatedKarpenterResources, err := os.ReadFile(templateTestDir + "/data/" + tc.karpenterResourcesOutput)
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(string(generatedKarpenterResources)).To(BeEquivalentTo(string(templatedKarpenterResources)))
 
 			if tc.spotInstEnabled {
 				generatedSpotinstLaunchSpecTF, err := os.ReadFile(terraformOutputDir + "/spotinst_launch_spec_override.tf")

@@ -121,6 +121,7 @@ spec:
     httpProtocolIPv6: disabled
     httpPutResponseHopLimit: 3
     httpTokens: required
+  associatePublicIPAddress: false
   blockDeviceMappings:
   - deviceName: /dev/sda1
     ebs:
