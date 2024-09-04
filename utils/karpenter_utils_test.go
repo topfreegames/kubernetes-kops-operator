@@ -6,8 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
+	karpenterv1beta1 "github.com/aws/karpenter/pkg/apis/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"k8s.io/apimachinery/pkg/api/resource"
+	kopsapi "k8s.io/kops/pkg/apis/kops"
 
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
@@ -80,4 +83,75 @@ func TestCreateEC2NodeClassFromKopsLaunchTemplateInfo(t *testing.T) {
 		})
 	}
 
+}
+
+func TestBuildKarpenterVolumeConfigFromKops(t *testing.T) {
+	testCases := []struct {
+		description    string
+		input          *kopsapi.InstanceRootVolumeSpec
+		expectedOutput *karpenterv1beta1.BlockDevice
+	}{
+		{
+			description: "should populate the karpenter volume config with the default values when the kops volume is nil",
+			input:       nil,
+			expectedOutput: &karpenterv1beta1.BlockDevice{
+				VolumeSize: helpers.ResourceToPointer(resource.MustParse("60Gi")),
+				VolumeType: helpers.StringPtr("gp3"),
+				IOPS:       helpers.Int64Ptr(3000),
+				Encrypted:  helpers.BoolPtr(true),
+				Throughput: helpers.Int64Ptr(125),
+			},
+		},
+		{
+			description: "should populate the karpenter volume config with a 100Gb",
+			input: &kopsapi.InstanceRootVolumeSpec{
+				Size: helpers.Int32Ptr(100),
+			},
+			expectedOutput: &karpenterv1beta1.BlockDevice{
+				VolumeSize: helpers.ResourceToPointer(resource.MustParse("100Gi")),
+				VolumeType: helpers.StringPtr("gp3"),
+				IOPS:       helpers.Int64Ptr(3000),
+				Encrypted:  helpers.BoolPtr(true),
+				Throughput: helpers.Int64Ptr(125),
+			},
+		},
+		{
+			description: "should populate the karpenter volume config with type gp2 and iops custom",
+			input: &kopsapi.InstanceRootVolumeSpec{
+				Type: helpers.StringPtr("gp2"),
+				IOPS: helpers.Int32Ptr(1000),
+			},
+			expectedOutput: &karpenterv1beta1.BlockDevice{
+				VolumeSize: helpers.ResourceToPointer(resource.MustParse("60Gi")),
+				VolumeType: helpers.StringPtr("gp2"),
+				IOPS:       helpers.Int64Ptr(1000),
+				Encrypted:  helpers.BoolPtr(true),
+				Throughput: helpers.Int64Ptr(125),
+			},
+		},
+		{
+			description: "should populate the karpenter volume config without encryption and throughput custom",
+			input: &kopsapi.InstanceRootVolumeSpec{
+				Encryption: helpers.BoolPtr(false),
+				Throughput: helpers.Int32Ptr(500),
+			},
+			expectedOutput: &karpenterv1beta1.BlockDevice{
+				VolumeSize: helpers.ResourceToPointer(resource.MustParse("60Gi")),
+				VolumeType: helpers.StringPtr("gp3"),
+				IOPS:       helpers.Int64Ptr(3000),
+				Encrypted:  helpers.BoolPtr(false),
+				Throughput: helpers.Int64Ptr(500),
+			},
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+
+		t.Run(tc.description, func(t *testing.T) {
+			output := BuildKarpenterVolumeConfigFromKops(tc.input)
+			g.Expect(output).To(Equal(tc.expectedOutput))
+		})
+	}
 }

@@ -7,6 +7,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.11.1
 	github.com/aws/aws-sdk-go-v2/credentials v1.6.5
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.28.3
+	github.com/aws/karpenter v0.32.4
 	github.com/aws/karpenter-core v0.32.4
 	github.com/crossplane-contrib/provider-aws v0.30.1
 	github.com/go-logr/logr v1.4.2

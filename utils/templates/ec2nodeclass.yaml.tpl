@@ -11,13 +11,23 @@ spec:
   metadataOptions:
     httpEndpoint: enabled
     httpProtocolIPv6: disabled
-    httpPutResponseHopLimit: 2
+    httpPutResponseHopLimit: 3
     httpTokens: required
+  blockDeviceMappings:
+  - deviceName: /dev/sda1
+    ebs:
+      volumeSize: {{ .RootVolume.VolumeSize }}
+      volumeType: {{ .RootVolume.VolumeType }}
+      iops: {{ .RootVolume.IOPS }}
+      encrypted: {{ .RootVolume.Encrypted }}
+      throughput: {{ .RootVolume.Throughput }}
+      deleteOnTermination: true
+    rootVolume: true
   role: nodes.{{ .ClusterName }}
   securityGroupSelectorTerms:
   - name: nodes.{{ .ClusterName }}
   - tags:
-      karpenter/owner: {{ .ClusterName }}/{{ .IGName }}
+      karpenter/{{ .ClusterName }}/{{ .IGName }}: "true"
   subnetSelectorTerms:
   - tags:
       kops.k8s.io/instance-group/{{ .IGName }}: '*'

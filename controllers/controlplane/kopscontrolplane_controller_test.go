@@ -2054,7 +2054,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				return kmp
 			},
 			karpenterResourcesOutput: "karpenter_resource_output_node_pool.yaml",
-			manifestHash:             "fafd4cc950ced952b36d97283ad300c72ca70ea8935e0efae7d88665a8115495",
+			manifestHash:             "faae88e64643f1ab57172001063176e665a9519f6a939242557ea136ec4c4f21",
 		},
 		{
 			description: "Should generate files based on template with one NodePool and one Provisioner",
@@ -2202,7 +2202,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				return kmp
 			},
 			karpenterResourcesOutput: "karpenter_resource_output_node_pool_and_provisioner.yaml",
-			manifestHash:             "fd8c2593eaae4b5f6952282d1c8de40300afdbe2a2bcfe7c66a294e8899ec93c",
+			manifestHash:             "b9b15e8457b2e877c708a44d2edbbd33dc5ed696063dd30134d825c1eb5d255a",
 		},
 		{
 			description: "Should generate files based on with spotinst enabled",

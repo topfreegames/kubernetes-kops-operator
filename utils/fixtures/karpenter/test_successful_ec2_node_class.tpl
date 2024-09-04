@@ -11,13 +11,23 @@ spec:
   metadataOptions:
     httpEndpoint: enabled
     httpProtocolIPv6: disabled
-    httpPutResponseHopLimit: 2
+    httpPutResponseHopLimit: 3
     httpTokens: required
+  blockDeviceMappings:
+  - deviceName: /dev/sda1
+    ebs:
+      volumeSize: 60Gi
+      volumeType: gp3
+      iops: 3000
+      encrypted: true
+      throughput: 125
+      deleteOnTermination: true
+    rootVolume: true
   role: nodes.test-cluster.test.k8s.cluster
   securityGroupSelectorTerms:
   - name: nodes.test-cluster.test.k8s.cluster
   - tags:
-      karpenter/owner: test-cluster.test.k8s.cluster/test-machine-pool
+      karpenter/test-cluster.test.k8s.cluster/test-machine-pool: "true"
   subnetSelectorTerms:
   - tags:
       kops.k8s.io/instance-group/test-machine-pool: '*'
