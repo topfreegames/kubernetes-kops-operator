@@ -1987,6 +1987,16 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 						},
 						Spec: karpenterv1beta1.NodePoolSpec{
 							Disruption: karpenterv1beta1.Disruption{
+								Budgets: []karpenterv1beta1.Budget{
+									{
+										Nodes: "10%",
+									},
+									{
+										Nodes:    "0",
+										Schedule: helpers.StringPtr("0 * * * *"),
+										Duration: &metav1.Duration{Duration: 40 * time.Minute},
+									},
+								},
 								ConsolidationPolicy: karpenterv1beta1.ConsolidationPolicyWhenUnderutilized,
 							},
 							Template: karpenterv1beta1.NodeClaimTemplate{

@@ -233,11 +233,6 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 					"kops.k8s.io/managed-by": "kops-controller",
 				})
 
-				// TODO: remove this after upgrading to Karpenter 0.37
-				// This is needed because of the mismatch between the current karpenter version 0.32.4
-				// and the dependency version
-				nodePool.Spec.Disruption.Budgets = nil
-
 				// Create NodePool
 				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
 					return err
