@@ -900,12 +900,33 @@ spec:
                       address:
                         description: Address of containerd's GRPC server (default "/run/containerd/containerd.sock").
                         type: string
+                      configAdditions:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          x-kubernetes-int-or-string: true
+                        description: ConfigAdditions adds additional config entries to the generated config file.
+                        type: object
                       configOverride:
                         description: ConfigOverride is the complete containerd config file provided by the user.
                         type: string
                       logLevel:
                         description: LogLevel controls the logging details [trace, debug, info, warn, error, fatal, panic] (default "info").
                         type: string
+                      nri:
+                        description: NRI configures the Node Resource Interface.
+                        properties:
+                          enabled:
+                            description: Enable NRI support in containerd
+                            type: boolean
+                          pluginRegistrationTimeout:
+                            description: PluginRegistrationTimeout is the timeout for plugin registration
+                            type: string
+                          pluginRequestTimeout:
+                            description: PluginRequestTimeout is the timeout for a plugin to handle a request
+                            type: string
+                        type: object
                       nvidiaGPU:
                         description: NvidiaGPU configures the Nvidia GPU runtime.
                         properties:
@@ -1082,7 +1103,7 @@ spec:
                               description: Environment is a map of environment variables added to the hook
                               type: object
                             image:
-                              description: Image is the docker image
+                              description: Image is the container image.
                               type: string
                           type: object
                         manifest:
@@ -1214,9 +1235,6 @@ spec:
                       cpuManagerPolicy:
                         description: CpuManagerPolicy allows for changing the default policy of None to static
                         type: string
-                      dockerDisableSharedPID:
-                        description: DockerDisableSharedPID uses a shared PID namespace for containers in a pod.
-                        type: boolean
                       enableCadvisorJsonEndpoints:
                         description: EnableCadvisorJsonEndpoints enables cAdvisor json `/spec` and `/stats/*` endpoints. Defaults to False.
                         type: boolean
@@ -1305,6 +1323,15 @@ spec:
                           collect to.
                         format: int32
                         type: integer
+                      imageMaximumGCAge:
+                        description: |-
+                          imageMaximumGCAge is the maximum age an image can be unused before it is garbage collected.
+                          The default of this field is "0s", which disables this field--meaning images won't be garbage
+                          collected based on being unused for too long. Default: "0s" (disabled)
+                        type: string
+                      imageMinimumGCAge:
+                        description: 'imageMinimumGCAge is the minimum age for an unused image before it is garbage collected. Default: "2m"'
+                        type: string
                       imagePullProgressDeadline:
                         description: |-
                           ImagePullProgressDeadline is the timeout for image pulls
@@ -1441,11 +1468,7 @@ spec:
                         description: SeccompProfileRoot is the directory path for seccomp profiles.
                         type: string
                       serializeImagePulls:
-                        description: |-
-                          // SerializeImagePulls when enabled, tells the Kubelet to pull images one
-                          // at a time. We recommend *not* changing the default value on nodes that
-                          // run docker daemon with version  < 1.9 or an Aufs storage backend.
-                          // Issue #10959 has more details.
+                        description: SerializeImagePulls when enabled, tells the Kubelet to pull images one at a time.
                         type: boolean
                       shutdownGracePeriod:
                         description: |-
