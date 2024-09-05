@@ -220,10 +220,11 @@ spec:
                     properties:
                       containerProxy:
                         description: ContainerProxy is a url for a pull-through proxy
-                          of a docker registry
+                          of a container registry.
                         type: string
                       containerRegistry:
-                        description: ContainerRegistry is a url for to a docker registry
+                        description: ContainerRegistry is a url for to a container
+                          registry.
                         type: string
                       fileRepository:
                         description: FileRepository is the url for a private file
@@ -282,8 +283,8 @@ spec:
                               type: object
                             type: array
                           image:
-                            description: Image is the AWS IAM Authenticator docker
-                              image to use
+                            description: Image is the AWS IAM Authenticator container
+                              image to use.
                             type: string
                           memoryLimit:
                             anyOf:
@@ -371,6 +372,12 @@ spec:
                           Enabled enables the cert manager.
                           Default: false
                         type: boolean
+                      featureGates:
+                        additionalProperties:
+                          type: boolean
+                        description: FeatureGates is a list of experimental features
+                          that can be enabled or disabled.
+                        type: object
                       hostedZoneIDs:
                         description: HostedZoneIDs is a list of route53 hostedzone
                           IDs that cert-manager will be allowed to do dns-01 validation
@@ -380,7 +387,7 @@ spec:
                         type: array
                       image:
                         description: |-
-                          Image is the docker container used.
+                          Image is the container image used.
                           Default: the latest supported image for the specified kubernetes version.
                         type: string
                       managed:
@@ -434,6 +441,11 @@ spec:
                       clusterName:
                         description: ClusterName is the instance prefix for the cluster.
                         type: string
+                      concurrentNodeSyncs:
+                        description: 'ConcurrentNodeSyncs is the number of workers
+                          concurrently synchronizing nodes. (default: 1)'
+                        format: int32
+                        type: integer
                       configureCloudRoutes:
                         description: ConfigureCloudRoutes enables CIDRs allocated
                           with to be configured on the cloud provider.
@@ -531,7 +543,7 @@ spec:
                       aws:
                         description: AWS configures the AWS cloud provider.
                         properties:
-                          binaryLocation:
+                          binariesLocation:
                             description: BinariesLocation is the location of the AWS
                               cloud provider binaries.
                             type: string
@@ -544,11 +556,24 @@ spec:
                             description: EBSCSIDriverSpec is the config for the EBS
                               CSI driver.
                             properties:
-                              enabled:
+                              hostNetwork:
                                 description: |-
-                                  Enabled enables the AWS EBS CSI driver
+                                  HostNetwork can be used for large clusters for faster access to node info via instance metadata.
                                   Default: false
                                 type: boolean
+                              kubeAPIBurst:
+                                description: KubeAPIBurst Burst to use while talking
+                                  with Kubernetes API server. (default 100)
+                                format: int32
+                                type: integer
+                              kubeAPIQPS:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: KubeAPIQPS QPS to use while talking with
+                                  Kubernetes API server. (default 20)
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
                               managed:
                                 description: |-
                                   Managed controls if aws-ebs-csi-driver is manged and deployed by kOps.
@@ -627,6 +652,12 @@ spec:
                                   Default: 50m
                                 pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                                 x-kubernetes-int-or-string: true
+                              deleteSQSMsgIfNodeNotFound:
+                                description: |-
+                                  DeleteSQSMsgIfNodeNotFound makes node termination handler delete the SQS Message from the SQS Queue if the targeted node is not found.
+                                  Only used in Queue Processor mode.
+                                  Default: false
+                                type: boolean
                               enableRebalanceDraining:
                                 description: |-
                                   EnableRebalanceDraining makes node termination handler drain nodes when the rebalance recommendation notice is received.
@@ -671,6 +702,15 @@ spec:
                                   This field has kept its name even though it now maps to the --managed-tag flag due to keeping the API stable.
                                   Node termination handler does no longer check the ASG for this tag, but the actual EC2 instances.
                                 type: string
+                              memoryLimit:
+                                anyOf:
+                                - type: integer
+                                - type: string
+                                description: |-
+                                  MemoryLimit of NodeTerminationHandler container.
+                                  Default: none
+                                pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                                x-kubernetes-int-or-string: true
                               memoryRequest:
                                 anyOf:
                                 - type: integer
@@ -680,13 +720,33 @@ spec:
                                   Default: 64Mi
                                 pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                                 x-kubernetes-int-or-string: true
+                              podTerminationGracePeriod:
+                                description: |-
+                                  PodTerminationGracePeriod is the time in seconds given to each pod to terminate gracefully.
+                                  If negative, the default value specified in the pod will be used, which defaults to 30 seconds if not specified for the pod.
+                                  Default: -1
+                                format: int32
+                                type: integer
                               prometheusEnable:
                                 description: |-
                                   EnablePrometheusMetrics enables the "/metrics" endpoint.
                                   Default: false
                                 type: boolean
+                              taintNode:
+                                description: |-
+                                  TaintNode makes node termination handler taint nodes when an interruption event occurs.
+                                  Default: false
+                                type: boolean
                               version:
                                 description: Version is the container image tag used.
+                                type: string
+                              webhookTemplate:
+                                description: Replaces the default webhook message
+                                  template.
+                                type: string
+                              webhookURL:
+                                description: If specified, posts event data to URL
+                                  upon instance interruption action.
                                 type: string
                             type: object
                           podIdentityWebhook:
@@ -748,6 +808,10 @@ spec:
                               attached to the subnet that the cluster is deployed
                               in.
                             type: string
+                          storageAccountID:
+                            description: StorageAccountID specifies the storage account
+                              used for the cluster installation.
+                            type: string
                           subscriptionID:
                             description: SubscriptionID specifies the subscription
                               used for the cluster installation.
@@ -765,6 +829,10 @@ spec:
                       gce:
                         description: GCE configures the GCE cloud provider.
                         properties:
+                          binariesLocation:
+                            description: BinariesLocation is the location of the GCE
+                              cloud provider binaries.
+                            type: string
                           multizone:
                             type: boolean
                           nodeInstancePrefix:
@@ -953,6 +1021,11 @@ spec:
                           CustomPriorityExpanderConfig overides the priority-expander ConfigMap with the provided configuration. Any InstanceGroup configuration will be ignored if this is set.
                           This could be useful in order to use regex on priorities configuration
                         type: object
+                      emitPerNodegroupMetrics:
+                        description: |-
+                          EmitPerNodegroupMetrics If true, publishes the node groups min and max metrics count set on the cluster autoscaler.
+                          Default: false
+                        type: boolean
                       enabled:
                         description: |-
                           Enabled enables the cluster autoscaler.
@@ -973,7 +1046,7 @@ spec:
                         type: boolean
                       image:
                         description: |-
-                          Image is the docker container used.
+                          Image is the container image used.
                           Default: the latest supported image for the specified kubernetes version.
                         type: string
                       maxNodeProvisionTime:
@@ -1021,6 +1094,11 @@ spec:
                           ScaleDownUtilizationThreshold determines the utilization threshold for node scale-down.
                           Default: 0.5
                         type: string
+                      skipNodesWithCustomControllerPods:
+                        description: |-
+                          SkipNodesWithCustomControllerPods makes the cluster autoscaler skip scale-down of nodes with pods owned by custom controllers.
+                          Default: true
+                        type: boolean
                       skipNodesWithLocalStorage:
                         description: |-
                           SkipNodesWithLocalStorage makes the cluster autoscaler skip scale-down of nodes with local storage.
@@ -1056,9 +1134,6 @@ spec:
                           stored.
                         type: string
                     type: object
-                  containerRuntime:
-                    description: Container runtime to use for Kubernetes
-                    type: string
                   containerd:
                     description: Component configurations
                     properties:
@@ -1066,6 +1141,15 @@ spec:
                         description: Address of containerd's GRPC server (default
                           "/run/containerd/containerd.sock").
                         type: string
+                      configAdditions:
+                        additionalProperties:
+                          anyOf:
+                          - type: integer
+                          - type: string
+                          x-kubernetes-int-or-string: true
+                        description: ConfigAdditions adds additional config entries
+                          to the generated config file.
+                        type: object
                       configOverride:
                         description: ConfigOverride is the complete containerd config
                           file provided by the user.
@@ -1074,6 +1158,21 @@ spec:
                         description: LogLevel controls the logging details [trace,
                           debug, info, warn, error, fatal, panic] (default "info").
                         type: string
+                      nri:
+                        description: NRI configures the Node Resource Interface.
+                        properties:
+                          enabled:
+                            description: Enable NRI support in containerd
+                            type: boolean
+                          pluginRegistrationTimeout:
+                            description: PluginRegistrationTimeout is the timeout
+                              for plugin registration
+                            type: string
+                          pluginRequestTimeout:
+                            description: PluginRequestTimeout is the timeout for a
+                              plugin to handle a request
+                            type: string
+                        type: object
                       nvidiaGPU:
                         description: NvidiaGPU configures the Nvidia GPU runtime.
                         properties:
@@ -1261,10 +1360,6 @@ spec:
                         description: CpuManagerPolicy allows for changing the default
                           policy of None to static
                         type: string
-                      dockerDisableSharedPID:
-                        description: DockerDisableSharedPID uses a shared PID namespace
-                          for containers in a pod.
-                        type: boolean
                       enableCadvisorJsonEndpoints:
                         description: EnableCadvisorJsonEndpoints enables cAdvisor
                           json `/spec` and `/stats/*` endpoints. Defaults to False.
@@ -1374,6 +1469,16 @@ spec:
                           collect to.
                         format: int32
                         type: integer
+                      imageMaximumGCAge:
+                        description: |-
+                          imageMaximumGCAge is the maximum age an image can be unused before it is garbage collected.
+                          The default of this field is "0s", which disables this field--meaning images won't be garbage
+                          collected based on being unused for too long. Default: "0s" (disabled)
+                        type: string
+                      imageMinimumGCAge:
+                        description: 'imageMinimumGCAge is the minimum age for an
+                          unused image before it is garbage collected. Default: "2m"'
+                        type: string
                       imagePullProgressDeadline:
                         description: |-
                           ImagePullProgressDeadline is the timeout for image pulls
@@ -1539,11 +1644,8 @@ spec:
                           seccomp profiles.
                         type: string
                       serializeImagePulls:
-                        description: |-
-                          // SerializeImagePulls when enabled, tells the Kubelet to pull images one
-                          // at a time. We recommend *not* changing the default value on nodes that
-                          // run docker daemon with version  < 1.9 or an Aufs storage backend.
-                          // Issue #10959 has more details.
+                        description: SerializeImagePulls when enabled, tells the Kubelet
+                          to pull images one at a time.
                         type: boolean
                       shutdownGracePeriod:
                         description: |-
@@ -1645,180 +1747,6 @@ spec:
                       Note that DNSZone can either by the host name of the zone (containing dots),
                       or can be an identifier for the zone.
                     type: string
-                  docker:
-                    description: DockerConfig is the configuration for docker
-                    properties:
-                      authorizationPlugins:
-                        description: AuthorizationPlugins is a list of authorization
-                          plugins
-                        items:
-                          type: string
-                        type: array
-                      bridge:
-                        description: Bridge is the network interface containers should
-                          bind onto
-                        type: string
-                      bridgeIP:
-                        description: BridgeIP is a specific IP address and netmask
-                          for the docker0 bridge, using standard CIDR notation
-                        type: string
-                      dataRoot:
-                        description: DataRoot is the root directory of persistent
-                          docker state (default "/var/lib/docker")
-                        type: string
-                      defaultRuntime:
-                        description: DefaultRuntime is the default OCI runtime for
-                          containers (default "runc")
-                        type: string
-                      defaultUlimit:
-                        description: DefaultUlimit is the ulimits for containers
-                        items:
-                          type: string
-                        type: array
-                      dns:
-                        description: DNS is the IP address of the DNS server
-                        items:
-                          type: string
-                        type: array
-                      execOpt:
-                        description: ExecOpt is a series of options passed to the
-                          runtime
-                        items:
-                          type: string
-                        type: array
-                      execRoot:
-                        description: ExecRoot is the root directory for execution
-                          state files (default "/var/run/docker")
-                        type: string
-                      experimental:
-                        description: Experimental features permits enabling new features
-                          such as dockerd metrics
-                        type: boolean
-                      healthCheck:
-                        description: HealthCheck enables the periodic health-check
-                          service
-                        type: boolean
-                      hosts:
-                        description: Hosts enables you to configure the endpoints
-                          the docker daemon listens on i.e. tcp://0.0.0.0.2375 or
-                          unix:///var/run/docker.sock etc
-                        items:
-                          type: string
-                        type: array
-                      insecureRegistries:
-                        description: InsecureRegistries enables multiple insecure
-                          docker registry communications
-                        items:
-                          type: string
-                        type: array
-                      insecureRegistry:
-                        description: InsecureRegistry enable insecure registry communication
-                          @question according to dockers this a list??
-                        type: string
-                      ipMasq:
-                        description: IPMasq enables ip masquerading for containers
-                        type: boolean
-                      ipTables:
-                        description: IPtables enables addition of iptables rules
-                        type: boolean
-                      liveRestore:
-                        description: LiveRestore enables live restore of docker when
-                          containers are still running
-                        type: boolean
-                      logDriver:
-                        description: LogDriver is the default driver for container
-                          logs (default "json-file")
-                        type: string
-                      logLevel:
-                        description: LogLevel is the logging level ("debug", "info",
-                          "warn", "error", "fatal") (default "info")
-                        type: string
-                      logOpt:
-                        description: Logopt is a series of options given to the log
-                          driver options for containers
-                        items:
-                          type: string
-                        type: array
-                      maxConcurrentDownloads:
-                        description: MaxConcurrentDownloads sets the max concurrent
-                          downloads for each pull
-                        format: int32
-                        type: integer
-                      maxConcurrentUploads:
-                        description: MaxConcurrentUploads sets the max concurrent
-                          uploads for each push
-                        format: int32
-                        type: integer
-                      maxDownloadAttempts:
-                        description: MaxDownloadAttempts sets the max download attempts
-                          for each pull
-                        format: int32
-                        type: integer
-                      metricsAddress:
-                        description: Metrics address is the endpoint to serve with
-                          Prometheus format metrics
-                        type: string
-                      mtu:
-                        description: MTU is the containers network MTU
-                        format: int32
-                        type: integer
-                      packages:
-                        description: Packages overrides the URL and hash for the packages.
-                        properties:
-                          hashAmd64:
-                            description: HashAmd64 overrides the hash for the AMD64
-                              package.
-                            type: string
-                          hashArm64:
-                            description: HashArm64 overrides the hash for the ARM64
-                              package.
-                            type: string
-                          urlAmd64:
-                            description: UrlAmd64 overrides the URL for the AMD64
-                              package.
-                            type: string
-                          urlArm64:
-                            description: UrlArm64 overrides the URL for the ARM64
-                              package.
-                            type: string
-                        type: object
-                      registryMirrors:
-                        description: RegistryMirrors is a referred list of docker
-                          registry mirror
-                        items:
-                          type: string
-                        type: array
-                      runtimes:
-                        description: Runtimes registers an additional OCI compatible
-                          runtime (default [])
-                        items:
-                          type: string
-                        type: array
-                      selinuxEnabled:
-                        description: SelinuxEnabled enables SELinux support
-                        type: boolean
-                      skipInstall:
-                        description: SkipInstall when set to true will prevent kops
-                          from installing and modifying Docker in any way
-                        type: boolean
-                      storage:
-                        description: Storage is the docker storage driver to use
-                        type: string
-                      storageOpts:
-                        description: StorageOpts is a series of options passed to
-                          the storage driver
-                        items:
-                          type: string
-                        type: array
-                      userNamespaceRemap:
-                        description: UserNamespaceRemap sets the user namespace remapping
-                          option for the docker daemon
-                        type: string
-                      version:
-                        description: Version is consumed by the nodeup and used to
-                          pick the docker version
-                        type: string
-                    type: object
                   encryptionConfig:
                     description: EncryptionConfig controls if encryption is enabled
                     type: boolean
@@ -1897,7 +1825,7 @@ spec:
                             for an etcd heartbeat interval
                           type: string
                         image:
-                          description: Image is the etcd docker image to use. Setting
+                          description: Image is the etcd container image to use. Setting
                             this will ignore the Version specified.
                           type: string
                         leaderElectionTimeout:
@@ -2099,7 +2027,7 @@ spec:
                                 added to the hook
                               type: object
                             image:
-                              description: Image is the docker image
+                              description: Image is the container image.
                               type: string
                           type: object
                         manifest:
@@ -2217,6 +2145,12 @@ spec:
                     description: KubeAPIServerConfig defines the configuration for
                       the kube api
                     properties:
+                      additionalServiceAccountIssuers:
+                        description: AdditionalServiceAccountIssuers can contain additional
+                          service account token issuers.
+                        items:
+                          type: string
+                        type: array
                       address:
                         description: 'Address is the binding address for the kube
                           api: Deprecated - use insecure-bind-address and bind-address'
@@ -2346,6 +2280,11 @@ spec:
                           events asynchronously. Known modes are batch,blocking. (default
                           "batch")
                         type: string
+                      authenticationConfigFile:
+                        description: |-
+                          AuthenticationConfigFile is the location of the authentication-config
+                          this option is mutually exclusive with all OIDC options
+                        type: string
                       authenticationTokenWebhookCacheTtl:
                         description: The duration to cache responses from the webhook
                           token authenticator. Default is 2m. (default 2m0s)
@@ -2453,6 +2392,10 @@ spec:
                           in the 'kube-system' namespace to be used for TLS bootstrapping
                           authentication
                         type: boolean
+                      enableContentionProfiling:
+                        description: EnableContentionProfiling enables block profiling,
+                          if profiling is enabled
+                        type: boolean
                       enableProfiling:
                         description: EnableProfiling enables profiling via web interface
                           host:port/debug/pprof/
@@ -2508,7 +2451,7 @@ spec:
                         format: int32
                         type: integer
                       image:
-                        description: Image is the docker container used
+                        description: Image is the container image used.
                         type: string
                       insecureBindAddress:
                         description: InsecureBindAddress is the binding address for
@@ -2753,6 +2696,16 @@ spec:
                           to sync concurrently.
                         format: int32
                         type: integer
+                      concurrentHorizontalPodAustoscalerSyncs:
+                        description: The number of horizontal pod autoscaler objects
+                          that are allowed to sync concurrently (default 5).
+                        format: int32
+                        type: integer
+                      concurrentJobSyncs:
+                        description: The number of job objects that are allowed to
+                          sync concurrently (default 5).
+                        format: int32
+                        type: integer
                       concurrentNamespaceSyncs:
                         description: The number of namespace objects that are allowed
                           to sync concurrently.
@@ -2793,10 +2746,30 @@ spec:
                         items:
                           type: string
                         type: array
+                      cpuLimit:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: CPULimit, cpu limit compute resource for kube-controler-manager
+                          e.g. "500m"
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      cpuRequest:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: CPURequest, cpu request compute resource for
+                          kube-controler-manager. Defaults to "100m"
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
                       disableAttachDetachReconcileSync:
                         description: |-
                           DisableAttachDetachReconcileSync disables the reconcile sync loop in the attach-detach controller.
                           This can cause volumes to become mismatched with pods
+                        type: boolean
+                      enableContentionProfiling:
+                        description: EnableContentionProfiling enables block profiling,
+                          if profiling is enabled
                         type: boolean
                       enableLeaderMigration:
                         description: EnableLeaderMigration enables controller leader
@@ -2885,7 +2858,7 @@ spec:
                           should be used if support for custom metrics is enabled.
                         type: boolean
                       image:
-                        description: Image is the docker image to use
+                        description: Image is the container image to use.
                         type: string
                       kubeAPIBurst:
                         description: KubeAPIBurst Burst to use while talking with
@@ -2955,6 +2928,22 @@ spec:
                       master:
                         description: Master is the url for the kube api master
                         type: string
+                      memoryLimit:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: MemoryLimit, memory limit compute resource for
+                          kube-controler-manager e.g. "30Mi"
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      memoryRequest:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: MemoryRequest, memory request compute resource
+                          for kube-controler-manager e.g. "30Mi"
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
                       minResyncPeriod:
                         description: |-
                           MinResyncPeriod indicates the resync period in reflectors.
@@ -4032,7 +4021,7 @@ spec:
                               as a default upstream
                             type: boolean
                           image:
-                            description: Image overrides the default docker image
+                            description: Image overrides the default container image
                               used for node-local-dns addon.
                             type: string
                           localIP:
@@ -4248,6 +4237,26 @@ spec:
                           after the burst quota is exhausted
                         format: int32
                         type: integer
+                      cpuLimit:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: CPULimit, cpu limit compute resource for scheduler
+                          e.g. "500m"
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      cpuRequest:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: CPURequest, cpu request compute resource for
+                          scheduler. Defaults to "100m"
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      enableContentionProfiling:
+                        description: EnableContentionProfiling enables block profiling,
+                          if profiling is enabled
+                        type: boolean
                       enableProfiling:
                         description: EnableProfiling enables profiling via web interface
                           host:port/debug/pprof/
@@ -4259,8 +4268,21 @@ spec:
                           feature gates for alpha/experimental features.
                         type: object
                       image:
-                        description: Image is the docker image to use
+                        description: Image is the container image to use.
                         type: string
+                      kubeAPIBurst:
+                        description: KubeAPIBurst Burst to use while talking with
+                          kubernetes apiserver. (default 30)
+                        format: int32
+                        type: integer
+                      kubeAPIQPS:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: KubeAPIQPS QPS to use while talking with kubernetes
+                          apiserver. (default 20)
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
                       leaderElection:
                         description: LeaderElection defines the configuration of leader
                           election client.
@@ -4324,6 +4346,22 @@ spec:
                           as outlined: https://kubernetes.io/docs/concepts/storage/storage-limits/
                         format: int32
                         type: integer
+                      memoryLimit:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: MemoryLimit, memory limit compute resource for
+                          scheduler e.g. "30Mi"
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
+                      memoryRequest:
+                        anyOf:
+                        - type: integer
+                        - type: string
+                        description: MemoryRequest, memory request compute resource
+                          for scheduler e.g. "30Mi"
+                        pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
+                        x-kubernetes-int-or-string: true
                       qps:
                         anyOf:
                         - type: integer
@@ -4341,8 +4379,9 @@ spec:
                           private key for the TLS server certificate.
                         type: string
                       usePolicyConfigMap:
-                        description: UsePolicyConfigMap enable setting the scheduler
-                          policy from a configmap
+                        description: |-
+                          UsePolicyConfigMap enable setting the scheduler policy from a configmap
+                          Deprecated - use KubeSchedulerConfiguration instead
                         type: boolean
                     type: object
                   kubelet:
@@ -4437,10 +4476,6 @@ spec:
                         description: CpuManagerPolicy allows for changing the default
                           policy of None to static
                         type: string
-                      dockerDisableSharedPID:
-                        description: DockerDisableSharedPID uses a shared PID namespace
-                          for containers in a pod.
-                        type: boolean
                       enableCadvisorJsonEndpoints:
                         description: EnableCadvisorJsonEndpoints enables cAdvisor
                           json `/spec` and `/stats/*` endpoints. Defaults to False.
@@ -4550,6 +4585,16 @@ spec:
                           collect to.
                         format: int32
                         type: integer
+                      imageMaximumGCAge:
+                        description: |-
+                          imageMaximumGCAge is the maximum age an image can be unused before it is garbage collected.
+                          The default of this field is "0s", which disables this field--meaning images won't be garbage
+                          collected based on being unused for too long. Default: "0s" (disabled)
+                        type: string
+                      imageMinimumGCAge:
+                        description: 'imageMinimumGCAge is the minimum age for an
+                          unused image before it is garbage collected. Default: "2m"'
+                        type: string
                       imagePullProgressDeadline:
                         description: |-
                           ImagePullProgressDeadline is the timeout for image pulls
@@ -4715,11 +4760,8 @@ spec:
                           seccomp profiles.
                         type: string
                       serializeImagePulls:
-                        description: |-
-                          // SerializeImagePulls when enabled, tells the Kubelet to pull images one
-                          // at a time. We recommend *not* changing the default value on nodes that
-                          // run docker daemon with version  < 1.9 or an Aufs storage backend.
-                          // Issue #10959 has more details.
+                        description: SerializeImagePulls when enabled, tells the Kubelet
+                          to pull images one at a time.
                         type: boolean
                       shutdownGracePeriod:
                         description: |-
@@ -4802,7 +4844,7 @@ spec:
                         type: boolean
                       image:
                         description: |-
-                          Image is the docker container used.
+                          Image is the container image used.
                           Default: the latest supported image for the specified kubernetes version.
                         type: string
                       insecure:
@@ -4858,6 +4900,10 @@ spec:
                           initImage:
                             description: InitImage is the init container image name
                               to use.
+                            type: string
+                          networkPolicyAgentImage:
+                            description: NetworkPolicyAgentImage is the container
+                              image to use for the network policy agent
                             type: string
                         type: object
                       calico:
@@ -5298,6 +5344,41 @@ spec:
                               IdentityChangeGracePeriod specifies the duration to wait before using a changed identity.
                               Default: 5s
                             type: string
+                          ingress:
+                            description: Ingress specifies the configuration for Cilium
+                              Ingress settings.
+                            properties:
+                              defaultLoadBalancerMode:
+                                description: |-
+                                  DefaultLoadBalancerMode specifies the default load balancer mode.
+                                  Possible values: 'shared' or 'dedicated'
+                                  Default: dedicated
+                                type: string
+                              enableSecretsSync:
+                                description: |-
+                                  EnableSecretsSync specifies whether synchronization of secrets is enabled.
+                                  Default: true
+                                type: boolean
+                              enabled:
+                                description: Enabled specifies whether Cilium Ingress
+                                  is enabled.
+                                type: boolean
+                              enforceHttps:
+                                description: |-
+                                  EnforceHttps specifies whether HTTPS enforcement is enabled for Ingress traffic.
+                                  Default: true
+                                type: boolean
+                              loadBalancerAnnotationPrefixes:
+                                description: |-
+                                  LoadBalancerAnnotationPrefixes specifies annotation prefixes for Load Balancer configuration.
+                                  Default: "service.beta.kubernetes.io service.kubernetes.io cloud.google.com"
+                                type: string
+                              sharedLoadBalancerServiceName:
+                                description: |-
+                                  SharedLoadBalancerServiceName specifies the name of the shared load balancer service.
+                                  Default: cilium-ingress
+                                type: string
+                            type: object
                           installIptablesRules:
                             description: |-
                               InstallIptablesRules enables installing the base IPTables rules used for masquerading and kube-proxy.
@@ -5482,7 +5563,7 @@ spec:
                         type: string
                       nonMasqueradeCIDR:
                         description: |-
-                          NonMasqueradeCIDR is the CIDR for the internal k8s network (on which pods & services live)
+                          NonMasqueradeCIDR is the CIDR for the internal k8s network (for pod IPs)
                           It cannot overlap ServiceClusterIPRange
                         type: string
                       podCIDR:
@@ -5764,7 +5845,7 @@ spec:
                           Default: false
                         type: boolean
                       image:
-                        description: Image is the NodeProblemDetector docker container
+                        description: Image is the NodeProblemDetector container image
                           used.
                         type: string
                       memoryLimit:
@@ -5795,6 +5876,11 @@ spec:
                           The NTP configuration task is skipped if this is set to false.
                         type: boolean
                     type: object
+                  packages:
+                    description: Packages specifies additional packages to be installed.
+                    items:
+                      type: string
+                    type: array
                   rollingUpdate:
                     description: RollingUpdate defines the default rolling-update
                       settings for instance groups.
