@@ -363,7 +363,7 @@ func PrepareKopsCloudResources(ctx context.Context, kopsClientset simple.Clients
 	defer func() {
 		os.Stdout = stdout
 	}()
-	//os.Stdout = nil
+	os.Stdout = nil
 
 	if err := applyCmd.Run(ctx); err != nil {
 		return err
@@ -583,16 +583,13 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if r.DryRun {
 		cli, ok := ctx.Value(ClientKey{}).(client.Reader)
 		if !ok {
-			log.Info("failed to get kube client")
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, errors.New("failed to get kube reader client object")
 		}
 		kubeReader = cli
 		kcp, ok := ctx.Value(KCPKey{}).(controlplanev1alpha1.KopsControlPlane)
 		if !ok {
-			log.Info("failed to get kcp")
-			return ctrl.Result{}, nil
+			return ctrl.Result{}, errors.New("failed to get kcp object")
 		} else {
-			log.Info("got kcp")
 			kopsControlPlane = &kcp
 		}
 	} else {
