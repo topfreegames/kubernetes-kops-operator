@@ -43,7 +43,7 @@ func GetRegionFromKopsSubnet(subnet kopsapi.ClusterSubnetSpec) (*string, error) 
 }
 
 // GetKopsMachinePoolsWithLabel retrieve all KopsMachinePool with the given label
-func GetKopsMachinePoolsWithLabel(ctx context.Context, c client.Client, key, value string) ([]kinfrastructurev1alpha1.KopsMachinePool, error) {
+func GetKopsMachinePoolsWithLabel(ctx context.Context, c client.Reader, key, value string) ([]kinfrastructurev1alpha1.KopsMachinePool, error) {
 	var kmps []kinfrastructurev1alpha1.KopsMachinePool
 
 	if key == "" {
