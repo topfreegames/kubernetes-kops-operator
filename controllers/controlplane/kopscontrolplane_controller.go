@@ -94,11 +94,13 @@ type KopsControlPlaneReconciler struct {
 	ControllerClass                  string
 	Recorder                         record.EventRecorder
 	TfExecPath                       string
+	DryRun                           bool
 	GetKopsClientSetFactory          func(configBase string) (simple.Clientset, error)
 	BuildCloudFactory                func(*kopsapi.Cluster) (fi.Cloud, error)
 	PopulateClusterSpecFactory       func(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
 	PrepareKopsCloudResourcesFactory func(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, terraformOutputDir string, cloud fi.Cloud) error
 	ApplyTerraformFactory            func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error
+	PlanTerraformFactory             func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error
 	DestroyTerraformFactory          func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error
 	KopsDeleteResourcesFactory       func(ctx context.Context, log logr.Logger, cloud fi.Cloud, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error
 	ValidateKopsClusterFactory       func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
@@ -136,6 +138,9 @@ func GetClusterStatus(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.Cl
 }
 
 func (r *KopsControlPlaneReconciler) shouldDeleteCluster(kcp *controlplanev1alpha1.KopsControlPlane) bool {
+	if r.DryRun {
+		return false
+	}
 	if !kcp.ObjectMeta.DeletionTimestamp.IsZero() {
 		if kcp.Annotations[controlplanev1alpha1.ClusterDeleteProtectionAnnotation] == "true" {
 			r.Recorder.Eventf(kcp, corev1.EventTypeWarning, "ClusterDeleteProtectionEnabled", "cluster delete protection is enabled, skipping deletion")
@@ -371,7 +376,7 @@ func PrepareKopsCloudResources(ctx context.Context, kopsClientset simple.Clients
 	defer func() {
 		os.Stdout = stdout
 	}()
-	os.Stdout = nil
+	//os.Stdout = nil
 
 	// TODO: apply now also returns the apply results, we should explore that
 	_, err := applyCmd.Run(ctx)
@@ -589,8 +594,27 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	initTime := time.Now()
 	kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{}
-	if err := r.Get(ctx, req.NamespacedName, kopsControlPlane); err != nil {
-		return resultError, client.IgnoreNotFound(err)
+	var kubeReader client.Reader
+	if r.DryRun {
+		cli, ok := ctx.Value("client").(client.Reader)
+		if !ok {
+			log.Info("failed to get kube client")
+			return ctrl.Result{}, nil
+		}
+		kubeReader = cli
+		kcp, ok := ctx.Value("kcp").(controlplanev1alpha1.KopsControlPlane)
+		if !ok {
+			log.Info("failed to get kcp")
+			return ctrl.Result{}, nil
+		} else {
+			log.Info("got kcp")
+			kopsControlPlane = &kcp
+		}
+	} else {
+		kubeReader = r.Client
+		if err := r.Get(ctx, req.NamespacedName, kopsControlPlane); err != nil {
+			return resultError, client.IgnoreNotFound(err)
+		}
 	}
 
 	reconciler := &KopsControlPlaneReconciliation{
@@ -618,7 +642,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToGetClusterMetadata", "could not get cluster with metadata: %s", err)
 		return resultError, err
 	}
-
 	var kmps []infrastructurev1alpha1.KopsMachinePool
 
 	terraformOutputDir := fmt.Sprintf("/tmp/%s", owner.GetName())
@@ -658,7 +681,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 		}
 
-		if kopsControlPlane.Spec.TerraformConfig.CleanupTerraformDirectory {
+		if !r.DryRun && kopsControlPlane.Spec.TerraformConfig.CleanupTerraformDirectory {
 			err := utils.CleanupTerraformDirectory(terraformOutputDir)
 			if err != nil {
 				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedCleanupTerraformDirectory", "failed to cleanup terraform directory from cluster: %s", err)
@@ -677,7 +700,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 		reconciler.log.Info(fmt.Sprintf("finished reconcile loop for %s, took %s", kopsControlPlane.ObjectMeta.GetName(), time.Since(initTime)))
 	}()
-
 	if annotations.HasPaused(owner) {
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeNormal, "ClusterPaused", "reconciliation is paused since cluster %s is paused", owner.GetName())
 		kopsControlPlane.Status.Paused = true
@@ -686,13 +708,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	kopsControlPlane.Status.Paused = false
 	kopsControlPlane.Status.Ready = false
 
-	awsCredentials, err := utils.GetAWSCredentialsFromKopsControlPlaneSecret(ctx, r.Client, kopsControlPlane.Spec.IdentityRef.Name, kopsControlPlane.Spec.IdentityRef.Namespace)
+	awsCredentials, err := utils.GetAWSCredentialsFromKopsControlPlaneSecret(ctx, kubeReader, kopsControlPlane.Spec.IdentityRef.Name, kopsControlPlane.Spec.IdentityRef.Namespace)
 	if err != nil {
 		reconciler.log.Error(err, "failed to get AWS credentials")
 		return resultError, err
 	}
 	reconciler.awsCredentials = *awsCredentials
-
 	kopsCluster := &kopsapi.Cluster{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: owner.GetName(),
@@ -709,8 +730,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return resultError, fmt.Errorf("error parsing NonMasqueradeCIDR %q: %v", kopsCluster.Spec.Networking.NonMasqueradeCIDR, err)
 		}
 	}
-
-	kmps, err = kopsutils.GetKopsMachinePoolsWithLabel(ctx, reconciler.Client, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
+	kmps, err = kopsutils.GetKopsMachinePoolsWithLabel(ctx, kubeReader, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
 	if err != nil {
 		return resultError, err
 	}
@@ -799,7 +819,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	if !controllerutil.ContainsFinalizer(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneFinalizer) {
 		controllerutil.AddFinalizer(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneFinalizer)
 	}
-
 	reconciler.Mux.Lock()
 	shouldUnlock = true
 
@@ -876,19 +895,24 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	err = reconciler.createOrUpdateKopsCluster(ctx, kopsClientset, fullCluster, kopsControlPlane.Spec.SSHPublicKey, cloud)
-	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToManageKopsState", "failed to manage Kops state: %s", err)
-		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneStateReadyCondition, controlplanev1alpha1.KopsControlPlaneStateReconciliationFailedReason, clusterv1.ConditionSeverityError, "failed to create/update KopsCluster: %s", err.Error())
-		return resultError, err
-	}
-	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneStateReadyCondition)
+	// Only Apply resources if DryRun isn't set from command line
+	if r.DryRun {
 
-	err = reconciler.ReconcileKopsSecrets(ctx, kopsClientset, kopsCluster)
-	if err != nil {
-		conditions.MarkFalse(reconciler.kcp, controlplanev1alpha1.KopsControlPlaneSecretsReadyCondition, controlplanev1alpha1.KopsControlPlaneSecretsReconciliationFailedReason, clusterv1.ConditionSeverityWarning, "failed to reconcile KopsSecrets: %s", err.Error())
+	} else {
+		err = reconciler.createOrUpdateKopsCluster(ctx, kopsClientset, fullCluster, kopsControlPlane.Spec.SSHPublicKey, cloud)
+		if err != nil {
+			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToManageKopsState", "failed to manage Kops state: %s", err)
+			conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneStateReadyCondition, controlplanev1alpha1.KopsControlPlaneStateReconciliationFailedReason, clusterv1.ConditionSeverityError, "failed to create/update KopsCluster: %s", err.Error())
+			return resultError, err
+		}
+		conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsControlPlaneStateReadyCondition)
+
+		err = reconciler.ReconcileKopsSecrets(ctx, kopsClientset, kopsCluster)
+		if err != nil {
+			conditions.MarkFalse(reconciler.kcp, controlplanev1alpha1.KopsControlPlaneSecretsReadyCondition, controlplanev1alpha1.KopsControlPlaneSecretsReconciliationFailedReason, clusterv1.ConditionSeverityWarning, "failed to reconcile KopsSecrets: %s", err.Error())
+		}
+		conditions.MarkTrue(reconciler.kcp, controlplanev1alpha1.KopsControlPlaneSecretsReadyCondition)
 	}
-	conditions.MarkTrue(reconciler.kcp, controlplanev1alpha1.KopsControlPlaneSecretsReadyCondition)
 
 	var shouldIgnoreSG bool
 	if _, ok := owner.GetAnnotations()["kopscontrolplane.controlplane.wildlife.io/external-security-groups"]; ok {
@@ -911,57 +935,67 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	// TODO: This is needed because we are using a method from kops lib
-	// we should check alternatives
-	kubeConfig, err := utils.GetKubeconfigFromKopsState(ctx, kopsCluster, kopsClientset)
-	if err != nil {
-		return resultError, err
-	}
-
-	err = reconciler.reconcileKubeconfig(ctx, kubeConfig, kopsCluster, owner)
-	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToReconcileKubeconfig", "failed to reconcile kubeconfig: %s", err)
-		return resultError, err
-	}
-
-	reconciler.Mux.Unlock()
-	shouldUnlock = false
-
-	reconciler.log.Info(fmt.Sprintf("applying Terraform for %s", kopsControlPlane.ObjectMeta.GetName()))
-
-	err = reconciler.ApplyTerraformFactory(ctx, terraformOutputDir, r.TfExecPath, reconciler.awsCredentials)
-	if err != nil {
-		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition, controlplanev1alpha1.TerraformApplyReconciliationFailedReason, clusterv1.ConditionSeverityError, "failed to apply Terraform: %s", err.Error())
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToApplyTerraform", "failed to apply terraform: %s", err)
-		return resultError, err
-	}
-	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition)
-
-	reconciler.log.Info(fmt.Sprintf("Terraform applied for %s", kopsControlPlane.ObjectMeta.GetName()))
-	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "TerraformApplied", "Terraform applied")
-
-	err = reconciler.updateKopsMachinePoolWithProviderIDList(kopsControlPlane, kmps, &reconciler.awsCredentials)
-	if err != nil {
-		if apierrors.IsNotFound(err) {
-			return requeue1min, nil
+	// Only Apply resources if DryRun isn't set from command line
+	if r.DryRun {
+		reconciler.log.Info(fmt.Sprintf("planning Terraform for %s", kopsControlPlane.ObjectMeta.GetName()))
+		err = reconciler.PlanTerraformFactory(ctx, terraformOutputDir, r.TfExecPath, reconciler.awsCredentials)
+		if err != nil {
+			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToPlanTerraform", "failed to plan terraform: %s", err)
+			return resultError, err
 		}
-		return resultError, err
-	}
+	} else {
+		// TODO: This is needed because we are using a method from kops lib
+		// we should check alternatives
+		kubeConfig, err := utils.GetKubeconfigFromKopsState(ctx, kopsCluster, kopsClientset)
+		if err != nil {
+			return resultError, err
+		}
 
-	igList, err := kopsClientset.InstanceGroupsFor(kopsCluster).List(ctx, metav1.ListOptions{})
-	if err != nil || len(igList.Items) == 0 {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToGetIGs", "cannot get InstanceGroups: %s", err)
-		return resultError, fmt.Errorf("cannot get InstanceGroups for %q: %w", kopsCluster.ObjectMeta.Name, err)
-	}
+		err = reconciler.reconcileKubeconfig(ctx, kubeConfig, kopsCluster, owner)
+		if err != nil {
+			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToReconcileKubeconfig", "failed to reconcile kubeconfig: %s", err)
+			return resultError, err
+		}
 
-	val, err := reconciler.ValidateKopsClusterFactory(kubeConfig, kopsCluster, cloud, igList)
-	if err != nil {
-		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToValidateKubernetesCluster", "failed trying to validate Kubernetes cluster: %v", err)
-		return resultError, err
-	}
+		reconciler.Mux.Unlock()
+		shouldUnlock = false
 
-	kopsControlPlane.Status.Ready = utils.KopsClusterValidation(kopsControlPlane, r.Recorder, reconciler.log, val)
-	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ClusterReconciliationFinished", "cluster reconciliation finished")
+		reconciler.log.Info(fmt.Sprintf("applying Terraform for %s", kopsControlPlane.ObjectMeta.GetName()))
+
+		err = reconciler.ApplyTerraformFactory(ctx, terraformOutputDir, r.TfExecPath, reconciler.awsCredentials)
+		if err != nil {
+			conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition, controlplanev1alpha1.TerraformApplyReconciliationFailedReason, clusterv1.ConditionSeverityError, "failed to apply Terraform: %s", err.Error())
+			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToApplyTerraform", "failed to apply terraform: %s", err)
+			return resultError, err
+		}
+		conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition)
+
+		reconciler.log.Info(fmt.Sprintf("Terraform applied for %s", kopsControlPlane.ObjectMeta.GetName()))
+		reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "TerraformApplied", "Terraform applied")
+
+		err = reconciler.updateKopsMachinePoolWithProviderIDList(kopsControlPlane, kmps, &reconciler.awsCredentials)
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return requeue1min, nil
+			}
+			return resultError, err
+		}
+
+		igList, err := kopsClientset.InstanceGroupsFor(kopsCluster).List(ctx, metav1.ListOptions{})
+		if err != nil || len(igList.Items) == 0 {
+			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToGetIGs", "cannot get InstanceGroups: %s", err)
+			return resultError, fmt.Errorf("cannot get InstanceGroups for %q: %w", kopsCluster.ObjectMeta.Name, err)
+		}
+
+		val, err := reconciler.ValidateKopsClusterFactory(kubeConfig, kopsCluster, cloud, igList)
+		if err != nil {
+			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToValidateKubernetesCluster", "failed trying to validate Kubernetes cluster: %v", err)
+			return resultError, err
+		}
+
+		kopsControlPlane.Status.Ready = utils.KopsClusterValidation(kopsControlPlane, r.Recorder, reconciler.log, val)
+		reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ClusterReconciliationFinished", "cluster reconciliation finished")
+	}
 	return resultDefault, nil
 }
 
