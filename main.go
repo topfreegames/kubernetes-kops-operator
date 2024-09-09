@@ -201,7 +201,7 @@ func main() {
 		for _, kcp := range controlPlanes.Items {
 			if kcp.Spec.ControllerClass == controllerClass {
 				setupLog.Info("Starting plan for Kops Control Plane " + kcp.Name)
-				_, err := controller.Reconcile(context.WithValue(context.WithValue(ctx, "client", mgr.GetAPIReader()), "kcp", kcp), ctrl.Request{})
+				_, err := controller.Reconcile(context.WithValue(context.WithValue(ctx, controlplane.ClientKey{}, mgr.GetAPIReader()), controlplane.KCPKey{}, kcp), ctrl.Request{})
 				if err != nil {
 					setupLog.Error(err, "Error rendering plan for "+kcp.Name)
 					os.Exit(1)
