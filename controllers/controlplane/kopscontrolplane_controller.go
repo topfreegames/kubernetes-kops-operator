@@ -116,6 +116,9 @@ type KopsControlPlaneReconciliation struct {
 	kcp            *controlplanev1alpha1.KopsControlPlane
 }
 
+type KCPKey struct{}
+type ClientKey struct{}
+
 func init() {
 	// Set kops lib verbosity to ERROR
 	var log logr.Logger
@@ -596,13 +599,13 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	kopsControlPlane := &controlplanev1alpha1.KopsControlPlane{}
 	var kubeReader client.Reader
 	if r.DryRun {
-		cli, ok := ctx.Value("client").(client.Reader)
+		cli, ok := ctx.Value(ClientKey{}).(client.Reader)
 		if !ok {
 			log.Info("failed to get kube client")
 			return ctrl.Result{}, nil
 		}
 		kubeReader = cli
-		kcp, ok := ctx.Value("kcp").(controlplanev1alpha1.KopsControlPlane)
+		kcp, ok := ctx.Value(KCPKey{}).(controlplanev1alpha1.KopsControlPlane)
 		if !ok {
 			log.Info("failed to get kcp")
 			return ctrl.Result{}, nil

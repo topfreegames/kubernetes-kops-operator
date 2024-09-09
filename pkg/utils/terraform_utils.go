@@ -112,9 +112,9 @@ func PlanTerraform(ctx context.Context, workingDir, terraformExecPath string, cr
 	// For some unknown reason (as of this writing) the generated terraform managed files have empty strings for
 	// server_side_encryption and acl properties, which causes an error. These aren't really needed for this hacks cleans them out
 	editor, _ := hcledit.ReadFile(workingDir + "/kubernetes.tf")
-	editor.Delete("resource.aws_s3_object.*.acl")
-	editor.Delete("resource.aws_s3_object.*.server_side_encryption")
-	editor.OverWriteFile()
+	_ = editor.Delete("resource.aws_s3_object.*.acl")
+	_ = editor.Delete("resource.aws_s3_object.*.server_side_encryption")
+	_ = editor.OverWriteFile()
 
 	tf, err := initTerraform(ctx, workingDir, terraformExecPath, credentials)
 	if err != nil {
