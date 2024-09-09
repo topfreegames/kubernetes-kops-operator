@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -68,12 +69,14 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var controllerClass string
+	var dryRun bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&controllerClass, "controller-class", "", "The name of the controller class to associate with the controller.")
+	flag.BoolVar(&dryRun, "dry-run", false, "The address the metric endpoint binds to.")
 
 	opts := zap.Options{
 		Development: true,
@@ -102,7 +105,7 @@ func main() {
 	// Setup the context that's going to be used in controllers and for the manager.
 	ctx := ctrl.SetupSignalHandler()
 
-	const tfVersion = "1.3.4"
+	const tfVersion = "1.5.7"
 
 	tfPath := fmt.Sprintf("/tmp/%s_%s", product.Terraform.Name, tfVersion)
 
@@ -143,24 +146,28 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controlplane.KopsControlPlaneReconciler{
+	controller := &controlplane.KopsControlPlaneReconciler{
 		Client:                           mgr.GetClient(),
 		Scheme:                           mgr.GetScheme(),
 		ControllerClass:                  controllerClass,
 		Mux:                              new(sync.Mutex),
 		Recorder:                         mgr.GetEventRecorderFor("kopscontrolplane-controller"),
 		TfExecPath:                       tfExecPath,
+		DryRun:                           dryRun,
 		GetKopsClientSetFactory:          utils.GetKopsClientset,
 		BuildCloudFactory:                utils.BuildCloud,
 		PopulateClusterSpecFactory:       controlplane.PopulateClusterSpec,
 		PrepareKopsCloudResourcesFactory: controlplane.PrepareKopsCloudResources,
 		DestroyTerraformFactory:          utils.DestroyTerraform,
 		ApplyTerraformFactory:            utils.ApplyTerraform,
+		PlanTerraformFactory:             utils.PlanTerraform,
 		KopsDeleteResourcesFactory:       utils.KopsDeleteResources,
 		ValidateKopsClusterFactory:       utils.ValidateKopsCluster,
 		GetClusterStatusFactory:          controlplane.GetClusterStatus,
 		GetASGByNameFactory:              controlplane.GetASGByName,
-	}).SetupWithManager(ctx, mgr, workers); err != nil {
+	}
+
+	if err = controller.SetupWithManager(ctx, mgr, workers); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsControlPlane")
 		os.Exit(1)
 	}
@@ -175,9 +182,33 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager")
-	if err := mgr.Start(ctx); err != nil {
-		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
+	if !dryRun {
+		setupLog.Info("starting manager")
+		if err := mgr.Start(ctx); err != nil {
+			setupLog.Error(err, "problem running manager")
+			os.Exit(1)
+		}
+	} else {
+
+		setupLog.Info("Starting Plan for controller class " + controllerClass)
+		controlPlanes := &controlplanev1alpha1.KopsControlPlaneList{}
+		err := mgr.GetAPIReader().List(ctx, controlPlanes)
+		if err != nil {
+			setupLog.Error(err, "Error listing Kops Control Planes")
+			os.Exit(1)
+		}
+
+		for _, kcp := range controlPlanes.Items {
+			if kcp.Spec.ControllerClass == controllerClass {
+				setupLog.Info("Starting plan for Kops Control Plane " + kcp.Name)
+				_, err := controller.Reconcile(context.WithValue(context.WithValue(ctx, "client", mgr.GetAPIReader()), "kcp", kcp), ctrl.Request{})
+				if err != nil {
+					setupLog.Error(err, "Error rendering plan for "+kcp.Name)
+					os.Exit(1)
+				}
+
+			}
+
+		}
 	}
 }

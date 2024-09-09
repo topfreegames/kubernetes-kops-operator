@@ -73,7 +73,7 @@ func SetEnvVarsFromAWSCredentials(awsConfig aws.Credentials) error {
 	return nil
 }
 
-func GetAWSCredentialsFromKopsControlPlaneSecret(ctx context.Context, c client.Client, secretName, namespace string) (*aws.Credentials, error) {
+func GetAWSCredentialsFromKopsControlPlaneSecret(ctx context.Context, c client.Reader, secretName, namespace string) (*aws.Credentials, error) {
 	secret := &corev1.Secret{}
 	key := client.ObjectKey{
 		Namespace: namespace,

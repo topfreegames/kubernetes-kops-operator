@@ -11,6 +11,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/hashicorp/terraform-exec/tfexec"
+	"go.mercari.io/hcledit"
 )
 
 type Template struct {
@@ -97,6 +98,29 @@ func ApplyTerraform(ctx context.Context, workingDir, terraformExecPath string, c
 	}
 
 	err = tf.Apply(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// PlanTerraform just applies the already created terraform files
+func PlanTerraform(ctx context.Context, workingDir, terraformExecPath string, credentials aws.Credentials) error {
+
+	// For some unknown reason (as of this writing) the generated terraform managed files have empty strings for
+	// server_side_encryption and acl properties, which causes an error. These aren't really needed for this hacks cleans them out
+	editor, _ := hcledit.ReadFile(workingDir + "/kubernetes.tf")
+	editor.Delete("resource.aws_s3_object.*.acl")
+	editor.Delete("resource.aws_s3_object.*.server_side_encryption")
+	editor.OverWriteFile()
+
+	tf, err := initTerraform(ctx, workingDir, terraformExecPath, credentials)
+	if err != nil {
+		return err
+	}
+
+	_, err = tf.Plan(ctx, tfexec.Out(workingDir+"/plan.out"))
 	if err != nil {
 		return err
 	}
