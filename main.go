@@ -198,10 +198,18 @@ func main() {
 			os.Exit(1)
 		}
 
+		// Pass the APIReader to the reconcile function when in dry-run mode
+		// This is required because when the controller isn't started we can't use the full client due to uninitialized cache
+		ctx = context.WithValue(ctx, controlplane.ClientKey{}, mgr.GetAPIReader())
+
 		for _, kcp := range controlPlanes.Items {
 			if kcp.Spec.ControllerClass == controllerClass {
 				setupLog.Info("Starting plan for Kops Control Plane " + kcp.Name)
-				_, err := controller.Reconcile(context.WithValue(context.WithValue(ctx, controlplane.ClientKey{}, mgr.GetAPIReader()), controlplane.KCPKey{}, kcp), ctrl.Request{})
+
+				// Add the KopsControlPlane object to the context being passed to the reconcile function, in order to avoid a duplicate read
+				newContext := context.WithValue(ctx, controlplane.KCPKey{}, kcp)
+
+				_, err := controller.Reconcile(newContext, ctrl.Request{})
 				if err != nil {
 					setupLog.Error(err, "Error rendering plan for "+kcp.Name)
 					os.Exit(1)
