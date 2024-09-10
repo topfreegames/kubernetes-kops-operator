@@ -682,7 +682,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 		reconciler.log.Info(fmt.Sprintf("finished reconcile loop for %s, took %s", kopsControlPlane.ObjectMeta.GetName(), time.Since(initTime)))
 	}()
-	if annotations.HasPaused(owner) {
+	if !r.DryRun && annotations.HasPaused(owner) {
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeNormal, "ClusterPaused", "reconciliation is paused since cluster %s is paused", owner.GetName())
 		kopsControlPlane.Status.Paused = true
 		return resultDefault, nil
