@@ -13,6 +13,8 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
+	karpenterv1beta1 "sigs.k8s.io/karpenter/pkg/apis/v1beta1"
+
 	"sync"
 	"testing"
 	"time"
@@ -20,10 +22,10 @@ import (
 	expv1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/karpenter-core/pkg/apis/v1alpha5"
+	karpenterv1alpha5 "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	karpenterv1beta1 "sigs.k8s.io/karpenter/pkg/apis/v1beta1"
+	karpenterv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
 
 	asgTypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
@@ -1894,6 +1896,7 @@ func TestGetRegionBySubnet(t *testing.T) {
 func TestPrepareCustomCloudResources(t *testing.T) {
 	var testCases = []struct {
 		description              string
+		kopsClusterFunction      func(*kopsapi.Cluster) *kopsapi.Cluster
 		kopsMachinePoolFunction  func(*infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool
 		karpenterResourcesOutput string
 		spotInstEnabled          bool
@@ -1904,7 +1907,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
 					"kops.k8s.io/instance-group-role": "Node",
 				}
-				kmp.Spec.KarpenterProvisioners = []v1alpha5.Provisioner{
+				kmp.Spec.KarpenterProvisioners = []karpenterv1alpha5.Provisioner{
 					{
 						TypeMeta: metav1.TypeMeta{
 							Kind:       "Provisioner",
@@ -1913,11 +1916,11 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test-provisioner",
 						},
-						Spec: v1alpha5.ProvisionerSpec{
-							Consolidation: &v1alpha5.Consolidation{
+						Spec: karpenterv1alpha5.ProvisionerSpec{
+							Consolidation: &karpenterv1alpha5.Consolidation{
 								Enabled: aws.Bool(true),
 							},
-							KubeletConfiguration: &v1alpha5.KubeletConfiguration{
+							KubeletConfiguration: &karpenterv1alpha5.KubeletConfiguration{
 								KubeReserved: corev1.ResourceList{
 									corev1.ResourceCPU:              resource.MustParse("150m"),
 									corev1.ResourceMemory:           resource.MustParse("150Mi"),
@@ -1937,7 +1940,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 								"kops.k8s.io/instancegroup":       kmp.Name,
 								"kops.k8s.io/managed-by":          "kops-controller",
 							},
-							Provider: &v1alpha5.Provider{
+							Provider: &karpenterv1alpha5.Provider{
 								Raw: []byte("{\"launchTemplate\":\"" + kmp.Name + "." + helpers.GetFQDN("test-cluster") + "\",\"subnetSelector\":{\"kops.k8s.io/instance-group/" + kmp.Name + "\":\"*\",\"kubernetes.io/cluster/" + helpers.GetFQDN("test-cluster") + "\":\"*\"}}"),
 							},
 							Requirements: []corev1.NodeSelectorRequirement{
@@ -2066,26 +2069,51 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			karpenterResourcesOutput: "karpenter_resource_output_node_pool.yaml",
 		},
 		{
-			description: "Should generate files based on template with one NodePool and one Provisioner",
+			description: "Should generate files based on template with one NodePool v1",
+			kopsClusterFunction: func(kopsCluster *kopsapi.Cluster) *kopsapi.Cluster {
+				kopsCluster.Spec.Kubelet = &kopsapi.KubeletConfigSpec{
+					KubeReserved: map[string]string{
+						"cpu":               "150m",
+						"memory":            "150Mi",
+						"ephemeral-storage": "1Gi",
+					},
+					SystemReserved: map[string]string{
+						"cpu":               "150m",
+						"memory":            "200Mi",
+						"ephemeral-storage": "1Gi",
+					},
+				}
+				return kopsCluster
+			},
 			kopsMachinePoolFunction: func(kmp *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
 				kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
 					"kops.k8s.io/instance-group-role": "Node",
 				}
-				kmp.Spec.KarpenterNodePools = []karpenterv1beta1.NodePool{
+				kmp.Spec.KarpenterNodePoolsV1 = []karpenterv1.NodePool{
 					{
 						TypeMeta: metav1.TypeMeta{
 							Kind:       "NodePool",
-							APIVersion: "karpenter.sh/v1beta1",
+							APIVersion: "karpenter.sh/v1",
 						},
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test-node-pool",
 						},
-						Spec: karpenterv1beta1.NodePoolSpec{
-							Disruption: karpenterv1beta1.Disruption{
-								ConsolidationPolicy: karpenterv1beta1.ConsolidationPolicyWhenUnderutilized,
+						Spec: karpenterv1.NodePoolSpec{
+							Disruption: karpenterv1.Disruption{
+								Budgets: []karpenterv1.Budget{
+									{
+										Nodes: "10%",
+									},
+									{
+										Nodes:    "0",
+										Schedule: helpers.StringPtr("0 * * * *"),
+										Duration: &metav1.Duration{Duration: 40 * time.Minute},
+									},
+								},
+								ConsolidationPolicy: karpenterv1.ConsolidationPolicyWhenEmptyOrUnderutilized,
 							},
-							Template: karpenterv1beta1.NodeClaimTemplate{
-								ObjectMeta: karpenterv1beta1.ObjectMeta{
+							Template: karpenterv1.NodeClaimTemplate{
+								ObjectMeta: karpenterv1.ObjectMeta{
 									Labels: map[string]string{
 										"kops.k8s.io/cluster":             helpers.GetFQDN("test-cluster"),
 										"kops.k8s.io/cluster-name":        helpers.GetFQDN("test-cluster"),
@@ -2095,23 +2123,13 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 										"kops.k8s.io/managed-by":          "kops-controller",
 									},
 								},
-								Spec: karpenterv1beta1.NodeClaimSpec{
-									Kubelet: &karpenterv1beta1.KubeletConfiguration{
-										KubeReserved: map[string]string{
-											"cpu":               "150m",
-											"memory":            "150Mi",
-											"ephemeral-storage": "1Gi",
-										},
-										SystemReserved: map[string]string{
-											"cpu":               "150m",
-											"memory":            "200Mi",
-											"ephemeral-storage": "1Gi",
-										},
+								Spec: karpenterv1.NodeClaimTemplateSpec{
+									NodeClassRef: &karpenterv1.NodeClassReference{
+										Kind:  "EC2NodeClass",
+										Group: "karpenter.k8s.aws",
+										Name:  "test-ig",
 									},
-									NodeClassRef: &karpenterv1beta1.NodeClassReference{
-										Name: "test-ig",
-									},
-									Requirements: []karpenterv1beta1.NodeSelectorRequirementWithMinValues{
+									Requirements: []karpenterv1.NodeSelectorRequirementWithMinValues{
 										{
 											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
 												Key:      "kubernetes.io/arch",
@@ -2146,7 +2164,107 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 						},
 					},
 				}
-				kmp.Spec.KarpenterProvisioners = []v1alpha5.Provisioner{
+				return kmp
+			},
+			karpenterResourcesOutput: "karpenter_resource_output_node_pool_v1.yaml",
+		},
+		{
+			description: "Should generate files based on template with one NodePool V1 and one Provisioner",
+			kopsClusterFunction: func(kopsCluster *kopsapi.Cluster) *kopsapi.Cluster {
+				kopsCluster.Spec.Kubelet = &kopsapi.KubeletConfigSpec{
+					KubeReserved: map[string]string{
+						"cpu":               "150m",
+						"memory":            "150Mi",
+						"ephemeral-storage": "1Gi",
+					},
+					SystemReserved: map[string]string{
+						"cpu":               "150m",
+						"memory":            "200Mi",
+						"ephemeral-storage": "1Gi",
+					},
+				}
+				return kopsCluster
+			},
+			kopsMachinePoolFunction: func(kmp *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
+				kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
+					"kops.k8s.io/instance-group-role": "Node",
+				}
+				kmp.Spec.KarpenterNodePoolsV1 = []karpenterv1.NodePool{
+					{
+						TypeMeta: metav1.TypeMeta{
+							Kind:       "NodePool",
+							APIVersion: "karpenter.sh/v1",
+						},
+						ObjectMeta: metav1.ObjectMeta{
+							Name: "test-node-pool",
+						},
+						Spec: karpenterv1.NodePoolSpec{
+							Disruption: karpenterv1.Disruption{
+								Budgets: []karpenterv1.Budget{
+									{
+										Nodes: "10%",
+									},
+									{
+										Nodes:    "0",
+										Schedule: helpers.StringPtr("0 * * * *"),
+										Duration: &metav1.Duration{Duration: 40 * time.Minute},
+									},
+								},
+								ConsolidationPolicy: karpenterv1.ConsolidationPolicyWhenEmptyOrUnderutilized,
+							},
+							Template: karpenterv1.NodeClaimTemplate{
+								ObjectMeta: karpenterv1.ObjectMeta{
+									Labels: map[string]string{
+										"kops.k8s.io/cluster":             helpers.GetFQDN("test-cluster"),
+										"kops.k8s.io/cluster-name":        helpers.GetFQDN("test-cluster"),
+										"kops.k8s.io/instance-group-name": kmp.Name,
+										"kops.k8s.io/instance-group-role": "Node",
+										"kops.k8s.io/instancegroup":       kmp.Name,
+										"kops.k8s.io/managed-by":          "kops-controller",
+									},
+								},
+								Spec: karpenterv1.NodeClaimTemplateSpec{
+									NodeClassRef: &karpenterv1.NodeClassReference{
+										Kind:  "EC2NodeClass",
+										Group: "karpenter.k8s.aws",
+										Name:  "test-ig",
+									},
+									Requirements: []karpenterv1.NodeSelectorRequirementWithMinValues{
+										{
+											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
+												Key:      "kubernetes.io/arch",
+												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+												Values:   []string{"amd64"},
+											},
+										},
+										{
+
+											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
+												Key:      "kubernetes.io/os",
+												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+												Values:   []string{"linux"},
+											},
+										},
+										{
+											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
+												Key:      "node.kubernetes.io/instance-type",
+												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+												Values:   []string{"m5.large"},
+											},
+										},
+									},
+									StartupTaints: []corev1.Taint{
+										{
+											Key:    "node.cloudprovider.kubernetes.io/uninitialized",
+											Effect: corev1.TaintEffect(corev1.TaintEffectNoSchedule),
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+				kmp.Spec.KarpenterProvisioners = []karpenterv1alpha5.Provisioner{
 					{
 						TypeMeta: metav1.TypeMeta{
 							Kind:       "Provisioner",
@@ -2155,11 +2273,11 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test-provisioner",
 						},
-						Spec: v1alpha5.ProvisionerSpec{
-							Consolidation: &v1alpha5.Consolidation{
+						Spec: karpenterv1alpha5.ProvisionerSpec{
+							Consolidation: &karpenterv1alpha5.Consolidation{
 								Enabled: aws.Bool(true),
 							},
-							KubeletConfiguration: &v1alpha5.KubeletConfiguration{
+							KubeletConfiguration: &karpenterv1alpha5.KubeletConfiguration{
 								KubeReserved: corev1.ResourceList{
 									corev1.ResourceCPU:              resource.MustParse("150m"),
 									corev1.ResourceMemory:           resource.MustParse("150Mi"),
@@ -2179,7 +2297,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 								"kops.k8s.io/instancegroup":       kmp.Name,
 								"kops.k8s.io/managed-by":          "kops-controller",
 							},
-							Provider: &v1alpha5.Provider{
+							Provider: &karpenterv1alpha5.Provider{
 								Raw: []byte("{\"launchTemplate\":\"" + kmp.Name + "." + helpers.GetFQDN("test-cluster") + "\",\"subnetSelector\":{\"kops.k8s.io/instance-group/" + kmp.Name + "\":\"*\",\"kubernetes.io/cluster/" + helpers.GetFQDN("test-cluster") + "\":\"*\"}}"),
 							},
 							Requirements: []corev1.NodeSelectorRequirement{
@@ -2218,7 +2336,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
 					"kops.k8s.io/instance-group-role": "Node",
 				}
-				kmp.Spec.KarpenterProvisioners = []v1alpha5.Provisioner{
+				kmp.Spec.KarpenterProvisioners = []karpenterv1alpha5.Provisioner{
 					{
 						TypeMeta: metav1.TypeMeta{
 							Kind:       "Provisioner",
@@ -2227,11 +2345,11 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 						ObjectMeta: metav1.ObjectMeta{
 							Name: "test-provisioner",
 						},
-						Spec: v1alpha5.ProvisionerSpec{
-							Consolidation: &v1alpha5.Consolidation{
+						Spec: karpenterv1alpha5.ProvisionerSpec{
+							Consolidation: &karpenterv1alpha5.Consolidation{
 								Enabled: aws.Bool(true),
 							},
-							KubeletConfiguration: &v1alpha5.KubeletConfiguration{
+							KubeletConfiguration: &karpenterv1alpha5.KubeletConfiguration{
 								KubeReserved: corev1.ResourceList{
 									corev1.ResourceCPU:              resource.MustParse("150m"),
 									corev1.ResourceMemory:           resource.MustParse("150Mi"),
@@ -2251,7 +2369,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 								"kops.k8s.io/instancegroup":       kmp.Name,
 								"kops.k8s.io/managed-by":          "kops-controller",
 							},
-							Provider: &v1alpha5.Provider{
+							Provider: &karpenterv1alpha5.Provider{
 								Raw: []byte("{\"launchTemplate\":\"" + kmp.Name + "." + helpers.GetFQDN("test-cluster") + "\",\"subnetSelector\":{\"kops.k8s.io/instance-group/" + kmp.Name + "\":\"*\",\"kubernetes.io/cluster/" + helpers.GetFQDN("test-cluster") + "\":\"*\"}}"),
 							},
 							Requirements: []corev1.NodeSelectorRequirement{
@@ -2297,6 +2415,9 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			vfs.Context.ResetMemfsContext(true)
 			bareKopsCluster := helpers.NewKopsCluster("test-cluster")
 			kopsCluster, err := fakeKopsClientset.CreateCluster(ctx, bareKopsCluster)
+			if tc.kopsClusterFunction != nil {
+				kopsCluster = tc.kopsClusterFunction(kopsCluster)
+			}
 			kmp := helpers.NewKopsMachinePool("test-ig", metav1.NamespaceDefault, "test-cluster")
 			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(kopsCluster).NotTo(BeNil())
@@ -2317,7 +2438,10 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
 			templateTestDir := "../../utils/templates/tests"
 
-			err = os.WriteFile(terraformOutputDir+"/data/aws_launch_template_"+kmp.Name+"."+kopsCluster.Name+"_user_data", []byte("dummy content"), 0644)
+			dataDummyContent, err := os.ReadFile(templateTestDir + "/data/dummy_data")
+			g.Expect(err).NotTo(HaveOccurred())
+
+			err = os.WriteFile(terraformOutputDir+"/data/aws_launch_template_"+kmp.Name+"."+kopsCluster.Name+"_user_data", []byte(dataDummyContent), 0644)
 			g.Expect(err).NotTo(HaveOccurred())
 
 			reconciler := &KopsControlPlaneReconciler{}
