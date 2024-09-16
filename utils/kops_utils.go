@@ -366,20 +366,3 @@ func GetUserDataFromTerraformFile(clusterName, igName, terraformOutputDir string
 	}
 	return string(userData), nil
 }
-
-func EnableAutoPublicIPAssignToPublicSubnets(kopsSubnets []kopsapi.ClusterSubnetSpec, clusterName, terraformOutputDir string) error {
-	publicSubnets := []Subnet{}
-	for _, subnet := range kopsSubnets {
-		if subnet.Type == kopsapi.SubnetTypePublic || subnet.Type == kopsapi.SubnetTypeUtility {
-			publicSubnets = append(publicSubnets, Subnet{
-				Name:        subnet.Name,
-				ClusterName: clusterName,
-			})
-		}
-	}
-	err := CreateTerraformFilesFromTemplate("templates/subnet_auto_assign_ipv4_override.tf.tpl", "subnet_auto_assign_ipv4_override.tf", terraformOutputDir, publicSubnets)
-	if err != nil {
-		return err
-	}
-	return nil
-}
