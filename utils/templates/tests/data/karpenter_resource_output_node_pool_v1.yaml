@@ -6,7 +6,7 @@ metadata:
   name: placeholder-karpenter-resources
   namespace: kube-system
 ---
-apiVersion: karpenter.sh/v1beta1
+apiVersion: karpenter.sh/v1
 kind: NodePool
 metadata:
   creationTimestamp: null
@@ -20,8 +20,8 @@ spec:
     - duration: 40m0s
       nodes: "0"
       schedule: 0 * * * *
-    consolidationPolicy: WhenUnderutilized
-    expireAfter: Never
+    consolidateAfter: Never
+    consolidationPolicy: WhenEmptyOrUnderutilized
   template:
     metadata:
       labels:
@@ -32,16 +32,10 @@ spec:
         kops.k8s.io/instancegroup: test-ig
         kops.k8s.io/managed-by: kops-controller
     spec:
-      kubelet:
-        kubeReserved:
-          cpu: 150m
-          ephemeral-storage: 1Gi
-          memory: 150Mi
-        systemReserved:
-          cpu: 150m
-          ephemeral-storage: 1Gi
-          memory: 200Mi
+      expireAfter: Never
       nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
         name: test-ig
       requirements:
       - key: kubernetes.io/arch
@@ -56,38 +50,47 @@ spec:
         operator: In
         values:
         - m5.large
-      resources: {}
       startupTaints:
       - effect: NoSchedule
         key: node.cloudprovider.kubernetes.io/uninitialized
 status: {}
 ---
-apiVersion: karpenter.k8s.aws/v1beta1
+apiVersion: karpenter.k8s.aws/v1
 kind: EC2NodeClass
 metadata:
-  name: test-node-pool
+  creationTimestamp: null
   labels:
     kops.k8s.io/managed-by: kops-controller
+  name: test-node-pool
 spec:
   amiFamily: Custom
   amiSelectorTerms:
   - name: ubuntu-v1
+  associatePublicIPAddress: false
+  blockDeviceMappings:
+  - deviceName: /dev/sda1
+    ebs:
+      deleteOnTermination: true
+      encrypted: true
+      iops: 3000
+      throughput: 125
+      volumeSize: 60Gi
+      volumeType: gp3
+    rootVolume: true
+  kubelet:
+    kubeReserved:
+      cpu: 150m
+      ephemeral-storage: 1Gi
+      memory: 150Mi
+    systemReserved:
+      cpu: 150m
+      ephemeral-storage: 1Gi
+      memory: 200Mi
   metadataOptions:
     httpEndpoint: enabled
     httpProtocolIPv6: disabled
     httpPutResponseHopLimit: 3
     httpTokens: required
-  associatePublicIPAddress: false
-  blockDeviceMappings:
-  - deviceName: /dev/sda1
-    ebs:
-      volumeSize: 60Gi
-      volumeType: gp3
-      iops: 3000
-      encrypted: true
-      throughput: 125
-      deleteOnTermination: true
-    rootVolume: true
   role: nodes.test-cluster.test.k8s.cluster
   securityGroupSelectorTerms:
   - name: nodes.test-cluster.test.k8s.cluster
@@ -98,12 +101,14 @@ spec:
       kops.k8s.io/instance-group/test-ig: '*'
       kubernetes.io/cluster/test-cluster.test.k8s.cluster: '*'
   tags:
-    Name: test-cluster.test.k8s.cluster/test-ig
-    k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node: ''
-    kops.k8s.io/instancegroup: test-ig
     KubernetesCluster: test-cluster.test.k8s.cluster
-  userData: |
+    Name: test-cluster.test.k8s.cluster/test-ig
+    k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node: ""
+    kops.k8s.io/instancegroup: test-ig
+  userData: |-
     #!/bin/bash
     set -o errexit
     set -o nounset
     set -o pipefail
+status: {}
+

@@ -177,15 +177,6 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 		}
 		defer karpenterResourcesContent.Close()
 
-		// Workaround to enable auto assign public IPs in public subnets
-		// This is needed because Karpenter in the current version does not support configuring
-		// public IPs in the EC2NodeClass yet, this is already available in the newers versions,
-		// but it's needed now during the migration and upgrade.
-		err = utils.EnableAutoPublicIPAssignToPublicSubnets(kopsCluster.Spec.Networking.Subnets, kopsCluster.Name, terraformOutputDir)
-		if err != nil {
-			return err
-		}
-
 		// This is needed because the apply will fail if the file is empty
 		placeholder := corev1.ConfigMap{
 			TypeMeta: metav1.TypeMeta{
@@ -254,6 +245,47 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 				}
 
 				if _, err := karpenterResourcesContent.Write([]byte(ec2NodeClassString)); err != nil {
+					return err
+				}
+
+				// This line is needed to separate the following resources from the UserData of the EC2NodeClass
+				// without this line the following resource can be considered as part of the UserData
+				if _, err := karpenterResourcesContent.Write([]byte("\n")); err != nil {
+					return err
+				}
+			}
+
+			for _, nodePool := range kmp.Spec.KarpenterNodePoolsV1 {
+				nodePool.SetLabels(map[string]string{
+					"kops.k8s.io/managed-by": "kops-controller",
+				})
+
+				// Create NodePool
+				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
+					return err
+				}
+				nodePoolBytes, err := yaml.Marshal(nodePool)
+				if err != nil {
+					return err
+				}
+				if _, err := karpenterResourcesContent.Write(nodePoolBytes); err != nil {
+					return err
+				}
+				// Create EC2NodeClass
+				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
+					return err
+				}
+				ec2NodeClass, err := utils.CreateEC2NodeClassV1FromKopsLaunchTemplateInfo(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
+				if err != nil {
+					return err
+				}
+
+				ec2NodeClassBytes, err := yaml.Marshal(ec2NodeClass)
+				if err != nil {
+					return err
+				}
+
+				if _, err := karpenterResourcesContent.Write(ec2NodeClassBytes); err != nil {
 					return err
 				}
 
@@ -812,6 +844,9 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			shouldEnableKarpenter = true
 		}
 		if len(kopsMachinePool.Spec.KarpenterNodePools) > 0 {
+			shouldEnableKarpenter = true
+		}
+		if len(kopsMachinePool.Spec.KarpenterNodePoolsV1) > 0 {
 			shouldEnableKarpenter = true
 		}
 	}
