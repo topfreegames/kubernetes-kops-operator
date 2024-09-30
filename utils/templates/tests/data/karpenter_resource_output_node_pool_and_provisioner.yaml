@@ -131,6 +131,7 @@ spec:
       cpu: 150m
       ephemeral-storage: 1Gi
       memory: 150Mi
+    maxPods: 60
     systemReserved:
       cpu: 150m
       ephemeral-storage: 1Gi

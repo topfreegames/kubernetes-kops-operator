@@ -2072,6 +2072,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			description: "Should generate files based on template with one NodePool v1",
 			kopsClusterFunction: func(kopsCluster *kopsapi.Cluster) *kopsapi.Cluster {
 				kopsCluster.Spec.Kubelet = &kopsapi.KubeletConfigSpec{
+					MaxPods: helpers.Int32Ptr(60),
 					KubeReserved: map[string]string{
 						"cpu":               "150m",
 						"memory":            "150Mi",
@@ -2172,6 +2173,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			description: "Should generate files based on template with one NodePool V1 and one Provisioner",
 			kopsClusterFunction: func(kopsCluster *kopsapi.Cluster) *kopsapi.Cluster {
 				kopsCluster.Spec.Kubelet = &kopsapi.KubeletConfigSpec{
+					MaxPods: helpers.Int32Ptr(60),
 					KubeReserved: map[string]string{
 						"cpu":               "150m",
 						"memory":            "150Mi",
