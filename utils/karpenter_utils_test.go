@@ -111,6 +111,19 @@ func TestCreateEC2NodeClassV1FromKopsLaunchTemplateInfo(t *testing.T) {
 					},
 				},
 				Spec: karpenterv1.EC2NodeClassSpec{
+					Kubelet: &karpenterv1.KubeletConfiguration{
+						MaxPods: helpers.Int32Ptr(60),
+						KubeReserved: map[string]string{
+							"cpu":               "150m",
+							"memory":            "150Mi",
+							"ephemeral-storage": "1Gi",
+						},
+						SystemReserved: map[string]string{
+							"cpu":               "150m",
+							"memory":            "200Mi",
+							"ephemeral-storage": "1Gi",
+						},
+					},
 					AMIFamily: &karpenterv1.AMIFamilyCustom,
 					AMISelectorTerms: []karpenterv1.AMISelectorTerm{
 						{
@@ -156,7 +169,6 @@ func TestCreateEC2NodeClassV1FromKopsLaunchTemplateInfo(t *testing.T) {
 						"kops.k8s.io/instancegroup": "test-machine-pool",
 						"KubernetesCluster":         "test-cluster.test.k8s.cluster",
 					},
-					Kubelet:  &karpenterv1.KubeletConfiguration{},
 					UserData: helpers.StringPtr("dummy content"),
 				},
 			},
@@ -184,6 +196,20 @@ func TestCreateEC2NodeClassV1FromKopsLaunchTemplateInfo(t *testing.T) {
 		t.Run(tc.description, func(t *testing.T) {
 
 			kopsCluster := helpers.NewKopsCluster("test-cluster")
+
+			kopsCluster.Spec.Kubelet = &kopsapi.KubeletConfigSpec{
+				MaxPods: helpers.Int32Ptr(60),
+				KubeReserved: map[string]string{
+					"cpu":               "150m",
+					"memory":            "150Mi",
+					"ephemeral-storage": "1Gi",
+				},
+				SystemReserved: map[string]string{
+					"cpu":               "150m",
+					"memory":            "200Mi",
+					"ephemeral-storage": "1Gi",
+				},
+			}
 
 			kmp := helpers.NewKopsMachinePool("test-machine-pool", "default", "test-cluster")
 

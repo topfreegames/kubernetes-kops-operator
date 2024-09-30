@@ -158,6 +158,7 @@ func GetKubeletConfiguration(kubeletSpec *kopsapi.KubeletConfigSpec) *karpenterv
 	}
 
 	return &karpenterv1.KubeletConfiguration{
+		MaxPods:        kubeletSpec.MaxPods,
 		SystemReserved: kubeletSpec.SystemReserved,
 		KubeReserved:   kubeletSpec.KubeReserved,
 	}
