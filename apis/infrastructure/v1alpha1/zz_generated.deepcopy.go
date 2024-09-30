@@ -24,6 +24,7 @@ import (
 	"github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	apiv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
+	"sigs.k8s.io/karpenter/pkg/apis/v1"
 	"sigs.k8s.io/karpenter/pkg/apis/v1beta1"
 )
 
@@ -104,6 +105,13 @@ func (in *KopsMachinePoolSpec) DeepCopyInto(out *KopsMachinePoolSpec) {
 	if in.KarpenterNodePools != nil {
 		in, out := &in.KarpenterNodePools, &out.KarpenterNodePools
 		*out = make([]v1beta1.NodePool, len(*in))
+		for i := range *in {
+			(*in)[i].DeepCopyInto(&(*out)[i])
+		}
+	}
+	if in.KarpenterNodePoolsV1 != nil {
+		in, out := &in.KarpenterNodePoolsV1, &out.KarpenterNodePoolsV1
+		*out = make([]v1.NodePool, len(*in))
 		for i := range *in {
 			(*in)[i].DeepCopyInto(&(*out)[i])
 		}

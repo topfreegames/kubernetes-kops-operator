@@ -17,11 +17,13 @@ limitations under the License.
 package v1alpha1
 
 import (
-	karpenter "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
+	karpenterv1alpha5 "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kops "k8s.io/kops/pkg/apis/kops"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	karpenterv1beta1 "sigs.k8s.io/karpenter/pkg/apis/v1beta1"
+
+	karpenterv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
 )
 
 const (
@@ -57,11 +59,15 @@ type KopsMachinePoolSpec struct {
 
 	// KarpenterProvisioners is the list of provisioners to be applied.
 	// +optional
-	KarpenterProvisioners []karpenter.Provisioner `json:"karpenterProvisioners,omitempty"`
+	KarpenterProvisioners []karpenterv1alpha5.Provisioner `json:"karpenterProvisioners,omitempty"`
 
 	// KarpenterNodePools is the list of node pools to be applied.
 	// +optional
 	KarpenterNodePools []karpenterv1beta1.NodePool `json:"karpenterNodePools,omitempty"`
+
+	// KarpenterNodePoolsV1 is the list of node pools v1 to be applied.
+	// +optional
+	KarpenterNodePoolsV1 []karpenterv1.NodePool `json:"karpenterNodePoolsV1,omitempty"`
 
 	// KopsInstanceGroupSpec declare a desired InstanceGroup Kops resource: https://kops.sigs.k8s.io/instance_groups/
 	KopsInstanceGroupSpec kops.InstanceGroupSpec `json:"kopsInstanceGroupSpec"`
