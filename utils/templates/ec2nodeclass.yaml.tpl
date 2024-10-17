@@ -8,7 +8,7 @@ spec:
   amiFamily: Custom
   amiSelectorTerms:
   - name: {{ .AmiName }}
-    owner: {{ .AmiOwner }}
+    owner: {{ .AmiAccount }}
   metadataOptions:
     httpEndpoint: enabled
     httpProtocolIPv6: disabled

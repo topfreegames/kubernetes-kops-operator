@@ -127,7 +127,8 @@ func TestCreateEC2NodeClassV1FromKopsLaunchTemplateInfo(t *testing.T) {
 					AMIFamily: &karpenterv1.AMIFamilyCustom,
 					AMISelectorTerms: []karpenterv1.AMISelectorTerm{
 						{
-							Name: "ubuntu-v1",
+							Name:  "ubuntu-v1",
+							Owner: "000000000000",
 						},
 					},
 					MetadataOptions: &karpenterv1.MetadataOptions{
