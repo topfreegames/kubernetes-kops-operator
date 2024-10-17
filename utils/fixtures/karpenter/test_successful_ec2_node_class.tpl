@@ -8,6 +8,7 @@ spec:
   amiFamily: Custom
   amiSelectorTerms:
   - name: ubuntu-v1
+    owner: "000000000000"
   metadataOptions:
     httpEndpoint: enabled
     httpProtocolIPv6: disabled
