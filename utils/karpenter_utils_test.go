@@ -81,7 +81,7 @@ func TestCreateEC2NodeClassFromKopsLaunchTemplateInfo(t *testing.T) {
 				g.Expect(err).ToNot(HaveOccurred())
 				expectedOutput, err := os.ReadFile(tc.expectedOutputFile)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(ec2NodeClassString).To(Equal(string(expectedOutput)))
+				g.Expect(ec2NodeClassString).To(BeEquivalentTo(string(expectedOutput)))
 
 			}
 		})
