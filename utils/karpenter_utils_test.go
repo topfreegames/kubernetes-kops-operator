@@ -81,7 +81,7 @@ func TestCreateEC2NodeClassFromKopsLaunchTemplateInfo(t *testing.T) {
 				g.Expect(err).ToNot(HaveOccurred())
 				expectedOutput, err := os.ReadFile(tc.expectedOutputFile)
 				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(ec2NodeClassString).To(Equal(string(expectedOutput)))
+				g.Expect(ec2NodeClassString).To(BeEquivalentTo(string(expectedOutput)))
 
 			}
 		})
@@ -127,7 +127,8 @@ func TestCreateEC2NodeClassV1FromKopsLaunchTemplateInfo(t *testing.T) {
 					AMIFamily: &karpenterv1.AMIFamilyCustom,
 					AMISelectorTerms: []karpenterv1.AMISelectorTerm{
 						{
-							Name: "ubuntu-v1",
+							Name:  "ubuntu-v1",
+							Owner: "000000000000",
 						},
 					},
 					MetadataOptions: &karpenterv1.MetadataOptions{

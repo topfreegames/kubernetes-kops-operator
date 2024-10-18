@@ -66,6 +66,7 @@ spec:
   amiFamily: Custom
   amiSelectorTerms:
   - name: ubuntu-v1
+    owner: "000000000000"
   associatePublicIPAddress: false
   blockDeviceMappings:
   - deviceName: /dev/sda1

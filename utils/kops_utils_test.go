@@ -454,12 +454,14 @@ func TestGetAmiNameFromImageSource(t *testing.T) {
 		description   string
 		input         string
 		output        string
+		output2       string
 		expectedError error
 	}{
 		{
 			description: "should return the ami name from the image source",
 			input:       "000000000000/ubuntu-v1.0.0",
 			output:      "ubuntu-v1.0.0",
+			output2:     "000000000000",
 		},
 		{
 			description:   "should fail when receiving ami id",
@@ -479,13 +481,14 @@ func TestGetAmiNameFromImageSource(t *testing.T) {
 
 		t.Run(tc.description, func(t *testing.T) {
 
-			amiName, err := GetAmiNameFromImageSource(tc.input)
+			amiName, amiAccount, err := GetAmiNameFromImageSource(tc.input)
 			if tc.expectedError != nil {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err).To(Equal(tc.expectedError))
 			} else {
 				g.Expect(err).To(BeNil())
 				g.Expect(amiName).To(Equal(tc.output))
+				g.Expect(amiAccount).To(Equal(tc.output2))
 			}
 
 		})

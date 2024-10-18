@@ -342,12 +342,12 @@ func KopsDeleteResources(ctx context.Context, cloud fi.Cloud, kopsClientset simp
 
 }
 
-func GetAmiNameFromImageSource(image string) (string, error) {
+func GetAmiNameFromImageSource(image string) (string, string, error) {
 	parts := strings.SplitN(image, "/", 2)
 	if len(parts) > 1 {
-		return parts[1], nil
+		return parts[1], parts[0], nil
 	} else {
-		return "", errors.New("invalid image format, should receive image source")
+		return "", "", errors.New("invalid image format, should receive image source")
 	}
 }
 
