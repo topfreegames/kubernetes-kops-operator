@@ -165,7 +165,7 @@ func GetKubeletConfiguration(kubeletSpec *kopsapi.KubeletConfigSpec) *karpenterv
 }
 
 func CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string) (string, error) {
-	amiName, err := GetAmiNameFromImageSource(kmp.Spec.KopsInstanceGroupSpec.Image)
+	amiName, amiAccount, err := GetAmiNameFromImageSource(kmp.Spec.KopsInstanceGroupSpec.Image)
 	if err != nil {
 		return "", err
 	}
@@ -185,6 +185,7 @@ func CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster, 
 	data := struct {
 		Name              string
 		AmiName           string
+		AmiAccount        string
 		ClusterName       string
 		IGName            string
 		Tags              map[string]string
@@ -194,6 +195,7 @@ func CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster, 
 	}{
 		Name:              nodePoolName,
 		AmiName:           amiName,
+		AmiAccount:        amiAccount,
 		IGName:            kmp.Name,
 		ClusterName:       kopsCluster.Name,
 		Tags:              kopsCluster.Spec.CloudLabels,
@@ -222,7 +224,7 @@ func CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster, 
 }
 
 func CreateEC2NodeClassV1FromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string) (*karpenterv1.EC2NodeClass, error) {
-	amiName, err := GetAmiNameFromImageSource(kmp.Spec.KopsInstanceGroupSpec.Image)
+	amiName, amiAccount, err := GetAmiNameFromImageSource(kmp.Spec.KopsInstanceGroupSpec.Image)
 	if err != nil {
 		return nil, err
 	}
@@ -257,7 +259,8 @@ func CreateEC2NodeClassV1FromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster
 			AMIFamily: &karpenterv1.AMIFamilyCustom,
 			AMISelectorTerms: []karpenterv1.AMISelectorTerm{
 				{
-					Name: amiName,
+					Name:  amiName,
+					Owner: amiAccount,
 				},
 			},
 			MetadataOptions: &karpenterv1.MetadataOptions{
