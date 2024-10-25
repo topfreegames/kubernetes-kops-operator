@@ -28,20 +28,6 @@ rules:
   - cluster.x-k8s.io
   resources:
   - clusters
-  verbs:
-  - delete
-  - get
-  - list
-  - watch
-- apiGroups:
-  - cluster.x-k8s.io
-  resources:
-  - clusters/status
-  verbs:
-  - get
-- apiGroups:
-  - cluster.x-k8s.io
-  resources:
   - machinepools
   verbs:
   - delete
@@ -51,6 +37,7 @@ rules:
 - apiGroups:
   - cluster.x-k8s.io
   resources:
+  - clusters/status
   - machinepools/status
   verbs:
   - get
