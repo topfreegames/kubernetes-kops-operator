@@ -2438,7 +2438,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			}
 
 			terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
-			templateTestDir := "../../utils/templates/tests"
+			templateTestDir := "../../pkg/utils/templates/tests"
 
 			dataDummyContent, err := os.ReadFile(templateTestDir + "/data/dummy_data")
 			g.Expect(err).NotTo(HaveOccurred())
