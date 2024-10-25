@@ -2,7 +2,7 @@ apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
   annotations:
-    controller-gen.kubebuilder.io/version: v0.14.0
+    controller-gen.kubebuilder.io/version: v0.16.4
   labels:
     cluster.x-k8s.io/v1beta1: v1alpha1
   name: kopscontrolplanes.controlplane.cluster.x-k8s.io
@@ -1398,7 +1398,6 @@ spec:
                           type: string
                         type: array
                       tlsCertFile:
-                        description: 'TODO: Remove unused TLSCertFile'
                         type: string
                       tlsCipherSuites:
                         description: TLSCipherSuites indicates the allowed TLS cipher suite
@@ -1409,7 +1408,6 @@ spec:
                         description: TLSMinVersion indicates the minimum TLS version allowed
                         type: string
                       tlsPrivateKeyFile:
-                        description: 'TODO: Remove unused TLSPrivateKeyFile'
                         type: string
                       topologyManagerPolicy:
                         description: TopologyManagerPolicy determines the allocation policy for the topology manager.
@@ -2062,7 +2060,6 @@ spec:
                         description: File with webhook configuration for authorization in kubeconfig format. The API server will query the remote service to determine whether to authorize the request.
                         type: string
                       basicAuthFile:
-                        description: 'TODO: Remove unused BasicAuthFile'
                         type: string
                       bindAddress:
                         description: BindAddress is the binding address for the secure kubernetes API
@@ -2307,7 +2304,6 @@ spec:
                         format: int32
                         type: integer
                       tlsCertFile:
-                        description: 'TODO: Remove unused TLSCertFile'
                         type: string
                       tlsCipherSuites:
                         description: TLSCipherSuites indicates the allowed TLS cipher suite
@@ -2318,10 +2314,8 @@ spec:
                         description: TLSMinVersion indicates the minimum TLS version allowed
                         type: string
                       tlsPrivateKeyFile:
-                        description: 'TODO: Remove unused TLSPrivateKeyFile'
                         type: string
                       tokenAuthFile:
-                        description: 'TODO: Remove unused TokenAuthFile'
                         type: string
                     type: object
                   kubeControllerManager:
@@ -4157,7 +4151,6 @@ spec:
                           type: string
                         type: array
                       tlsCertFile:
-                        description: 'TODO: Remove unused TLSCertFile'
                         type: string
                       tlsCipherSuites:
                         description: TLSCipherSuites indicates the allowed TLS cipher suite
@@ -4168,7 +4161,6 @@ spec:
                         description: TLSMinVersion indicates the minimum TLS version allowed
                         type: string
                       tlsPrivateKeyFile:
-                        description: 'TODO: Remove unused TLSPrivateKeyFile'
                         type: string
                       topologyManagerPolicy:
                         description: TopologyManagerPolicy determines the allocation policy for the topology manager.
@@ -4851,9 +4843,7 @@ spec:
                       subnets:
                         description: Subnets are the subnets that the cluster can use.
                         items:
-                          description: |-
-                            ClusterSubnetSpec defines a subnet
-                            TODO: move to networking.go
+                          description: ClusterSubnetSpec defines a subnet
                           properties:
                             additionalRoutes:
                               description: AdditionalRoutes to attach to the subnet's route table
@@ -5234,7 +5224,6 @@ spec:
                       the event) or if no container name is specified "spec.containers[2]" (container with
                       index 2 in this pod). This syntax is chosen only to have some well-defined way of
                       referencing a part of an object.
-                      TODO: this design is not final and this field is subject to change in the future.
                     type: string
                   kind:
                     description: |-

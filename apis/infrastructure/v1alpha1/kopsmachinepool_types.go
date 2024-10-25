@@ -21,9 +21,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kops "k8s.io/kops/pkg/apis/kops"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
-	karpenterv1beta1 "sigs.k8s.io/karpenter/pkg/apis/v1beta1"
-
 	karpenterv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
+	karpenterv1beta1 "sigs.k8s.io/karpenter/pkg/apis/v1beta1"
 )
 
 const (
@@ -41,6 +40,13 @@ const (
 	// FailedToUpdateKopsMachinePool (Severity=Warn) indicates that controller failed to update the custom resource.
 	FailedToUpdateKopsMachinePool = "FailedToUpdateKopsMachinePool"
 )
+
+type KarpenterNodePoolsV1 struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec karpenterv1.NodePoolSpec `json:"spec"`
+}
 
 // KopsMachinePoolSpec defines the desired state of KopsMachinePool
 type KopsMachinePoolSpec struct {
@@ -67,7 +73,7 @@ type KopsMachinePoolSpec struct {
 
 	// KarpenterNodePoolsV1 is the list of node pools v1 to be applied.
 	// +optional
-	KarpenterNodePoolsV1 []karpenterv1.NodePool `json:"karpenterNodePoolsV1,omitempty"`
+	KarpenterNodePoolsV1 []KarpenterNodePoolsV1 `json:"karpenterNodePoolsV1,omitempty"`
 
 	// KopsInstanceGroupSpec declare a desired InstanceGroup Kops resource: https://kops.sigs.k8s.io/instance_groups/
 	KopsInstanceGroupSpec kops.InstanceGroupSpec `json:"kopsInstanceGroupSpec"`

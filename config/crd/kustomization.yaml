@@ -12,7 +12,7 @@ resources:
 transformers:
 - patches/remove-x-kubernetes-validations.yaml
 
-patchesStrategicMerge:
+# patchesStrategicMerge:
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix.
 # patches here are for enabling the conversion webhook for each CRD
 #- patches/webhook_in_kopscontrolplanes.yaml
