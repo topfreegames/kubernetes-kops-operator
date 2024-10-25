@@ -3,7 +3,6 @@ package utils
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -11,6 +10,8 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/pkg/errors"
 
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 
@@ -495,7 +496,8 @@ func TestGetAmiNameFromImageSource(t *testing.T) {
 			amiName, amiAccount, err := GetAmiNameFromImageSource(tc.input)
 			if tc.expectedError != nil {
 				g.Expect(err).To(HaveOccurred())
-				g.Expect(err).To(Equal(tc.expectedError))
+				g.Expect(err.Error()).To(BeEquivalentTo(tc.expectedError.Error()))
+
 			} else {
 				g.Expect(err).To(BeNil())
 				g.Expect(amiName).To(Equal(tc.output))
@@ -556,7 +558,7 @@ func TestGetUserDataFromTerraformFile(t *testing.T) {
 			userDataString, err := GetUserDataFromTerraformFile(kopsCluster.Name, kmp.Name, terraformOutputDir)
 			if tc.expectedError != nil {
 				g.Expect(err).To(HaveOccurred())
-				g.Expect(err).To(Equal(tc.expectedError))
+				g.Expect(err.Error()).To(BeEquivalentTo(tc.expectedError.Error()))
 			} else {
 				g.Expect(err).To(BeNil())
 				g.Expect(userDataString).To(Equal(tc.userData))

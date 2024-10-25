@@ -76,7 +76,7 @@ func TestCreateEC2NodeClassFromKopsLaunchTemplateInfo(t *testing.T) {
 			ec2NodeClassString, err := CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster, kmp, kmp.Name, terraformOutputDir)
 			if tc.expectedError != nil {
 				g.Expect(err).To(HaveOccurred())
-				g.Expect(err).To(Equal(tc.expectedError))
+				g.Expect(err.Error()).To(Equal(tc.expectedError.Error()))
 			} else {
 				g.Expect(err).ToNot(HaveOccurred())
 				expectedOutput, err := os.ReadFile(tc.expectedOutputFile)
@@ -232,7 +232,7 @@ func TestCreateEC2NodeClassV1FromKopsLaunchTemplateInfo(t *testing.T) {
 			ec2NodeClass, err := CreateEC2NodeClassV1FromKopsLaunchTemplateInfo(kopsCluster, kmp, kmp.Name, terraformOutputDir)
 			if tc.expectedError != nil {
 				g.Expect(err).To(HaveOccurred())
-				g.Expect(err).To(Equal(tc.expectedError))
+				g.Expect(err.Error()).To(Equal(tc.expectedError.Error()))
 			} else {
 				g.Expect(err).ToNot(HaveOccurred())
 				g.Expect(err).NotTo(HaveOccurred())
