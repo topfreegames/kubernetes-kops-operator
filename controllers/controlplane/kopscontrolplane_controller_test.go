@@ -35,7 +35,7 @@ import (
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	custommetrics "github.com/topfreegames/kubernetes-kops-operator/metrics"
 
-	"github.com/topfreegames/kubernetes-kops-operator/utils"
+	"github.com/topfreegames/kubernetes-kops-operator/pkg/utils"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -2090,7 +2090,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
 					"kops.k8s.io/instance-group-role": "Node",
 				}
-				kmp.Spec.KarpenterNodePoolsV1 = []karpenterv1.NodePool{
+				kmp.Spec.KarpenterNodePoolsV1 = []infrastructurev1alpha1.KarpenterNodePoolsV1{
 					{
 						TypeMeta: metav1.TypeMeta{
 							Kind:       "NodePool",
@@ -2191,7 +2191,7 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
 					"kops.k8s.io/instance-group-role": "Node",
 				}
-				kmp.Spec.KarpenterNodePoolsV1 = []karpenterv1.NodePool{
+				kmp.Spec.KarpenterNodePoolsV1 = []infrastructurev1alpha1.KarpenterNodePoolsV1{
 					{
 						TypeMeta: metav1.TypeMeta{
 							Kind:       "NodePool",

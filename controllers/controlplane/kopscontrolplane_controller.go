@@ -31,13 +31,14 @@ import (
 	asgTypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
+	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+
 	"github.com/pkg/errors"
 	controlplanev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/controlplane/v1alpha1"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	custommetrics "github.com/topfreegames/kubernetes-kops-operator/metrics"
 	kopsutils "github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
-	"github.com/topfreegames/kubernetes-kops-operator/pkg/util"
-	"github.com/topfreegames/kubernetes-kops-operator/utils"
+	"github.com/topfreegames/kubernetes-kops-operator/pkg/utils"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	corev1 "k8s.io/api/core/v1"
@@ -72,7 +73,6 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/yaml"
@@ -700,7 +700,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	kopsControlPlane.Status.Paused = false
 	kopsControlPlane.Status.Ready = false
 
-	awsCredentials, err := util.GetAWSCredentialsFromKopsControlPlaneSecret(ctx, r.Client, kopsControlPlane.Spec.IdentityRef.Name, kopsControlPlane.Spec.IdentityRef.Namespace)
+	awsCredentials, err := utils.GetAWSCredentialsFromKopsControlPlaneSecret(ctx, r.Client, kopsControlPlane.Spec.IdentityRef.Name, kopsControlPlane.Spec.IdentityRef.Namespace)
 	if err != nil {
 		reconciler.log.Error(err, "failed to get AWS credentials")
 		return resultError, err
@@ -758,7 +758,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return resultError, err
 		}
 
-		err = util.SetEnvVarsFromAWSCredentials(reconciler.awsCredentials)
+		err = utils.SetEnvVarsFromAWSCredentials(reconciler.awsCredentials)
 		if err != nil {
 			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToSetAWSEnvVars", "failed to set AWS environment variables: %s", err)
 			return resultError, err
@@ -783,7 +783,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 		for i := range kmps {
 
-			err = util.DeleteOwnerResources(ctx, r.Client, &kmps[i])
+			err = utils.DeleteOwnerResources(ctx, r.Client, &kmps[i])
 			if err != nil {
 				return resultError, err
 			}
@@ -797,7 +797,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			controllerutil.RemoveFinalizer(&kmps[i], infrastructurev1alpha1.KopsMachinePoolFinalizer)
 		}
 
-		err = util.DeleteOwnerResources(ctx, r.Client, kopsControlPlane)
+		err = utils.DeleteOwnerResources(ctx, r.Client, kopsControlPlane)
 		if err != nil {
 			return resultError, err
 		}
@@ -822,7 +822,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
-	err = util.SetEnvVarsFromAWSCredentials(reconciler.awsCredentials)
+	err = utils.SetEnvVarsFromAWSCredentials(reconciler.awsCredentials)
 	if err != nil {
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToSetAWSEnvVars", "failed to set AWS environment variables: %s", err)
 		return resultError, err
@@ -1036,7 +1036,7 @@ func (r *KopsControlPlaneReconciliation) reconcileKopsMachinePool(ctx context.Co
 		if err != nil {
 			return err
 		}
-		err = util.DeleteOwnerResources(ctx, r.Client, kopsMachinePool)
+		err = utils.DeleteOwnerResources(ctx, r.Client, kopsMachinePool)
 		if err != nil {
 			return err
 		}
@@ -1167,7 +1167,7 @@ func (r *KopsControlPlaneReconciler) kopsMachinePoolToInfrastructureMapFunc(cont
 		}
 
 		result := []ctrl.Request{}
-		cluster, err := util.GetClusterByName(context.TODO(), r.Client, kmp.GetNamespace(), kmp.Spec.ClusterName)
+		cluster, err := utils.GetClusterByName(context.TODO(), r.Client, kmp.GetNamespace(), kmp.Spec.ClusterName)
 		if err != nil {
 			return result
 		}
