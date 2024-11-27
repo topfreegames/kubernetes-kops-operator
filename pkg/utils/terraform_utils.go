@@ -71,6 +71,7 @@ func initTerraform(ctx context.Context, workingDir, terraformExecPath string, cr
 		"AWS_SECRET_ACCESS_KEY": credentials.SecretAccessKey,
 		"SPOTINST_TOKEN":        os.Getenv("SPOTINST_TOKEN"),
 		"SPOTINST_ACCOUNT":      os.Getenv("SPOTINST_ACCOUNT"),
+		"TF_PLUGIN_CACHE_DIR":   fmt.Sprintf("%s/plugin-cache", filepath.Dir(terraformExecPath)),
 	}
 
 	// this overrides all ENVVARs that are passed to Terraform
