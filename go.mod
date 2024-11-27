@@ -1,6 +1,6 @@
 module github.com/topfreegames/kubernetes-kops-operator
 
-go 1.22.5
+go 1.22.7
 
 require (
 	github.com/Masterminds/sprig/v3 v3.2.3
@@ -22,7 +22,7 @@ require (
 	k8s.io/api v0.30.3
 	k8s.io/apimachinery v0.30.3
 	k8s.io/client-go v0.30.3
-	k8s.io/kops v1.30.0
+	k8s.io/kops v1.30.2
 	k8s.io/kubectl v0.30.3
 	sigs.k8s.io/cluster-api v1.8.1
 	sigs.k8s.io/controller-runtime v0.18.5

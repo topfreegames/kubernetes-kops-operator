@@ -724,8 +724,8 @@ k8s.io/csi-translation-lib v0.30.3 h1:wBaPWnOi14/vANRIrp8pmbdx/Pgz2QRcroH7wkodez
 k8s.io/csi-translation-lib v0.30.3/go.mod h1:3AizNZbDttVDH1RO0x1yGEQP74e9Xbfb60IBP1oWO1o=
 k8s.io/klog/v2 v2.130.1 h1:n9Xl7H1Xvksem4KFG4PYbdQCQxqc/tTUyrgXaOhHSzk=
 k8s.io/klog/v2 v2.130.1/go.mod h1:3Jpz1GvMt720eyJH1ckRHK1EDfpxISzJ7I9OYgaDtPE=
-k8s.io/kops v1.30.0 h1:NlS2PcR8oLk2arHJGmRjP3nXq8LfGR/DEENumHkmU2g=
-k8s.io/kops v1.30.0/go.mod h1:ma1wktMkD57jjiQ9lHfT5lki57rt4qIwMOu8yApVLCc=
+k8s.io/kops v1.30.2 h1:rJ2i0fu7ta9AqCeJXRmH78BY5L5uDeMyGKwv2D2YyHs=
+k8s.io/kops v1.30.2/go.mod h1:wsDPBz+6z5FZsDAnD3/DPfan2FZier68j5qCft/Ly9U=
 k8s.io/kube-openapi v0.0.0-20240430033511-f0e62f92d13f h1:0LQagt0gDpKqvIkAMPaRGcXawNMouPECM1+F9BVxEaM=
 k8s.io/kube-openapi v0.0.0-20240430033511-f0e62f92d13f/go.mod h1:S9tOR0FxgyusSNR+MboCuiDpVWkAifZvaYI1Q2ubgro=
 k8s.io/kubectl v0.30.3 h1:YIBBvMdTW0xcDpmrOBzcpUVsn+zOgjMYIu7kAq+yqiI=
