@@ -389,7 +389,9 @@ func PrepareKopsCloudResources(ctx context.Context, kopsClientset simple.Clients
 	}()
 	os.Stdout = nil
 
-	if err := applyCmd.Run(ctx); err != nil {
+	// TODO: apply now also returns the apply results, we should explore that
+	_, err := applyCmd.Run(ctx)
+	if err != nil {
 		return err
 	}
 
@@ -436,7 +438,7 @@ func PopulateClusterSpec(ctx context.Context, kopsCluster *kopsapi.Cluster, kops
 		return nil, err
 	}
 
-	assetBuilder := assets.NewAssetBuilder(kopsClientset.VFSContext(), kopsCluster.Spec.Assets, kopsCluster.Spec.KubernetesVersion, true)
+	assetBuilder := assets.NewAssetBuilder(kopsClientset.VFSContext(), kopsCluster.Spec.Assets, true)
 	fullCluster, err := cloudup.PopulateClusterSpec(ctx, kopsClientset, kopsCluster, nil, cloud, assetBuilder)
 	if err != nil {
 		return nil, err
