@@ -15,9 +15,6 @@ spec:
     prune:
       kinds:
       - group: karpenter.sh
-        kind: Provisioner
-        labelSelector: "kops.k8s.io/managed-by=kops-controller"
-      - group: karpenter.sh
         kind: NodePool
         labelSelector: "kops.k8s.io/managed-by=kops-controller"
       - group: karpenter.k8s.aws
