@@ -17,7 +17,6 @@ limitations under the License.
 package v1alpha1
 
 import (
-	karpenterv1alpha5 "github.com/aws/karpenter-core/pkg/apis/v1alpha5"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kops "k8s.io/kops/pkg/apis/kops"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -62,10 +61,6 @@ type KopsMachinePoolSpec struct {
 	// ClusterName is the name of the Cluster this object belongs to.
 	// +kubebuilder:validation:MinLength=1
 	ClusterName string `json:"clusterName"`
-
-	// KarpenterProvisioners is the list of provisioners to be applied.
-	// +optional
-	KarpenterProvisioners []karpenterv1alpha5.Provisioner `json:"karpenterProvisioners,omitempty"`
 
 	// KarpenterNodePools is the list of node pools to be applied.
 	// +optional

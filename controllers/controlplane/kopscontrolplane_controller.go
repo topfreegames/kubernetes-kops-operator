@@ -203,22 +203,6 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 		}
 
 		for _, kmp := range kmps {
-			for _, provisioner := range kmp.Spec.KarpenterProvisioners {
-				provisioner.SetLabels(map[string]string{
-					"kops.k8s.io/managed-by": "kops-controller",
-				})
-				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
-					return err
-				}
-				provisionerBytes, err := yaml.Marshal(provisioner)
-				if err != nil {
-					return err
-				}
-				if _, err := karpenterResourcesContent.Write(provisionerBytes); err != nil {
-					return err
-				}
-			}
-
 			for _, nodePool := range kmp.Spec.KarpenterNodePools {
 				nodePool.SetLabels(map[string]string{
 					"kops.k8s.io/managed-by": "kops-controller",
@@ -841,9 +825,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 		if kopsMachinePool.ObjectMeta.DeletionTimestamp.IsZero() {
 			existingKopsMachinePool = append(existingKopsMachinePool, kopsMachinePool)
-		}
-		if len(kopsMachinePool.Spec.KarpenterProvisioners) > 0 {
-			shouldEnableKarpenter = true
 		}
 		if len(kopsMachinePool.Spec.KarpenterNodePools) > 0 {
 			shouldEnableKarpenter = true
