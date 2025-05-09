@@ -100,7 +100,7 @@ type KopsControlPlaneReconciler struct {
 	PrepareKopsCloudResourcesFactory func(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, terraformOutputDir string, cloud fi.Cloud) error
 	ApplyTerraformFactory            func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error
 	DestroyTerraformFactory          func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error
-	KopsDeleteResourcesFactory       func(ctx context.Context, cloud fi.Cloud, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error
+	KopsDeleteResourcesFactory       func(ctx context.Context, log logr.Logger, cloud fi.Cloud, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error
 	ValidateKopsClusterFactory       func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetClusterStatusFactory          func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
 	GetASGByNameFactory              func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error)
@@ -729,11 +729,13 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return resultError, err
 		}
 
+		log.Info(fmt.Sprintf("starting terraform destroy %s", owner.GetName()))
 		err = reconciler.DestroyTerraformFactory(ctx, terraformOutputDir, r.TfExecPath, reconciler.awsCredentials)
 		if err != nil {
 			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToDestroyTerraform", "failed to destroy terraform: %s", err)
 			return resultError, err
 		}
+		log.Info(fmt.Sprintf("finished terraform destroy %s", owner.GetName()))
 
 		reconciler.Mux.Lock()
 		shouldUnlock = true
@@ -759,10 +761,12 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		// Decided to let the kops leftover deletion inside the lock as a safeguard
 		// since in the past they used to use singleton and as the deletion is not
 		// a common operation
-		err = r.KopsDeleteResourcesFactory(ctx, cloud, kopsClientset, kopsCluster)
+		log.Info(fmt.Sprintf("starting kops delete %s", owner.GetName()))
+		err = r.KopsDeleteResourcesFactory(ctx, log, cloud, kopsClientset, kopsCluster)
 		if err != nil {
 			return resultError, err
 		}
+		log.Info(fmt.Sprintf("finished kops delete %s", owner.GetName()))
 
 		reconciler.Mux.Unlock()
 		shouldUnlock = false

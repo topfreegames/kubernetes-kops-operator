@@ -11,6 +11,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/go-logr/logr"
 	dto "github.com/prometheus/client_model/go"
 
 	karpenterv1beta1 "sigs.k8s.io/karpenter/pkg/apis/v1beta1"
@@ -1185,7 +1186,7 @@ func TestKopsControlPlaneReconcilerDelete(t *testing.T) {
 				DestroyTerraformFactory: func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error {
 					return nil
 				},
-				KopsDeleteResourcesFactory: func(ctx context.Context, cloud fi.Cloud, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error {
+				KopsDeleteResourcesFactory: func(ctx context.Context, log logr.Logger, cloud fi.Cloud, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error {
 					return nil
 				},
 			}

@@ -309,7 +309,7 @@ func isKopsSecretInStatus(kopsSecretName string, kopsSecretStatus []string) bool
 	return false
 }
 
-func KopsDeleteResources(ctx context.Context, cloud fi.Cloud, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error {
+func KopsDeleteResources(ctx context.Context, log logr.Logger, cloud fi.Cloud, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) error {
 	if len(kopsCluster.Name) == 0 {
 		return errors.New("cluster name is required")
 	}
@@ -321,6 +321,7 @@ func KopsDeleteResources(ctx context.Context, cloud fi.Cloud, kopsClientset simp
 	}()
 	os.Stdout = nil
 
+	log.Info("listing leftover cloud resources for deletion")
 	allResources, err := resourceops.ListResources(cloud, kopsCluster)
 	if err != nil {
 		return err
@@ -334,15 +335,19 @@ func KopsDeleteResources(ctx context.Context, cloud fi.Cloud, kopsClientset simp
 		clusterResources[k] = resource
 	}
 
-	err = resourceops.DeleteResources(cloud, clusterResources, 50, 10*time.Second, 30*time.Second)
+	log.Info(fmt.Sprintf("deleting %d leftover cloud resources", len(clusterResources)))
+	err = resourceops.DeleteResources(cloud, clusterResources, 50, 10*time.Second, 60*time.Second)
 	if err != nil {
 		return err
 	}
+	log.Info(fmt.Sprintf("deleted %d leftover cloud resources", len(clusterResources)))
 
+	log.Info("deleting cluster from kops state")
 	err = kopsClientset.DeleteCluster(ctx, kopsCluster)
 	if err != nil {
 		return fmt.Errorf("error removing cluster from state store: %v", err)
 	}
+	log.Info("deleted cluster from kops state")
 
 	return nil
 
