@@ -17,6 +17,7 @@ limitations under the License.
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -36,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -68,12 +70,14 @@ func main() {
 	var enableLeaderElection bool
 	var probeAddr string
 	var controllerClass string
+	var dryRun bool
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&controllerClass, "controller-class", "", "The name of the controller class to associate with the controller.")
+	flag.BoolVar(&dryRun, "dry-run", false, "The address the metric endpoint binds to.")
 
 	opts := zap.Options{
 		Development: true,
@@ -102,15 +106,25 @@ func main() {
 	// Setup the context that's going to be used in controllers and for the manager.
 	ctx := ctrl.SetupSignalHandler()
 
-	const tfVersion = "1.3.4"
+	const tfVersion = "1.12.2"
 
 	tfPath := fmt.Sprintf("/tmp/%s_%s", product.Terraform.Name, tfVersion)
 
 	_, err = os.Stat(tfPath)
 	if os.IsNotExist(err) {
-		err = os.Mkdir(tfPath, os.ModePerm)
+		err = os.Mkdir(tfPath, 0755)
 		if err != nil {
 			setupLog.Error(err, "unable to create terraform directory")
+			os.Exit(1)
+		}
+	}
+
+	pluginCachePath := fmt.Sprintf("%s/plugin-cache", tfPath)
+	_, err = os.Stat(pluginCachePath)
+	if os.IsNotExist(err) {
+		err = os.Mkdir(pluginCachePath, 0755)
+		if err != nil {
+			setupLog.Error(err, "unable to create plugin cache directory")
 			os.Exit(1)
 		}
 	}
@@ -143,24 +157,35 @@ func main() {
 		os.Exit(1)
 	}
 
-	if err = (&controlplane.KopsControlPlaneReconciler{
+	var recorder record.EventRecorder
+	if dryRun {
+		recorder = record.NewFakeRecorder(1000)
+	} else {
+		recorder = mgr.GetEventRecorderFor("kopscontrolplane-controller")
+	}
+
+	controller := &controlplane.KopsControlPlaneReconciler{
 		Client:                           mgr.GetClient(),
 		Scheme:                           mgr.GetScheme(),
 		ControllerClass:                  controllerClass,
 		Mux:                              new(sync.Mutex),
-		Recorder:                         mgr.GetEventRecorderFor("kopscontrolplane-controller"),
+		Recorder:                         recorder,
 		TfExecPath:                       tfExecPath,
+		DryRun:                           dryRun,
 		GetKopsClientSetFactory:          utils.GetKopsClientset,
 		BuildCloudFactory:                utils.BuildCloud,
 		PopulateClusterSpecFactory:       controlplane.PopulateClusterSpec,
 		PrepareKopsCloudResourcesFactory: controlplane.PrepareKopsCloudResources,
 		DestroyTerraformFactory:          utils.DestroyTerraform,
 		ApplyTerraformFactory:            utils.ApplyTerraform,
+		PlanTerraformFactory:             utils.PlanTerraform,
 		KopsDeleteResourcesFactory:       utils.KopsDeleteResources,
 		ValidateKopsClusterFactory:       utils.ValidateKopsCluster,
 		GetClusterStatusFactory:          controlplane.GetClusterStatus,
 		GetASGByNameFactory:              controlplane.GetASGByName,
-	}).SetupWithManager(ctx, mgr, workers); err != nil {
+	}
+
+	if err = controller.SetupWithManager(ctx, mgr, workers); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "KopsControlPlane")
 		os.Exit(1)
 	}
@@ -175,9 +200,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	setupLog.Info("starting manager")
-	if err := mgr.Start(ctx); err != nil {
-		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
+	if !dryRun {
+		setupLog.Info("starting manager")
+		if err := mgr.Start(ctx); err != nil {
+			setupLog.Error(err, "problem running manager")
+			os.Exit(1)
+		}
+	} else {
+
+		setupLog.Info("starting Plan for controller class " + controllerClass)
+		controlPlanes := &controlplanev1alpha1.KopsControlPlaneList{}
+		err := mgr.GetAPIReader().List(ctx, controlPlanes)
+		if err != nil {
+			setupLog.Error(err, "Error listing Kops Control Planes")
+			os.Exit(1)
+		}
+
+		for _, kcp := range controlPlanes.Items {
+			if kcp.Spec.ControllerClass == controllerClass {
+				setupLog.Info("starting plan for Kops Control Plane " + kcp.Name)
+				_, err := controller.Reconcile(context.WithValue(context.WithValue(ctx, controlplane.ClientKey{}, mgr.GetAPIReader()), controlplane.KCPKey{}, kcp), ctrl.Request{})
+				if err != nil {
+					setupLog.Error(err, "error rendering plan for "+kcp.Name)
+					os.Exit(1)
+				}
+			}
+		}
 	}
 }
