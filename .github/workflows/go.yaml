@@ -2,7 +2,6 @@ name: Go
 
 on:
   push:
-    branches: [ main ]
     tags:
       - '*'
   pull_request:
@@ -43,9 +42,9 @@ jobs:
     - name: Run tests
       run: make test-ci
 
-  docker-image:
-    runs-on: self-hosted
-    if: startsWith(github.ref, 'refs/tags/v')
+  docker-build-amd64:
+    runs-on: [self-hosted, arch:amd64]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs:
     - tests
     - lint
@@ -58,15 +57,8 @@ jobs:
     - name: Checkout repo
       uses: actions/checkout@v2
 
-    - name: Set up QEMU
-      uses: docker/setup-qemu-action@v2
-      with:
-        platforms: all
-
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v2
-      with:
-        install: true
 
     - name: Login to Docker Hub
       uses: docker/login-action@v2 
@@ -79,16 +71,118 @@ jobs:
       uses: docker/metadata-action@v4
       with:
         images: tfgco/${{ github.event.repository.name }}
+        tags: |
+          type=ref,event=tag,suffix=-amd64
+          type=semver,pattern={{version}},suffix=-amd64
+          type=semver,pattern={{major}}.{{minor}},suffix=-amd64
 
-    - name: Build and Push Docker image
+    - name: Build and Push AMD64 Docker image
       uses: docker/build-push-action@v4
       with:
         context: .
-        platforms: linux/amd64,linux/arm64
+        platforms: linux/amd64
         push: true
-        tags: |
-          ${{ steps.meta.outputs.tags }}
-          tfgco/${{ github.event.repository.name }}:latest
+        tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha
-        cache-to: type=gha,mode=max
+        cache-from: type=gha,scope=amd64
+        cache-to: type=gha,mode=max,scope=amd64
+        provenance: false
+        sbom: false
+
+  docker-build-arm64:
+    runs-on: [self-hosted, arch:arm64]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs:
+    - tests
+    - lint
+
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v2
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2 
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Extract metadata (tags, labels) for Docker
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: tfgco/${{ github.event.repository.name }}
+        tags: |
+          type=ref,event=tag,suffix=-arm64
+          type=semver,pattern={{version}},suffix=-arm64
+          type=semver,pattern={{major}}.{{minor}},suffix=-arm64
+
+    - name: Build and Push ARM64 Docker image
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        platforms: linux/arm64
+        push: true
+        tags: ${{ steps.meta.outputs.tags }}
+        labels: ${{ steps.meta.outputs.labels }}
+        cache-from: type=gha,scope=arm64
+        cache-to: type=gha,mode=max,scope=arm64
+        provenance: false
+        sbom: false
+
+  docker-manifest:
+    runs-on: self-hosted
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs:
+    - docker-build-amd64
+    - docker-build-arm64
+
+    permissions:
+      packages: write
+      contents: read
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v2
+
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2 
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: Extract metadata for multi-arch manifest
+      id: meta
+      uses: docker/metadata-action@v4
+      with:
+        images: tfgco/${{ github.event.repository.name }}
+        tags: |
+          type=ref,event=tag
+          type=semver,pattern={{version}}
+          type=semver,pattern={{major}}.{{minor}}
+
+    - name: Create and push multi-arch manifest
+      run: |
+        REPO_NAME="tfgco/${{ github.event.repository.name }}"
+        
+        TAGS="${{ steps.meta.outputs.tags }}"
+        
+        echo "$TAGS" | while read -r TAG; do
+          if [ -n "$TAG" ]; then
+            echo "Creating manifest for $TAG"
+            docker manifest create $TAG \
+              ${TAG}-amd64 \
+              ${TAG}-arm64
+            
+            docker manifest annotate $TAG ${TAG}-amd64 --arch amd64
+            docker manifest annotate $TAG ${TAG}-arm64 --arch arm64
+            
+            docker manifest push $TAG
+          fi
+        done

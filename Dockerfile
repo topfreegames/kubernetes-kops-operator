@@ -1,6 +1,9 @@
 # Build the manager binary
 FROM golang:1.23 as builder
 
+ARG TARGETOS
+ARG TARGETARCH
+
 WORKDIR /workspace
 #Copy the Go Modules manifests
 COPY go.mod go.mod
@@ -17,7 +20,7 @@ COPY pkg/ pkg/
 COPY metrics/ metrics/
 
 # Build
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager main.go
 
 FROM alpine
 WORKDIR /
