@@ -653,6 +653,10 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			reconciler.log.Info(fmt.Sprintf("unexpected Unlock step for %s, took %s", kopsControlPlane.Name, time.Since(lockInitTime)))
 		}
 
+		if r.DryRun {
+			return
+		}
+
 		for _, kopsMachinePool := range kmps {
 			kopsMachinePoolHelper := kopsMachinePool.DeepCopy()
 			if err := reconciler.Update(ctx, &kopsMachinePool); err != nil {
@@ -681,7 +685,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			}
 		}
 
-		if !r.DryRun && kopsControlPlane.Spec.TerraformConfig.CleanupTerraformDirectory {
+		if kopsControlPlane.Spec.TerraformConfig.CleanupTerraformDirectory {
 			err := utils.CleanupTerraformDirectory(terraformOutputDir)
 			if err != nil {
 				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedCleanupTerraformDirectory", "failed to cleanup terraform directory from cluster: %s", err)
@@ -896,9 +900,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 
 	// Only Apply resources if DryRun isn't set from command line
-	if r.DryRun {
-
-	} else {
+	if !r.DryRun {
 		err = reconciler.createOrUpdateKopsCluster(ctx, kopsClientset, fullCluster, kopsControlPlane.Spec.SSHPublicKey, cloud)
 		if err != nil {
 			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToManageKopsState", "failed to manage Kops state: %s", err)
@@ -940,9 +942,11 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		reconciler.log.Info(fmt.Sprintf("planning Terraform for %s", kopsControlPlane.ObjectMeta.GetName()))
 		err = reconciler.PlanTerraformFactory(ctx, terraformOutputDir, r.TfExecPath, reconciler.awsCredentials)
 		if err != nil {
-			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToPlanTerraform", "failed to plan terraform: %s", err)
+			reconciler.log.Error(err, "failed to plan terraform")
 			return resultError, err
 		}
+		reconciler.Mux.Unlock()
+		shouldUnlock = false
 	} else {
 		// TODO: This is needed because we are using a method from kops lib
 		// we should check alternatives
