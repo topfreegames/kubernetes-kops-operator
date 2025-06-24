@@ -37,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/record"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
@@ -146,12 +147,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	var recorder record.EventRecorder
+	if dryRun {
+		recorder = record.NewFakeRecorder(1000)
+	} else {
+		recorder = mgr.GetEventRecorderFor("kopscontrolplane-controller")
+	}
+
 	controller := &controlplane.KopsControlPlaneReconciler{
 		Client:                           mgr.GetClient(),
 		Scheme:                           mgr.GetScheme(),
 		ControllerClass:                  controllerClass,
 		Mux:                              new(sync.Mutex),
-		Recorder:                         mgr.GetEventRecorderFor("kopscontrolplane-controller"),
+		Recorder:                         recorder,
 		TfExecPath:                       tfExecPath,
 		DryRun:                           dryRun,
 		GetKopsClientSetFactory:          utils.GetKopsClientset,
@@ -190,7 +198,7 @@ func main() {
 		}
 	} else {
 
-		setupLog.Info("Starting Plan for controller class " + controllerClass)
+		setupLog.Info("starting Plan for controller class " + controllerClass)
 		controlPlanes := &controlplanev1alpha1.KopsControlPlaneList{}
 		err := mgr.GetAPIReader().List(ctx, controlPlanes)
 		if err != nil {
@@ -200,15 +208,13 @@ func main() {
 
 		for _, kcp := range controlPlanes.Items {
 			if kcp.Spec.ControllerClass == controllerClass {
-				setupLog.Info("Starting plan for Kops Control Plane " + kcp.Name)
+				setupLog.Info("starting plan for Kops Control Plane " + kcp.Name)
 				_, err := controller.Reconcile(context.WithValue(context.WithValue(ctx, controlplane.ClientKey{}, mgr.GetAPIReader()), controlplane.KCPKey{}, kcp), ctrl.Request{})
 				if err != nil {
-					setupLog.Error(err, "Error rendering plan for "+kcp.Name)
+					setupLog.Error(err, "error rendering plan for "+kcp.Name)
 					os.Exit(1)
 				}
-
 			}
-
 		}
 	}
 }
