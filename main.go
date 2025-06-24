@@ -106,15 +106,25 @@ func main() {
 	// Setup the context that's going to be used in controllers and for the manager.
 	ctx := ctrl.SetupSignalHandler()
 
-	const tfVersion = "1.5.7"
+	const tfVersion = "1.12.2"
 
 	tfPath := fmt.Sprintf("/tmp/%s_%s", product.Terraform.Name, tfVersion)
 
 	_, err = os.Stat(tfPath)
 	if os.IsNotExist(err) {
-		err = os.Mkdir(tfPath, os.ModePerm)
+		err = os.Mkdir(tfPath, 0755)
 		if err != nil {
 			setupLog.Error(err, "unable to create terraform directory")
+			os.Exit(1)
+		}
+	}
+
+	pluginCachePath := fmt.Sprintf("%s/plugin-cache", tfPath)
+	_, err = os.Stat(pluginCachePath)
+	if os.IsNotExist(err) {
+		err = os.Mkdir(pluginCachePath, 0755)
+		if err != nil {
+			setupLog.Error(err, "unable to create plugin cache directory")
 			os.Exit(1)
 		}
 	}

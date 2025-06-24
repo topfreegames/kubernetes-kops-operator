@@ -20,6 +20,7 @@ COPY metrics/ metrics/
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -a -o manager main.go
 
 FROM alpine
+RUN apk add --no-cache gcompat
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532
