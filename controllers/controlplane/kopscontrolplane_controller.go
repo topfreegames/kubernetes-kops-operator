@@ -844,11 +844,13 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	shouldEnableKarpenter := false
 	existingKopsMachinePool := []infrastructurev1alpha1.KopsMachinePool{}
 	for i, kopsMachinePool := range kmps {
-		err = reconciler.reconcileKopsMachinePool(ctx, kopsClientset, kopsControlPlane, &kmps[i])
-		if err != nil {
-			reconciler.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeWarning, "KopsMachinePoolReconcileFailed", err.Error())
-		} else {
-			reconciler.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeNormal, "KopsMachinePoolReconcileSuccess", kopsMachinePool.Name)
+		if !r.DryRun {
+			err = reconciler.reconcileKopsMachinePool(ctx, kopsClientset, kopsControlPlane, &kmps[i])
+			if err != nil {
+				reconciler.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeWarning, "KopsMachinePoolReconcileFailed", err.Error())
+			} else {
+				reconciler.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeNormal, "KopsMachinePoolReconcileSuccess", kopsMachinePool.Name)
+			}
 		}
 		if kopsMachinePool.ObjectMeta.DeletionTimestamp.IsZero() {
 			existingKopsMachinePool = append(existingKopsMachinePool, kopsMachinePool)
