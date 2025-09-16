@@ -46,7 +46,7 @@ The operator consists of several key components:
   - cluster-api-control-plane-controller
 - AWS credentials configured
 - kOps CLI installed (for development)
-- Go 1.23.5 or later
+- Go 1.24.7 or later
 - kubebuilder v3
 
 ## Usage

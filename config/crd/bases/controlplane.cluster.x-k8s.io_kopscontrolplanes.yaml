@@ -2568,6 +2568,11 @@ spec:
                         description: FeatureGates is set of key=value pairs that describe
                           feature gates for alpha/experimental features.
                         type: object
+                      goawayChance:
+                        description: GoawayChance is the probability that send a GOAWAY
+                          to HTTP/2 clients. Default to 0, means never send GOAWAY.
+                          Max is 0.02 to prevent break the apiserver.
+                        type: string
                       http2MaxStreamsPerConnection:
                         description: HTTP2MaxStreamsPerConnection sets the limit that
                           the server gives to clients for the maximum number of streams
@@ -5354,6 +5359,11 @@ spec:
                             description: ClusterName is the name of the cluster. It
                               is only relevant when building a mesh of clusters.
                             type: string
+                          cniExclusive:
+                            description: |-
+                              CniExclusive configures whether to remove other CNI configuration files.
+                              Default: true
+                            type: boolean
                           cpuRequest:
                             anyOf:
                             - type: integer
@@ -5451,6 +5461,20 @@ spec:
                               The cluster is operated by cilium-etcd-operator.
                               Default: false
                             type: boolean
+                          gatewayAPI:
+                            description: GatewayAPI specifies the configuration for
+                              Cilium Gateway API settings.
+                            properties:
+                              enableSecretsSync:
+                                description: |-
+                                  EnableSecretsSync specifies whether synchronization of secrets is enabled.
+                                  Default: true
+                                type: boolean
+                              enabled:
+                                description: Enabled specifies whether Cilium Gateway
+                                  API is enabled.
+                                type: boolean
+                            type: object
                           hubble:
                             description: Hubble configures the Hubble service on the
                               Cilium agent.
@@ -5660,6 +5684,47 @@ spec:
                            * run kube-proxy on the master
                            * enable debugging handlers on the master, so kubectl logs works
                         type: boolean
+                      kindnet:
+                        description: KindnetNetworkingSpec configures Kindnet settings.
+                        properties:
+                          adminNetworkPolicies:
+                            type: boolean
+                          baselineAdminNetworkPolicies:
+                            type: boolean
+                          dnsCaching:
+                            description: enable dns caching
+                            type: boolean
+                          fastPathThreshold:
+                            description: number of packets in a connection to offload
+                              it to the fast path
+                            format: int32
+                            type: integer
+                          logLevel:
+                            description: log level
+                            format: int32
+                            type: integer
+                          masquerade:
+                            description: node agent masquerading rules
+                            properties:
+                              enabled:
+                                type: boolean
+                              nonMasqueradeCIDRs:
+                                items:
+                                  type: string
+                                type: array
+                            type: object
+                          nat64:
+                            description: enable nat64 on ipv6 clusters
+                            type: boolean
+                          networkPolicies:
+                            description: Enable network policies
+                            type: boolean
+                          version:
+                            description: |-
+                              Version is the version of the kindnet agent.
+                              Default: v1.8.0
+                            type: string
+                        type: object
                       kopeio:
                         description: KopeioNetworkingSpec declares that we want Kopeio
                           networking

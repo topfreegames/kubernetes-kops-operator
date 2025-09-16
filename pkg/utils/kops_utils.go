@@ -75,12 +75,12 @@ func ValidateKopsCluster(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, 
 		return nil, err
 	}
 
-	validator, err := validation.NewClusterValidator(kopsCluster, cloud, igs, kubeConfig, k8sClient)
+	validator, err := validation.NewClusterValidator(kopsCluster, cloud, igs, nil, nil, kubeConfig, k8sClient)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected error creating validator: %v", err)
 	}
 
-	result, err := validator.Validate()
+	result, err := validator.Validate(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("%v", err)
 	}
