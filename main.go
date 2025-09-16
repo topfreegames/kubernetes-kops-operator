@@ -77,7 +77,7 @@ func main() {
 		"Enable leader election for controller manager. "+
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&controllerClass, "controller-class", "", "The name of the controller class to associate with the controller.")
-	flag.BoolVar(&dryRun, "dry-run", false, "The address the metric endpoint binds to.")
+	flag.BoolVar(&dryRun, "dry-run", false, "Enable dry-run mode to plan without making actual changes.")
 
 	opts := zap.Options{
 		Development: true,
