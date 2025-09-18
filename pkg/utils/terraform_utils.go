@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 
@@ -61,10 +62,45 @@ func CreateAdditionalTerraformFiles(tfFiles ...Template) error {
 	return nil
 }
 
+// ModifyTerraformProviderVersion modifies the existing Terraform files to add AWS provider version constraint
+func ModifyTerraformProviderVersion(terraformOutputDir, awsProviderVersion string) error {
+	kubernetesFile := terraformOutputDir + "/kubernetes.tf"
+
+	cleanVersion := strings.Trim(awsProviderVersion, `"`)
+
+	content, err := os.ReadFile(kubernetesFile)
+	if err != nil {
+		return fmt.Errorf("failed to read kubernetes.tf: %w", err)
+	}
+
+	awsVersionRegex := regexp.MustCompile(`(?s)(aws\s*=\s*\{[^}]*"version"\s*=\s*)"[^"]*"`)
+
+	if !awsVersionRegex.MatchString(string(content)) {
+		return fmt.Errorf("failed to find AWS provider version pattern in kubernetes.tf")
+	}
+
+	newVersionString := fmt.Sprintf(`${1}"%s"`, cleanVersion)
+	newContent := awsVersionRegex.ReplaceAllString(string(content), newVersionString)
+
+	err = os.WriteFile(kubernetesFile, []byte(newContent), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write modified kubernetes.tf: %w", err)
+	}
+
+	return nil
+}
+
 func initTerraform(ctx context.Context, workingDir, terraformExecPath string, credentials aws.Credentials) (*tfexec.Terraform, error) {
 	tf, err := tfexec.NewTerraform(workingDir, terraformExecPath)
 	if err != nil {
 		return nil, err
+	}
+
+	pluginCacheDir := fmt.Sprintf("%s/plugin-cache", filepath.Dir(terraformExecPath))
+
+	err = os.MkdirAll(pluginCacheDir, 0755)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create plugin cache directory: %w", err)
 	}
 
 	env := map[string]string{
@@ -72,7 +108,7 @@ func initTerraform(ctx context.Context, workingDir, terraformExecPath string, cr
 		"AWS_SECRET_ACCESS_KEY": credentials.SecretAccessKey,
 		"SPOTINST_TOKEN":        os.Getenv("SPOTINST_TOKEN"),
 		"SPOTINST_ACCOUNT":      os.Getenv("SPOTINST_ACCOUNT"),
-		"TF_PLUGIN_CACHE_DIR":   fmt.Sprintf("%s/plugin-cache", filepath.Dir(terraformExecPath)),
+		"TF_PLUGIN_CACHE_DIR":   pluginCacheDir,
 	}
 
 	// this overrides all ENVVARs that are passed to Terraform
@@ -81,7 +117,7 @@ func initTerraform(ctx context.Context, workingDir, terraformExecPath string, cr
 		return nil, err
 	}
 
-	err = tf.Init(ctx, tfexec.Upgrade(true))
+	err = tf.Init(ctx)
 	if err != nil {
 		return nil, err
 	}
