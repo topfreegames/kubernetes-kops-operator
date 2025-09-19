@@ -139,6 +139,122 @@ func TestCreateAdditionalTerraformFiles(t *testing.T) {
 	}
 }
 
+func readFixtureFile(filename string) (string, error) {
+	content, err := os.ReadFile(fmt.Sprintf("fixtures/terraform/%s", filename))
+	if err != nil {
+		return "", err
+	}
+	return string(content), nil
+}
+
+func TestModifyTerraformProviderVersion(t *testing.T) {
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	testCases := []struct {
+		description          string
+		fixtureFile          string
+		expectedFixtureFile  string
+		awsProviderVersion   string
+		expectedError        bool
+		expectedErrorMessage string
+		skipFileCreation     bool
+	}{
+		{
+			description:         "should modify AWS provider version with double quotes in input",
+			fixtureFile:         "kubernetes_basic.tf",
+			expectedFixtureFile: "kubernetes_basic_expected.tf",
+			awsProviderVersion:  `">= 5.0.0"`,
+			expectedError:       false,
+		},
+		{
+			description:         "should modify AWS provider version with single quotes in input",
+			fixtureFile:         "kubernetes_basic.tf",
+			expectedFixtureFile: "kubernetes_basic_expected.tf",
+			awsProviderVersion:  `'>= 5.0.0'`,
+			expectedError:       false,
+		},
+		{
+			description:         "should modify AWS provider version with mixed quotes in input",
+			fixtureFile:         "kubernetes_basic.tf",
+			expectedFixtureFile: "kubernetes_basic_expected.tf",
+			awsProviderVersion:  `'">= 5.0.0"'`,
+			expectedError:       false,
+		},
+		{
+			description:         "should modify AWS provider version without quotes in input",
+			fixtureFile:         "kubernetes_basic.tf",
+			expectedFixtureFile: "kubernetes_basic_expected.tf",
+			awsProviderVersion:  `>= 5.0.0`,
+			expectedError:       false,
+		},
+		{
+			description:         "should handle quoted version key AWS provider block",
+			fixtureFile:         "kubernetes_quoted_version.tf",
+			expectedFixtureFile: "kubernetes_quoted_version_expected.tf",
+			awsProviderVersion:  `">= 5.50.0"`,
+			expectedError:       false,
+		},
+		{
+			description:          "should return error when AWS provider version pattern not found",
+			fixtureFile:          "kubernetes_no_aws_provider.tf",
+			awsProviderVersion:   `">= 5.0.0"`,
+			expectedError:        true,
+			expectedErrorMessage: "failed to find AWS provider version pattern",
+		},
+		{
+			description:         "should handle exact version format",
+			fixtureFile:         "kubernetes_exact_version.tf",
+			expectedFixtureFile: "kubernetes_exact_version_expected.tf",
+			awsProviderVersion:  `'5.0.0'`,
+			expectedError:       false,
+		},
+		{
+			description:          "should return error when kubernetes.tf file doesn't exist",
+			skipFileCreation:     true,
+			awsProviderVersion:   `"~> 5.0"`,
+			expectedError:        true,
+			expectedErrorMessage: "failed to read kubernetes.tf",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			tmpDir, err := os.MkdirTemp("", "test_terraform_provider")
+			g.Expect(err).NotTo(HaveOccurred())
+			defer os.RemoveAll(tmpDir)
+
+			kubernetesFile := fmt.Sprintf("%s/kubernetes.tf", tmpDir)
+
+			if !tc.skipFileCreation {
+				fixtureContent, err := readFixtureFile(tc.fixtureFile)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				err = os.WriteFile(kubernetesFile, []byte(fixtureContent), 0644)
+				g.Expect(err).NotTo(HaveOccurred())
+			}
+
+			err = ModifyTerraformProviderVersion(tmpDir, tc.awsProviderVersion)
+
+			if tc.expectedError {
+				g.Expect(err).To(HaveOccurred())
+				if tc.expectedErrorMessage != "" {
+					g.Expect(err.Error()).To(ContainSubstring(tc.expectedErrorMessage))
+				}
+			} else {
+				g.Expect(err).NotTo(HaveOccurred())
+
+				expectedContent, err := readFixtureFile(tc.expectedFixtureFile)
+				g.Expect(err).NotTo(HaveOccurred())
+
+				actualContent, err := os.ReadFile(kubernetesFile)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(string(actualContent)).To(Equal(expectedContent))
+			}
+		})
+	}
+}
+
 func TestCleanupTerraformDirectory(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "test")
 

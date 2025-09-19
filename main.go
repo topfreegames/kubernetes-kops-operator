@@ -71,6 +71,7 @@ func main() {
 	var probeAddr string
 	var controllerClass string
 	var dryRun bool
+	var awsProviderVersion string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -78,6 +79,7 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&controllerClass, "controller-class", "", "The name of the controller class to associate with the controller.")
 	flag.BoolVar(&dryRun, "dry-run", false, "Enable dry-run mode to plan without making actual changes.")
+	flag.StringVar(&awsProviderVersion, "aws-provider-version", "", "The version of the AWS provider to use in Terraform templates.")
 
 	opts := zap.Options{
 		Development: true,
@@ -85,6 +87,12 @@ func main() {
 	}
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
+
+	if awsProviderVersion == "" {
+		awsProviderVersion = "6.13.0"
+	}
+
+	setupLog.Info("Using AWS provider version", "version", awsProviderVersion)
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -162,6 +170,7 @@ func main() {
 		Recorder:                         recorder,
 		TfExecPath:                       tfExecPath,
 		DryRun:                           dryRun,
+		AWSProviderVersion:               awsProviderVersion,
 		GetKopsClientSetFactory:          utils.GetKopsClientset,
 		BuildCloudFactory:                utils.BuildCloud,
 		PopulateClusterSpecFactory:       controlplane.PopulateClusterSpec,
