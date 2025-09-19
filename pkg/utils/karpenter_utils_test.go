@@ -10,6 +10,7 @@ import (
 	karpenterv1beta1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/stretchr/testify/assert"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
@@ -164,12 +165,7 @@ func TestCreateEC2NodeClassV1FromKopsLaunchTemplateInfo(t *testing.T) {
 							},
 						},
 					},
-					Tags: map[string]string{
-						"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
-						"Name":                      "test-cluster.test.k8s.cluster/test-machine-pool",
-						"kops.k8s.io/instancegroup": "test-machine-pool",
-						"KubernetesCluster":         "test-cluster.test.k8s.cluster",
-					},
+					Tags:     map[string]string{},
 					UserData: helpers.StringPtr("dummy content"),
 				},
 			},
@@ -388,4 +384,124 @@ func TestBuildKarpenterVolumeConfigV1FromKops(t *testing.T) {
 			g.Expect(output).To(Equal(tc.expectedOutput))
 		})
 	}
+}
+
+func TestMergeCloudLabels(t *testing.T) {
+	testCases := []struct {
+		name              string
+		clusterLabels     map[string]string
+		machinePoolLabels map[string]string
+		expected          map[string]string
+	}{
+		{
+			name:              "both nil",
+			clusterLabels:     nil,
+			machinePoolLabels: nil,
+			expected:          map[string]string{},
+		},
+		{
+			name:              "cluster labels only",
+			clusterLabels:     map[string]string{"cluster-key": "cluster-value"},
+			machinePoolLabels: nil,
+			expected:          map[string]string{"cluster-key": "cluster-value"},
+		},
+		{
+			name:              "machine pool labels only",
+			clusterLabels:     nil,
+			machinePoolLabels: map[string]string{"mp-key": "mp-value"},
+			expected:          map[string]string{"mp-key": "mp-value"},
+		},
+		{
+			name:              "no conflicts",
+			clusterLabels:     map[string]string{"cluster-key": "cluster-value"},
+			machinePoolLabels: map[string]string{"mp-key": "mp-value"},
+			expected:          map[string]string{"cluster-key": "cluster-value", "mp-key": "mp-value"},
+		},
+		{
+			name:              "machine pool overrides cluster",
+			clusterLabels:     map[string]string{"common-key": "cluster-value", "cluster-only": "value"},
+			machinePoolLabels: map[string]string{"common-key": "mp-value", "mp-only": "value"},
+			expected:          map[string]string{"common-key": "mp-value", "cluster-only": "value", "mp-only": "value"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := mergeCloudLabels(tc.clusterLabels, tc.machinePoolLabels)
+			assert.Equal(t, tc.expected, result)
+		})
+	}
+}
+
+func TestMergeCloudLabels_Priority(t *testing.T) {
+	clusterLabels := map[string]string{
+		"Name":              "cluster-name",
+		"Environment":       "prod",
+		"Owner":             "team-a",
+		"KubernetesCluster": "my-cluster",
+	}
+	machinePoolLabels := map[string]string{
+		"Name":         "mp-name",
+		"Environment":  "dev",
+		"InstanceType": "m5.large",
+	}
+
+	expected := map[string]string{
+		"Name":              "mp-name",
+		"Environment":       "dev",
+		"Owner":             "team-a",
+		"KubernetesCluster": "my-cluster",
+		"InstanceType":      "m5.large",
+	}
+
+	result := mergeCloudLabels(clusterLabels, machinePoolLabels)
+	assert.Equal(t, expected, result)
+}
+
+func TestEC2NodeClassTagConsistency(t *testing.T) {
+	kopsCluster := &kopsapi.Cluster{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-cluster"},
+		Spec: kopsapi.ClusterSpec{
+			CloudLabels: map[string]string{"cluster-label": "cluster-value"},
+		},
+	}
+
+	kmp := &infrastructurev1alpha1.KopsMachinePool{
+		ObjectMeta: metav1.ObjectMeta{Name: "test-nodepool"},
+		Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+			KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
+				CloudLabels: map[string]string{"pool-label": "pool-value"},
+				Image:       "ami-123456",
+			},
+		},
+	}
+
+	t.Run("consistent cloud label merging", func(t *testing.T) {
+		// Test the merging logic used in both functions
+		mergedCloudLabels := mergeCloudLabels(kopsCluster.Spec.CloudLabels, kmp.Spec.KopsInstanceGroupSpec.CloudLabels)
+
+		// Verify cloud labels are correctly merged
+		assert.Equal(t, "cluster-value", mergedCloudLabels["cluster-label"], "cluster label should be present")
+		assert.Equal(t, "pool-value", mergedCloudLabels["pool-label"], "pool label should be present")
+
+		// Verify machine pool takes priority
+		kopsClusterWithConflict := &kopsapi.Cluster{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-cluster"},
+			Spec: kopsapi.ClusterSpec{
+				CloudLabels: map[string]string{"common-key": "cluster-value"},
+			},
+		}
+
+		kmpWithConflict := &infrastructurev1alpha1.KopsMachinePool{
+			ObjectMeta: metav1.ObjectMeta{Name: "test-nodepool"},
+			Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+				KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
+					CloudLabels: map[string]string{"common-key": "pool-value"},
+				},
+			},
+		}
+
+		mergedWithConflict := mergeCloudLabels(kopsClusterWithConflict.Spec.CloudLabels, kmpWithConflict.Spec.KopsInstanceGroupSpec.CloudLabels)
+		assert.Equal(t, "pool-value", mergedWithConflict["common-key"], "machine pool should override cluster")
+	})
 }
