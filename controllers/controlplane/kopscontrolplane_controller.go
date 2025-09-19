@@ -95,6 +95,7 @@ type KopsControlPlaneReconciler struct {
 	Recorder                         record.EventRecorder
 	TfExecPath                       string
 	DryRun                           bool
+	AWSProviderVersion               string
 	GetKopsClientSetFactory          func(configBase string) (simple.Clientset, error)
 	BuildCloudFactory                func(*kopsapi.Cluster) (fi.Cloud, error)
 	PopulateClusterSpecFactory       func(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsClientset simple.Clientset, cloud fi.Cloud) (*kopsapi.Cluster, error)
@@ -937,6 +938,14 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, existingKopsMachinePool, shouldEnableKarpenter, fullCluster.Spec.ConfigStore.Base, terraformOutputDir, shouldIgnoreSG)
 	if err != nil {
 		return resultError, err
+	}
+
+	// Modify existing Terraform files to add AWS provider version constraint if specified
+	if r.AWSProviderVersion != "" {
+		err = utils.ModifyTerraformProviderVersion(terraformOutputDir, r.AWSProviderVersion)
+		if err != nil {
+			return resultError, err
+		}
 	}
 
 	// Only Apply resources if DryRun isn't set from command line

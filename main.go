@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"time"
@@ -56,6 +57,22 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
+// getKopsVersion retrieves the kOps version from build info
+func getKopsVersion() string {
+	buildInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+
+	for _, dep := range buildInfo.Deps {
+		if dep.Path == "k8s.io/kops" {
+			return dep.Version
+		}
+	}
+
+	return "unknown"
+}
+
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
@@ -71,6 +88,8 @@ func main() {
 	var probeAddr string
 	var controllerClass string
 	var dryRun bool
+	var awsProviderVersion string
+	var terraformVersion string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -78,6 +97,8 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&controllerClass, "controller-class", "", "The name of the controller class to associate with the controller.")
 	flag.BoolVar(&dryRun, "dry-run", false, "Enable dry-run mode to plan without making actual changes.")
+	flag.StringVar(&awsProviderVersion, "aws-provider-version", "", "The version of the AWS provider to use in Terraform templates.")
+	flag.StringVar(&terraformVersion, "terraform-version", "", "The version of Terraform to install and use.")
 
 	opts := zap.Options{
 		Development: true,
@@ -87,6 +108,19 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	if awsProviderVersion == "" {
+		awsProviderVersion = "6.13.0"
+	}
+	setupLog.Info("using AWS provider version", "version", awsProviderVersion)
+
+	if terraformVersion == "" {
+		terraformVersion = "1.5.7"
+	}
+	setupLog.Info("using Terraform version", "version", terraformVersion)
+
+	kopsVersion := getKopsVersion()
+	setupLog.Info("using kOps version", "version", kopsVersion)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
@@ -106,9 +140,7 @@ func main() {
 	// Setup the context that's going to be used in controllers and for the manager.
 	ctx := ctrl.SetupSignalHandler()
 
-	const tfVersion = "1.5.7"
-
-	tfPath := fmt.Sprintf("/tmp/%s_%s", product.Terraform.Name, tfVersion)
+	tfPath := fmt.Sprintf("/tmp/%s_%s", product.Terraform.Name, terraformVersion)
 
 	_, err = os.Stat(tfPath)
 	if os.IsNotExist(err) {
@@ -126,7 +158,7 @@ func main() {
 
 	installer := &releases.ExactVersion{
 		Product:    product.Terraform,
-		Version:    version.Must(version.NewVersion(tfVersion)),
+		Version:    version.Must(version.NewVersion(terraformVersion)),
 		InstallDir: tfPath,
 	}
 
@@ -162,6 +194,7 @@ func main() {
 		Recorder:                         recorder,
 		TfExecPath:                       tfExecPath,
 		DryRun:                           dryRun,
+		AWSProviderVersion:               awsProviderVersion,
 		GetKopsClientSetFactory:          utils.GetKopsClientset,
 		BuildCloudFactory:                utils.BuildCloud,
 		PopulateClusterSpecFactory:       controlplane.PopulateClusterSpec,
