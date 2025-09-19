@@ -18,6 +18,20 @@ import (
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 )
 
+func mergeCloudLabels(clusterLabels, machinePoolLabels map[string]string) map[string]string {
+	mergedLabels := make(map[string]string)
+
+	for key, value := range clusterLabels {
+		mergedLabels[key] = value
+	}
+
+	for key, value := range machinePoolLabels {
+		mergedLabels[key] = value
+	}
+
+	return mergedLabels
+}
+
 func BuildKarpenterVolumeConfigFromKops(kopsVolume *kopsapi.InstanceRootVolumeSpec) *karpenterv1beta1.BlockDevice {
 
 	var karpenterVolumeConfig *karpenterv1beta1.BlockDevice
@@ -182,6 +196,8 @@ func CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster, 
 		associatePublicIP = false
 	}
 
+	mergedCloudLabels := mergeCloudLabels(kopsCluster.Spec.CloudLabels, kmp.Spec.KopsInstanceGroupSpec.CloudLabels)
+
 	data := struct {
 		Name              string
 		AmiName           string
@@ -198,7 +214,7 @@ func CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster, 
 		AmiAccount:        amiAccount,
 		IGName:            kmp.Name,
 		ClusterName:       kopsCluster.Name,
-		Tags:              kopsCluster.Spec.CloudLabels,
+		Tags:              mergedCloudLabels,
 		RootVolume:        BuildKarpenterVolumeConfigFromKops(kmp.Spec.KopsInstanceGroupSpec.RootVolume),
 		UserData:          userData,
 		AssociatePublicIP: associatePublicIP,
@@ -242,6 +258,8 @@ func CreateEC2NodeClassV1FromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster
 	} else {
 		associatePublicIP = false
 	}
+
+	mergedCloudLabels := mergeCloudLabels(kopsCluster.Spec.CloudLabels, kmp.Spec.KopsInstanceGroupSpec.CloudLabels)
 
 	ec2NodeClass := karpenterv1.EC2NodeClass{
 		TypeMeta: metav1.TypeMeta{
@@ -296,18 +314,9 @@ func CreateEC2NodeClassV1FromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster
 					},
 				},
 			},
-			Tags: map[string]string{
-				"Name": fmt.Sprintf("%s/%s", kopsCluster.Name, kmp.Name),
-				"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
-				"kops.k8s.io/instancegroup": kmp.Name,
-				"KubernetesCluster":         kopsCluster.Name,
-			},
+			Tags:     mergedCloudLabels,
 			UserData: helpers.StringPtr(userData),
 		},
-	}
-
-	for key, value := range kopsCluster.Spec.CloudLabels {
-		ec2NodeClass.Spec.Tags[key] = value
 	}
 
 	return &ec2NodeClass, nil
