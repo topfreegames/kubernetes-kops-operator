@@ -72,6 +72,7 @@ func main() {
 	var controllerClass string
 	var dryRun bool
 	var awsProviderVersion string
+	var terraformVersion string
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to.")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
 	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
@@ -80,6 +81,7 @@ func main() {
 	flag.StringVar(&controllerClass, "controller-class", "", "The name of the controller class to associate with the controller.")
 	flag.BoolVar(&dryRun, "dry-run", false, "Enable dry-run mode to plan without making actual changes.")
 	flag.StringVar(&awsProviderVersion, "aws-provider-version", "", "The version of the AWS provider to use in Terraform templates.")
+	flag.StringVar(&terraformVersion, "terraform-version", "", "The version of Terraform to install and use.")
 
 	opts := zap.Options{
 		Development: true,
@@ -91,8 +93,12 @@ func main() {
 	if awsProviderVersion == "" {
 		awsProviderVersion = "6.13.0"
 	}
-
 	setupLog.Info("Using AWS provider version", "version", awsProviderVersion)
+
+	if terraformVersion == "" {
+		terraformVersion = "1.5.7"
+	}
+	setupLog.Info("Using Terraform version", "version", terraformVersion)
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
@@ -114,9 +120,7 @@ func main() {
 	// Setup the context that's going to be used in controllers and for the manager.
 	ctx := ctrl.SetupSignalHandler()
 
-	const tfVersion = "1.5.7"
-
-	tfPath := fmt.Sprintf("/tmp/%s_%s", product.Terraform.Name, tfVersion)
+	tfPath := fmt.Sprintf("/tmp/%s_%s", product.Terraform.Name, terraformVersion)
 
 	_, err = os.Stat(tfPath)
 	if os.IsNotExist(err) {
@@ -134,7 +138,7 @@ func main() {
 
 	installer := &releases.ExactVersion{
 		Product:    product.Terraform,
-		Version:    version.Must(version.NewVersion(tfVersion)),
+		Version:    version.Must(version.NewVersion(terraformVersion)),
 		InstallDir: tfPath,
 	}
 
