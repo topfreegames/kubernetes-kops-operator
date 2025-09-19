@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"text/template"
 
@@ -58,6 +59,34 @@ func CreateAdditionalTerraformFiles(tfFiles ...Template) error {
 			return err
 		}
 	}
+	return nil
+}
+
+// ModifyTerraformProviderVersion modifies the existing Terraform files to add AWS provider version constraint
+func ModifyTerraformProviderVersion(terraformOutputDir, awsProviderVersion string) error {
+	kubernetesFile := terraformOutputDir + "/kubernetes.tf"
+
+	cleanVersion := strings.Trim(awsProviderVersion, `"'`)
+
+	content, err := os.ReadFile(kubernetesFile)
+	if err != nil {
+		return fmt.Errorf("failed to read kubernetes.tf: %w", err)
+	}
+
+	awsVersionRegex := regexp.MustCompile(`(?s)(aws\s*=\s*\{[^}]*"?version"?\s*=\s*)"[^"]*"`)
+
+	if !awsVersionRegex.MatchString(string(content)) {
+		return fmt.Errorf("failed to find AWS provider version pattern in kubernetes.tf")
+	}
+
+	newVersionString := fmt.Sprintf(`${1}"%s"`, cleanVersion)
+	newContent := awsVersionRegex.ReplaceAllString(string(content), newVersionString)
+
+	err = os.WriteFile(kubernetesFile, []byte(newContent), 0644)
+	if err != nil {
+		return fmt.Errorf("failed to write modified kubernetes.tf: %w", err)
+	}
+
 	return nil
 }
 
