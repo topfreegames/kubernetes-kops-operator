@@ -21,6 +21,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strconv"
 	"sync"
 	"time"
@@ -56,6 +57,22 @@ var (
 	setupLog = ctrl.Log.WithName("setup")
 )
 
+// getKopsVersion retrieves the kOps version from build info
+func getKopsVersion() string {
+	buildInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "unknown"
+	}
+
+	for _, dep := range buildInfo.Deps {
+		if dep.Path == "k8s.io/kops" {
+			return dep.Version
+		}
+	}
+
+	return "unknown"
+}
+
 func init() {
 	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
 
@@ -90,17 +107,20 @@ func main() {
 	opts.BindFlags(flag.CommandLine)
 	flag.Parse()
 
+	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
 	if awsProviderVersion == "" {
 		awsProviderVersion = "6.13.0"
 	}
-	setupLog.Info("Using AWS provider version", "version", awsProviderVersion)
+	setupLog.Info("using AWS provider version", "version", awsProviderVersion)
 
 	if terraformVersion == "" {
 		terraformVersion = "1.5.7"
 	}
-	setupLog.Info("Using Terraform version", "version", terraformVersion)
+	setupLog.Info("using Terraform version", "version", terraformVersion)
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	kopsVersion := getKopsVersion()
+	setupLog.Info("using kOps version", "version", kopsVersion)
 
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme: scheme,
