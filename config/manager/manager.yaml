@@ -46,6 +46,10 @@ spec:
               optional: true
         - name: AWS_REGION
           value: us-east-1
+        - name: TERRAFORM_VERSION
+          value: "1.5.7"
+        - name: AWS_PROVIDER_VERSION
+          value: "6.13.0"
         securityContext:
           allowPrivilegeEscalation: false
         livenessProbe:
