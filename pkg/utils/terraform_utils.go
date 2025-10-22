@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -24,6 +25,8 @@ type Template struct {
 
 //go:embed templates/*.tpl
 var templates embed.FS
+
+var tfPluginMux sync.Mutex
 
 // CreateTerraformFileFromTemplate populates a Terraform template and create files in the state
 func CreateTerraformFilesFromTemplate(terraformTemplateFilePath string, TerraformOutputFileName string, terraformOutputDir string, templateData any) error {
@@ -110,7 +113,10 @@ func initTerraform(ctx context.Context, workingDir, terraformExecPath string, cr
 		return nil, err
 	}
 
+	tfPluginMux.Lock()
 	err = tf.Init(ctx, tfexec.Upgrade(true))
+	tfPluginMux.Unlock()
+
 	if err != nil {
 		return nil, err
 	}
