@@ -2017,12 +2017,6 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 				kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
 					"kops.k8s.io/instance-group-role": "Node",
 				}
-				kmp.Spec.KopsInstanceGroupSpec.CloudLabels = map[string]string{
-					"KubernetesCluster": "test-cluster.test.k8s.cluster",
-					"Name":              "test-cluster.test.k8s.cluster/test-ig",
-					"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
-					"kops.k8s.io/instancegroup": "test-ig",
-				}
 				kmp.Spec.KarpenterNodePoolsV1 = []infrastructurev1alpha1.KarpenterNodePoolsV1{
 					{
 						TypeMeta: metav1.TypeMeta{

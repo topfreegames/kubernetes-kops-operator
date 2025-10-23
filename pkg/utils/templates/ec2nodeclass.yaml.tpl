@@ -35,12 +35,8 @@ spec:
       kops.k8s.io/instance-group/{{ .IGName }}: '*'
       kubernetes.io/cluster/{{ .ClusterName }}: '*'
   tags:
-    Name: {{ .ClusterName }}/{{ .IGName }}
-    k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node: ''
-    kops.k8s.io/instancegroup: {{ .IGName }}
-    KubernetesCluster: {{ .ClusterName }}
   {{- range $key, $value := .Tags }}
-    {{ $key }}: {{ $value | quote }}
+    {{ $key }}: {{ if eq $value "" }}''{{ else }}{{ $value }}{{ end }}
   {{- end }}
   userData: |
 {{ .UserData | indent 4 }}

@@ -165,7 +165,12 @@ func TestCreateEC2NodeClassV1FromKopsLaunchTemplateInfo(t *testing.T) {
 							},
 						},
 					},
-					Tags:     map[string]string{},
+					Tags: map[string]string{
+						"Name":                      "test-cluster.test.k8s.cluster/test-machine-pool",
+						"KubernetesCluster":         "test-cluster.test.k8s.cluster",
+						"kops.k8s.io/instancegroup": "test-machine-pool",
+						"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
+					},
 					UserData: helpers.StringPtr("dummy content"),
 				},
 			},
@@ -389,45 +394,133 @@ func TestBuildKarpenterVolumeConfigV1FromKops(t *testing.T) {
 func TestMergeCloudLabels(t *testing.T) {
 	testCases := []struct {
 		name              string
+		clusterName       string
+		machinePoolName   string
 		clusterLabels     map[string]string
 		machinePoolLabels map[string]string
 		expected          map[string]string
 	}{
 		{
 			name:              "both nil",
+			clusterName:       "test-cluster",
+			machinePoolName:   "test-pool",
 			clusterLabels:     nil,
 			machinePoolLabels: nil,
-			expected:          map[string]string{},
+			expected: map[string]string{
+				"Name":                      "test-cluster/test-pool",
+				"KubernetesCluster":         "test-cluster",
+				"kops.k8s.io/instancegroup": "test-pool",
+				"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
+			},
 		},
 		{
 			name:              "cluster labels only",
+			clusterName:       "test-cluster",
+			machinePoolName:   "test-pool",
 			clusterLabels:     map[string]string{"cluster-key": "cluster-value"},
 			machinePoolLabels: nil,
-			expected:          map[string]string{"cluster-key": "cluster-value"},
+			expected: map[string]string{
+				"cluster-key":               "cluster-value",
+				"Name":                      "test-cluster/test-pool",
+				"KubernetesCluster":         "test-cluster",
+				"kops.k8s.io/instancegroup": "test-pool",
+				"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
+			},
 		},
 		{
 			name:              "machine pool labels only",
+			clusterName:       "test-cluster",
+			machinePoolName:   "test-pool",
 			clusterLabels:     nil,
 			machinePoolLabels: map[string]string{"mp-key": "mp-value"},
-			expected:          map[string]string{"mp-key": "mp-value"},
+			expected: map[string]string{
+				"mp-key":                    "mp-value",
+				"Name":                      "test-cluster/test-pool",
+				"KubernetesCluster":         "test-cluster",
+				"kops.k8s.io/instancegroup": "test-pool",
+				"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
+			},
 		},
 		{
 			name:              "no conflicts",
+			clusterName:       "test-cluster",
+			machinePoolName:   "test-pool",
 			clusterLabels:     map[string]string{"cluster-key": "cluster-value"},
 			machinePoolLabels: map[string]string{"mp-key": "mp-value"},
-			expected:          map[string]string{"cluster-key": "cluster-value", "mp-key": "mp-value"},
+			expected: map[string]string{
+				"cluster-key":               "cluster-value",
+				"mp-key":                    "mp-value",
+				"Name":                      "test-cluster/test-pool",
+				"KubernetesCluster":         "test-cluster",
+				"kops.k8s.io/instancegroup": "test-pool",
+				"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
+			},
 		},
 		{
 			name:              "machine pool overrides cluster",
+			clusterName:       "test-cluster",
+			machinePoolName:   "test-pool",
 			clusterLabels:     map[string]string{"common-key": "cluster-value", "cluster-only": "value"},
 			machinePoolLabels: map[string]string{"common-key": "mp-value", "mp-only": "value"},
-			expected:          map[string]string{"common-key": "mp-value", "cluster-only": "value", "mp-only": "value"},
+			expected: map[string]string{
+				"common-key":                "mp-value",
+				"cluster-only":              "value",
+				"mp-only":                   "value",
+				"Name":                      "test-cluster/test-pool",
+				"KubernetesCluster":         "test-cluster",
+				"kops.k8s.io/instancegroup": "test-pool",
+				"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
+			},
+		},
+		{
+			name:              "essential tags override custom labels",
+			clusterName:       "test-cluster",
+			machinePoolName:   "test-pool",
+			clusterLabels:     map[string]string{"Name": "wrong-name", "KubernetesCluster": "wrong-cluster"},
+			machinePoolLabels: map[string]string{"kops.k8s.io/instancegroup": "wrong-pool"},
+			expected: map[string]string{
+				"Name":                      "test-cluster/test-pool",
+				"KubernetesCluster":         "test-cluster",
+				"kops.k8s.io/instancegroup": "test-pool",
+				"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
+			},
+		},
+		{
+			name:            "real-world scenario with karpenter tags",
+			clusterName:     "infra-test.us-east-1.k8s.tfgco.com",
+			machinePoolName: "nodes-karpenter",
+			clusterLabels: map[string]string{
+				"Application":   "kubernetes",
+				"Environment":   "testing",
+				"Managed":       "kops-controller",
+				"aws_account":   "797740695898",
+				"business_unit": "wls-dept-cloud-platform-engineering",
+				"org_squad":     "compute",
+			},
+			machinePoolLabels: map[string]string{
+				"aws-node-termination-handler/infra-test.us-east-1.k8s.tfgco.com": "true",
+				"k8s.io/cluster/infra-test.us-east-1.k8s.tfgco.com":               "true",
+			},
+			expected: map[string]string{
+				"Application":   "kubernetes",
+				"Environment":   "testing",
+				"Managed":       "kops-controller",
+				"aws_account":   "797740695898",
+				"business_unit": "wls-dept-cloud-platform-engineering",
+				"org_squad":     "compute",
+				"aws-node-termination-handler/infra-test.us-east-1.k8s.tfgco.com": "true",
+				"k8s.io/cluster/infra-test.us-east-1.k8s.tfgco.com":               "true",
+				"Name":                      "infra-test.us-east-1.k8s.tfgco.com/nodes-karpenter",
+				"KubernetesCluster":         "infra-test.us-east-1.k8s.tfgco.com",
+				"kops.k8s.io/instancegroup": "nodes-karpenter",
+				"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
+			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := mergeCloudLabels(tc.clusterLabels, tc.machinePoolLabels)
+			result := mergeCloudLabels(tc.clusterName, tc.machinePoolName, tc.clusterLabels, tc.machinePoolLabels)
 			assert.Equal(t, tc.expected, result)
 		})
 	}
@@ -435,26 +528,25 @@ func TestMergeCloudLabels(t *testing.T) {
 
 func TestMergeCloudLabels_Priority(t *testing.T) {
 	clusterLabels := map[string]string{
-		"Name":              "cluster-name",
-		"Environment":       "prod",
-		"Owner":             "team-a",
-		"KubernetesCluster": "my-cluster",
+		"Environment": "prod",
+		"Owner":       "team-a",
 	}
 	machinePoolLabels := map[string]string{
-		"Name":         "mp-name",
 		"Environment":  "dev",
 		"InstanceType": "m5.large",
 	}
 
 	expected := map[string]string{
-		"Name":              "mp-name",
-		"Environment":       "dev",
-		"Owner":             "team-a",
-		"KubernetesCluster": "my-cluster",
-		"InstanceType":      "m5.large",
+		"Name":                      "my-cluster/my-pool",
+		"Environment":               "dev",
+		"Owner":                     "team-a",
+		"KubernetesCluster":         "my-cluster",
+		"InstanceType":              "m5.large",
+		"kops.k8s.io/instancegroup": "my-pool",
+		"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
 	}
 
-	result := mergeCloudLabels(clusterLabels, machinePoolLabels)
+	result := mergeCloudLabels("my-cluster", "my-pool", clusterLabels, machinePoolLabels)
 	assert.Equal(t, expected, result)
 }
 
@@ -477,14 +569,14 @@ func TestEC2NodeClassTagConsistency(t *testing.T) {
 	}
 
 	t.Run("consistent cloud label merging", func(t *testing.T) {
-		// Test the merging logic used in both functions
-		mergedCloudLabels := mergeCloudLabels(kopsCluster.Spec.CloudLabels, kmp.Spec.KopsInstanceGroupSpec.CloudLabels)
+		mergedCloudLabels := mergeCloudLabels(kopsCluster.Name, kmp.Name, kopsCluster.Spec.CloudLabels, kmp.Spec.KopsInstanceGroupSpec.CloudLabels)
 
-		// Verify cloud labels are correctly merged
 		assert.Equal(t, "cluster-value", mergedCloudLabels["cluster-label"], "cluster label should be present")
 		assert.Equal(t, "pool-value", mergedCloudLabels["pool-label"], "pool label should be present")
+		assert.Equal(t, "test-cluster/test-nodepool", mergedCloudLabels["Name"], "essential Name tag should be present")
+		assert.Equal(t, "test-cluster", mergedCloudLabels["KubernetesCluster"], "essential KubernetesCluster tag should be present")
+		assert.Equal(t, "test-nodepool", mergedCloudLabels["kops.k8s.io/instancegroup"], "essential instancegroup tag should be present")
 
-		// Verify machine pool takes priority
 		kopsClusterWithConflict := &kopsapi.Cluster{
 			ObjectMeta: metav1.ObjectMeta{Name: "test-cluster"},
 			Spec: kopsapi.ClusterSpec{
@@ -501,7 +593,7 @@ func TestEC2NodeClassTagConsistency(t *testing.T) {
 			},
 		}
 
-		mergedWithConflict := mergeCloudLabels(kopsClusterWithConflict.Spec.CloudLabels, kmpWithConflict.Spec.KopsInstanceGroupSpec.CloudLabels)
+		mergedWithConflict := mergeCloudLabels(kopsClusterWithConflict.Name, kmpWithConflict.Name, kopsClusterWithConflict.Spec.CloudLabels, kmpWithConflict.Spec.KopsInstanceGroupSpec.CloudLabels)
 		assert.Equal(t, "pool-value", mergedWithConflict["common-key"], "machine pool should override cluster")
 	})
 }

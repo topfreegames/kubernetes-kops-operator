@@ -35,9 +35,9 @@ spec:
       kops.k8s.io/instance-group/test-machine-pool: '*'
       kubernetes.io/cluster/test-cluster.test.k8s.cluster: '*'
   tags:
+    KubernetesCluster: test-cluster.test.k8s.cluster
     Name: test-cluster.test.k8s.cluster/test-machine-pool
     k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node: ''
     kops.k8s.io/instancegroup: test-machine-pool
-    KubernetesCluster: test-cluster.test.k8s.cluster
   userData: |
     dummy content

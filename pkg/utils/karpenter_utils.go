@@ -18,7 +18,7 @@ import (
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 )
 
-func mergeCloudLabels(clusterLabels, machinePoolLabels map[string]string) map[string]string {
+func mergeCloudLabels(clusterName, machinePoolName string, clusterLabels, machinePoolLabels map[string]string) map[string]string {
 	mergedLabels := make(map[string]string)
 
 	for key, value := range clusterLabels {
@@ -26,6 +26,17 @@ func mergeCloudLabels(clusterLabels, machinePoolLabels map[string]string) map[st
 	}
 
 	for key, value := range machinePoolLabels {
+		mergedLabels[key] = value
+	}
+
+	essentialTags := map[string]string{
+		"Name":                      fmt.Sprintf("%s/%s", clusterName, machinePoolName),
+		"KubernetesCluster":         clusterName,
+		"kops.k8s.io/instancegroup": machinePoolName,
+		"k8s.io/cluster-autoscaler/node-template/label/node-role.kubernetes.io/node": "",
+	}
+
+	for key, value := range essentialTags {
 		mergedLabels[key] = value
 	}
 
@@ -196,7 +207,7 @@ func CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster, 
 		associatePublicIP = false
 	}
 
-	mergedCloudLabels := mergeCloudLabels(kopsCluster.Spec.CloudLabels, kmp.Spec.KopsInstanceGroupSpec.CloudLabels)
+	mergedCloudLabels := mergeCloudLabels(kopsCluster.Name, kmp.Name, kopsCluster.Spec.CloudLabels, kmp.Spec.KopsInstanceGroupSpec.CloudLabels)
 
 	data := struct {
 		Name              string
@@ -259,7 +270,7 @@ func CreateEC2NodeClassV1FromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster
 		associatePublicIP = false
 	}
 
-	mergedCloudLabels := mergeCloudLabels(kopsCluster.Spec.CloudLabels, kmp.Spec.KopsInstanceGroupSpec.CloudLabels)
+	mergedCloudLabels := mergeCloudLabels(kopsCluster.Name, kmp.Name, kopsCluster.Spec.CloudLabels, kmp.Spec.KopsInstanceGroupSpec.CloudLabels)
 
 	ec2NodeClass := karpenterv1.EC2NodeClass{
 		TypeMeta: metav1.TypeMeta{
