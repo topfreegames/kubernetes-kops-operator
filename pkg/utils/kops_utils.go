@@ -367,7 +367,9 @@ func GetUserDataFromTerraformFile(clusterName, igName, terraformOutputDir string
 	if err != nil {
 		return "", err
 	}
-	defer userDataFile.Close()
+	defer func() {
+		_ = userDataFile.Close()
+	}()
 	userData, err := io.ReadAll(userDataFile)
 	if err != nil {
 		return "", err
