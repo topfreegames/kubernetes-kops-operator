@@ -125,10 +125,10 @@ func TestParseSpotinstFeatureflags(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			os.Unsetenv("SPOTINST_TOKEN")
-			os.Unsetenv("SPOTINST_ACCOUNT")
+			_ = os.Unsetenv("SPOTINST_TOKEN")
+			_ = os.Unsetenv("SPOTINST_ACCOUNT")
 			for key, value := range tc.environmentVariables {
-				os.Setenv(key, value)
+				_ = os.Setenv(key, value)
 			}
 
 			err := ParseSpotinstFeatureflags(tc.input)

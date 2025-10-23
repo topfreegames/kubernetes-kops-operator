@@ -222,7 +222,9 @@ func TestModifyTerraformProviderVersion(t *testing.T) {
 		t.Run(tc.description, func(t *testing.T) {
 			tmpDir, err := os.MkdirTemp("", "test_terraform_provider")
 			g.Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(tmpDir)
+			defer func() {
+				_ = os.RemoveAll(tmpDir)
+			}()
 
 			kubernetesFile := fmt.Sprintf("%s/kubernetes.tf", tmpDir)
 

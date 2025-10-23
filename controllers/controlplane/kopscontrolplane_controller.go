@@ -184,7 +184,9 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 		if err != nil {
 			return err
 		}
-		defer karpenterResourcesContent.Close()
+		defer func() {
+			_ = karpenterResourcesContent.Close()
+		}()
 
 		// This is needed because the apply will fail if the file is empty
 		placeholder := corev1.ConfigMap{
