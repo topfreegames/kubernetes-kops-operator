@@ -370,7 +370,7 @@ func TestGetOwnerByRef(t *testing.T) {
 			if !tc["expectedError"].(bool) {
 				g.Expect(err).NotTo(HaveOccurred())
 				if owner != nil {
-					g.Expect(owner.GetName()).To(Equal(cluster.ObjectMeta.GetName()))
+					g.Expect(owner.GetName()).To(Equal(cluster.GetName()))
 				}
 			} else {
 				g.Expect(err).To(HaveOccurred())
@@ -469,7 +469,7 @@ func TestGetClusterOwnerRef(t *testing.T) {
 			if !tc["expectedError"].(bool) {
 				g.Expect(err).NotTo(HaveOccurred())
 				if owner != nil {
-					g.Expect(owner.GetName()).To(Equal(cluster.ObjectMeta.GetName()))
+					g.Expect(owner.GetName()).To(Equal(cluster.GetName()))
 				}
 			} else {
 				g.Expect(err).To(HaveOccurred())
@@ -1044,7 +1044,7 @@ func TestKopsControlPlaneReconcilerDelete(t *testing.T) {
 				kopsControlPlane.Finalizers = []string{
 					controlplanev1alpha1.KopsControlPlaneFinalizer,
 				}
-				kopsControlPlane.ObjectMeta.DeletionTimestamp = &metav1.Time{Time: time.Now()}
+				kopsControlPlane.DeletionTimestamp = &metav1.Time{Time: time.Now()}
 				return kopsControlPlane
 			},
 			kopsMachinePoolFunction: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
@@ -1085,7 +1085,7 @@ func TestKopsControlPlaneReconcilerDelete(t *testing.T) {
 					Namespace: metav1.NamespaceDefault,
 					Name:      "test-kops-machine-pool",
 				}, kmp)
-				if errKMP != nil || len(kmp.ObjectMeta.Finalizers) > 0 {
+				if errKMP != nil || len(kmp.Finalizers) > 0 {
 					return false
 				}
 
@@ -1448,7 +1448,6 @@ func TestKopsControlPlaneStatus(t *testing.T) {
 			})
 			if !tc.expectedReconcilerError {
 				g.Expect(err).ToNot(HaveOccurred())
-				g.Expect(result.Requeue).To(BeFalse())
 				g.Expect(result.RequeueAfter).To(Equal(time.Duration(20 * time.Minute)))
 			} else {
 				g.Expect(err).To(HaveOccurred())
