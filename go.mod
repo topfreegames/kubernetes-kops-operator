@@ -1,6 +1,6 @@
 module github.com/topfreegames/kubernetes-kops-operator
 
-go 1.25.0
+go 1.25.3
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.18.16
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.59.3
 	github.com/aws/karpenter-provider-aws v1.0.2
-	github.com/crossplane-contrib/provider-aws v0.30.1
+	github.com/crossplane-contrib/provider-aws v0.56.0
 	github.com/go-logr/logr v1.4.3
 	github.com/hashicorp/go-version v1.6.0
 	github.com/hashicorp/hc-install v0.6.4
@@ -152,7 +152,7 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/crossplane/crossplane-runtime v0.17.0-rc.0.0.20220616115400-a520b60f1661 // indirect
+	github.com/crossplane/crossplane-runtime v1.20.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/digitalocean/godo v1.165.1 // indirect
 	github.com/docker/cli v28.2.2+incompatible // indirect
