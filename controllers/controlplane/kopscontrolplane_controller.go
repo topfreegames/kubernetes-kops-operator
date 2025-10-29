@@ -145,7 +145,7 @@ func (r *KopsControlPlaneReconciler) shouldDeleteCluster(kcp *controlplanev1alph
 	if r.DryRun {
 		return false
 	}
-	if !kcp.ObjectMeta.DeletionTimestamp.IsZero() {
+	if !kcp.DeletionTimestamp.IsZero() {
 		if kcp.Annotations[controlplanev1alpha1.ClusterDeleteProtectionAnnotation] == "true" {
 			r.Recorder.Eventf(kcp, corev1.EventTypeWarning, "ClusterDeleteProtectionEnabled", "cluster delete protection is enabled, skipping deletion")
 			return false
@@ -406,7 +406,7 @@ func (r *KopsControlPlaneReconciliation) createOrUpdateKopsCluster(ctx context.C
 			return err
 		}
 
-		r.log.Info(fmt.Sprintf("created kops state for cluster %s", kopsCluster.ObjectMeta.Name))
+		r.log.Info(fmt.Sprintf("created kops state for cluster %s", kopsCluster.Name))
 		return nil
 	}
 	if err != nil {
@@ -421,7 +421,7 @@ func (r *KopsControlPlaneReconciliation) createOrUpdateKopsCluster(ctx context.C
 	if err != nil {
 		return err
 	}
-	r.log.Info(fmt.Sprintf("updated kops state for cluster %s", kopsCluster.ObjectMeta.Name))
+	r.log.Info(fmt.Sprintf("updated kops state for cluster %s", kopsCluster.Name))
 	return nil
 }
 
@@ -510,7 +510,7 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ku
 				AuthInfo: clusterName,
 			},
 		},
-		CurrentContext: kopsCluster.ObjectMeta.Name,
+		CurrentContext: kopsCluster.Name,
 		AuthInfos: map[string]*api.AuthInfo{
 			clusterName: {
 				ClientCertificateData: kubeConfig.CertData,
@@ -543,12 +543,12 @@ func (r *KopsControlPlaneReconciler) reconcileKubeconfig(ctx context.Context, ku
 		if !apierrors.IsNotFound(err) {
 			return errors.Wrap(err, "failed to get kubeconfig secret")
 		}
-		err = r.Client.Create(ctx, kubeconfigSecret)
+		err = r.Create(ctx, kubeconfigSecret)
 		if err != nil {
 			return errors.Wrap(err, "failed creating kubeconfig secret")
 		}
 	} else {
-		err := r.Client.Update(ctx, kubeconfigSecret)
+		err := r.Update(ctx, kubeconfigSecret)
 		if err != nil {
 			return errors.Wrap(err, "failed updating kubeconfig secret")
 		}
@@ -639,7 +639,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return requeue1min, nil
 		}
 		if err == nil && owner == nil {
-			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeNormal, "NoClusterYet", "kopscontrolplane/%s does not belong to a cluster yet, waiting until it's part of a cluster", kopsControlPlane.ObjectMeta.Name)
+			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeNormal, "NoClusterYet", "kopscontrolplane/%s does not belong to a cluster yet, waiting until it's part of a cluster", kopsControlPlane.Name)
 			return requeue1min, nil
 		}
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToGetClusterMetadata", "could not get cluster with metadata: %s", err)
@@ -666,7 +666,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				r.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeWarning, infrastructurev1alpha1.FailedToUpdateKopsMachinePool, "failed to update kopsMachinePool: %s", err)
 			}
 
-			if kopsMachinePoolHelper.ObjectMeta.DeletionTimestamp.IsZero() && kopsControlPlane.ObjectMeta.DeletionTimestamp.IsZero() {
+			if kopsMachinePoolHelper.DeletionTimestamp.IsZero() && kopsControlPlane.DeletionTimestamp.IsZero() {
 				kopsMachinePool.Status = kopsMachinePoolHelper.Status
 				if err := reconciler.Status().Update(ctx, &kopsMachinePool); err != nil {
 					r.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeWarning, infrastructurev1alpha1.FailedToUpdateKopsMachinePool, "failed to update status of kopsMachinePool: %s", err)
@@ -681,7 +681,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, controlplanev1alpha1.FailedToUpdateKopsControlPlane, "failed to update kopsControlPlane: %s", err)
 		}
 
-		if kopsControlPlaneHelper.ObjectMeta.DeletionTimestamp.IsZero() {
+		if kopsControlPlaneHelper.DeletionTimestamp.IsZero() {
 			kopsControlPlane.Status = kopsControlPlaneHelper.Status
 			if err := reconciler.Status().Update(ctx, kopsControlPlane); err != nil {
 				r.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, controlplanev1alpha1.FailedToUpdateKopsControlPlane, "failed to update status of kopsControlPlane: %s", err)
@@ -705,7 +705,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			custommetrics.ReconciliationConsecutiveErrorsTotal.WithLabelValues("kops-operator", kopsControlPlane.Name, environment).Set(0)
 		}
 
-		reconciler.log.Info(fmt.Sprintf("finished reconcile loop for %s, took %s", kopsControlPlane.ObjectMeta.GetName(), time.Since(initTime)))
+		reconciler.log.Info(fmt.Sprintf("finished reconcile loop for %s, took %s", kopsControlPlane.GetName(), time.Since(initTime)))
 	}()
 	if annotations.HasPaused(owner) {
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeNormal, "ClusterPaused", "reconciliation is paused since cluster %s is paused", owner.GetName())
@@ -829,7 +829,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	reconciler.Mux.Lock()
 	shouldUnlock = true
 
-	reconciler.log.Info(fmt.Sprintf("starting reconcile loop for %s", kopsControlPlane.ObjectMeta.GetName()))
+	reconciler.log.Info(fmt.Sprintf("starting reconcile loop for %s", kopsControlPlane.GetName()))
 	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ReconciliationStarted", "reconciliation started")
 
 	kopsClientset, err := reconciler.GetKopsClientSetFactory(kopsControlPlane.Spec.KopsClusterSpec.ConfigStore.Base)
@@ -855,7 +855,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 				reconciler.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeNormal, "KopsMachinePoolReconcileSuccess", kopsMachinePool.Name)
 			}
 		}
-		if kopsMachinePool.ObjectMeta.DeletionTimestamp.IsZero() {
+		if kopsMachinePool.DeletionTimestamp.IsZero() {
 			existingKopsMachinePool = append(existingKopsMachinePool, kopsMachinePool)
 		}
 		if len(kopsMachinePool.Spec.KarpenterNodePools) > 0 {
@@ -926,7 +926,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		shouldIgnoreSG = true
 	}
 
-	reconciler.log.Info(fmt.Sprintf("generating Terraform files for %s", kopsControlPlane.ObjectMeta.GetName()))
+	reconciler.log.Info(fmt.Sprintf("generating Terraform files for %s", kopsControlPlane.GetName()))
 
 	err = reconciler.PrepareKopsCloudResourcesFactory(ctx, kopsClientset, kopsCluster, terraformOutputDir, cloud)
 	if err != nil {
@@ -952,7 +952,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	// Only Apply resources if DryRun isn't set from command line
 	if r.DryRun {
-		reconciler.log.Info(fmt.Sprintf("planning Terraform for %s", kopsControlPlane.ObjectMeta.GetName()))
+		reconciler.log.Info(fmt.Sprintf("planning Terraform for %s", kopsControlPlane.GetName()))
 		err = reconciler.PlanTerraformFactory(ctx, terraformOutputDir, r.TfExecPath, reconciler.awsCredentials)
 		if err != nil {
 			reconciler.log.Error(err, "failed to plan terraform")
@@ -977,7 +977,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		reconciler.Mux.Unlock()
 		shouldUnlock = false
 
-		reconciler.log.Info(fmt.Sprintf("applying Terraform for %s", kopsControlPlane.ObjectMeta.GetName()))
+		reconciler.log.Info(fmt.Sprintf("applying Terraform for %s", kopsControlPlane.GetName()))
 
 		err = reconciler.ApplyTerraformFactory(ctx, terraformOutputDir, r.TfExecPath, reconciler.awsCredentials)
 		if err != nil {
@@ -987,7 +987,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 		conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.TerraformApplyReadyCondition)
 
-		reconciler.log.Info(fmt.Sprintf("Terraform applied for %s", kopsControlPlane.ObjectMeta.GetName()))
+		reconciler.log.Info(fmt.Sprintf("Terraform applied for %s", kopsControlPlane.GetName()))
 		reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "TerraformApplied", "Terraform applied")
 
 		err = reconciler.updateKopsMachinePoolWithProviderIDList(kopsControlPlane, kmps, &reconciler.awsCredentials)
@@ -1001,7 +1001,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		igList, err := kopsClientset.InstanceGroupsFor(kopsCluster).List(ctx, metav1.ListOptions{})
 		if err != nil || len(igList.Items) == 0 {
 			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToGetIGs", "cannot get InstanceGroups: %s", err)
-			return resultError, fmt.Errorf("cannot get InstanceGroups for %q: %w", kopsCluster.ObjectMeta.Name, err)
+			return resultError, fmt.Errorf("cannot get InstanceGroups for %q: %w", kopsCluster.Name, err)
 		}
 
 		val, err := reconciler.ValidateKopsClusterFactory(kubeConfig, kopsCluster, cloud, igList)
@@ -1056,7 +1056,7 @@ func (r *KopsControlPlaneReconciliation) reconcileKopsMachinePool(ctx context.Co
 	kopsInstanceGroup := &kopsapi.InstanceGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      kopsMachinePool.Name,
-			Namespace: kopsMachinePool.ObjectMeta.Namespace,
+			Namespace: kopsMachinePool.GetNamespace(),
 			Labels:    kopsMachinePool.Spec.SpotInstOptions,
 		},
 		Spec: kopsMachinePool.Spec.KopsInstanceGroupSpec,
@@ -1068,7 +1068,7 @@ func (r *KopsControlPlaneReconciliation) reconcileKopsMachinePool(ctx context.Co
 		Spec: kopsControlPlane.Spec.KopsClusterSpec,
 	}
 
-	if !kopsMachinePool.ObjectMeta.DeletionTimestamp.IsZero() {
+	if !kopsMachinePool.GetDeletionTimestamp().IsZero() {
 		r.log.Info(fmt.Sprintf("deleting instancegroup/%s", kopsInstanceGroup.Name))
 		err := kopsClientset.InstanceGroupsFor(kopsCluster).Delete(ctx, kopsInstanceGroup.Name, metav1.DeleteOptions{})
 		if err != nil {
@@ -1157,7 +1157,7 @@ func RegionBySubnet(kopsControlPlane *controlplanev1alpha1.KopsControlPlane) (st
 // createOrUpdateInstanceGroup create or update the instance group in kops state
 func (r *KopsControlPlaneReconciliation) createOrUpdateInstanceGroup(ctx context.Context, kopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster, kopsInstanceGroup *kopsapi.InstanceGroup) error {
 
-	instanceGroupName := kopsInstanceGroup.ObjectMeta.Name
+	instanceGroupName := kopsInstanceGroup.Name
 	_, err := kopsClientset.InstanceGroupsFor(kopsCluster).Get(ctx, instanceGroupName, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		_, err = kopsClientset.InstanceGroupsFor(kopsCluster).Create(ctx, kopsInstanceGroup, metav1.CreateOptions{})

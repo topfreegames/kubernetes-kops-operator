@@ -75,12 +75,12 @@ func ValidateKopsCluster(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, 
 		return nil, err
 	}
 
-	validator, err := validation.NewClusterValidator(kopsCluster, cloud, igs, kubeConfig, k8sClient)
+	validator, err := validation.NewClusterValidator(kopsCluster, cloud, igs, nil, nil, kubeConfig, k8sClient)
 	if err != nil {
 		return nil, fmt.Errorf("unexpected error creating validator: %v", err)
 	}
 
-	result, err := validator.Validate()
+	result, err := validator.Validate(context.Background())
 	if err != nil {
 		return nil, fmt.Errorf("%v", err)
 	}
@@ -113,7 +113,7 @@ func ParseSpotinstFeatureflags(kopsControlPlane *controlplanev1alpha1.KopsContro
 func BuildCloud(kopscluster *kopsapi.Cluster) (_ fi.Cloud, rerr error) {
 	defer func() {
 		if r := recover(); r != nil {
-			rerr = fmt.Errorf("failed to instantiate cloud for %s", kopscluster.ObjectMeta.GetName())
+			rerr = fmt.Errorf("failed to instantiate cloud for %s", kopscluster.GetName())
 		}
 	}()
 	awsup.ResetAWSCloudInstances()
@@ -174,8 +174,8 @@ func GetKubeconfigFromKopsState(ctx context.Context, kopsCluster *kopsapi.Cluste
 		return nil, err
 	}
 
-	builder.Context = kopsCluster.ObjectMeta.Name
-	builder.Server = fmt.Sprintf("https://api.%s", kopsCluster.ObjectMeta.Name)
+	builder.Context = kopsCluster.Name
+	builder.Server = fmt.Sprintf("https://api.%s", kopsCluster.Name)
 	keySet, err := keyStore.FindKeyset(ctx, fi.CertificateIDCA)
 	if err != nil {
 		return nil, err
