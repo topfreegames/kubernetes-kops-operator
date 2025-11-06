@@ -2,14 +2,12 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  creationTimestamp: null
   name: placeholder-karpenter-resources
   namespace: kube-system
 ---
 apiVersion: karpenter.sh/v1beta1
 kind: NodePool
 metadata:
-  creationTimestamp: null
   labels:
     kops.k8s.io/managed-by: kops-controller
   name: test-node-pool

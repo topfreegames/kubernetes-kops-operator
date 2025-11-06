@@ -473,9 +473,8 @@ spec:
                                           applied to a node.
                                         type: string
                                       timeAdded:
-                                        description: |-
-                                          TimeAdded represents the time at which the taint was added.
-                                          It is only written for NoExecute taints.
+                                        description: TimeAdded represents the time
+                                          at which the taint was added.
                                         format: date-time
                                         type: string
                                       value:
@@ -506,9 +505,8 @@ spec:
                                           applied to a node.
                                         type: string
                                       timeAdded:
-                                        description: |-
-                                          TimeAdded represents the time at which the taint was added.
-                                          It is only written for NoExecute taints.
+                                        description: TimeAdded represents the time
+                                          at which the taint was added.
                                         format: date-time
                                         type: string
                                       value:
@@ -902,9 +900,8 @@ spec:
                                           applied to a node.
                                         type: string
                                       timeAdded:
-                                        description: |-
-                                          TimeAdded represents the time at which the taint was added.
-                                          It is only written for NoExecute taints.
+                                        description: TimeAdded represents the time
+                                          at which the taint was added.
                                         format: date-time
                                         type: string
                                       value:
@@ -935,9 +932,8 @@ spec:
                                           applied to a node.
                                         type: string
                                       timeAdded:
-                                        description: |-
-                                          TimeAdded represents the time at which the taint was added.
-                                          It is only written for NoExecute taints.
+                                        description: TimeAdded represents the time
+                                          at which the taint was added.
                                         format: date-time
                                         type: string
                                       value:
@@ -1065,6 +1061,12 @@ spec:
                         description: ConfigOverride is the complete containerd config
                           file provided by the user.
                         type: string
+                      installCriCtl:
+                        description: InstallCriCtl installs crictl (default "false").
+                        type: boolean
+                      installNerdCtl:
+                        description: InstallNerdCtl installs nerdctl (default "false").
+                        type: boolean
                       logLevel:
                         description: LogLevel controls the logging details [trace,
                           debug, info, warn, error, fatal, panic] (default "info").
@@ -1098,12 +1100,16 @@ spec:
                           enabled:
                             description: |-
                               Enabled determines if kOps will install the Nvidia GPU runtime and drivers.
-                              They will only be installed on intances that has an Nvidia GPU.
+                              They will only be installed on instances that has an Nvidia GPU.
                             type: boolean
+                          image:
+                            description: Image defines the container image used to
+                              deploy the Nvidia Kubernetes Device Plugin.
+                            type: string
                           package:
                             description: |-
                               Package is the name of the nvidia driver package that will be installed.
-                              Default is "nvidia-headless-510-server".
+                              Default is "nvidia-driver-535-server".
                             type: string
                         type: object
                       packages:
@@ -1175,6 +1181,11 @@ spec:
                         description: State directory for execution state files (default
                           "/run/containerd").
                         type: string
+                      useECRCredentialsForMirrors:
+                        description: Enables Kubelet ECR Credential helper to pass
+                          credentials to containerd mirrors, to use ECR as a pull-through
+                          cache
+                        type: boolean
                       version:
                         description: Version used to pick the containerd package.
                         type: string
@@ -1399,8 +1410,9 @@ spec:
                           file that will be used to get client certificate for kubelet
                         type: string
                       cgroupDriver:
-                        description: CgroupDriver allows the explicit setting of the
-                          kubelet cgroup driver. If omitted, defaults to cgroupfs.
+                        description: |-
+                          CgroupDriver allows the explicit setting of the kubelet cgroup driver.
+                          DEPRECATED: The cgroup driver is automatically detected.
                         type: string
                       cgroupRoot:
                         description: cgroupRoot is the root cgroup to use for pods.
@@ -1665,7 +1677,7 @@ spec:
                       protectKernelDefaults:
                         description: |-
                           Default kubelet behaviour for kernel tuning. If set, kubelet errors if any of kernel tunables is different than kubelet defaults.
-                          (DEPRECATED: This parameter should be set via the config file specified by the Kubelet's --config flag.
+                          DEPRECATED: This parameter should be set via the config file specified by the Kubelet's --config flag.
                         type: boolean
                       readOnlyPort:
                         description: ReadOnlyPort is the port used by the kubelet
