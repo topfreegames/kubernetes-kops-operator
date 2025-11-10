@@ -37,7 +37,9 @@ jobs:
         go-version: 1.25.3
 
     - name: Install dependencies
-      run: sudo apt install make -y
+      run: |
+        sudo apt update
+        sudo apt install make -y
 
     - name: Run tests
       run: make test-ci
