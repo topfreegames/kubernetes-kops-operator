@@ -423,3 +423,38 @@ func CleanupTerraformDirectory(dir string) error {
 	}
 	return nil
 }
+
+// LaunchTemplateResourceExists checks if an aws_launch_template resource exists in the terraform directory
+// This is needed because kops 1.34+ no longer generates launch templates for karpenter node pools
+func LaunchTemplateResourceExists(terraformDir, resourceName string) (bool, error) {
+	// Read all .tf files in the directory
+	files, err := os.ReadDir(terraformDir)
+	if err != nil {
+		return false, err
+	}
+
+	// Pattern to match aws_launch_template resource declarations
+	// Matches: resource "aws_launch_template" "resource-name" {
+	pattern := fmt.Sprintf(`resource\s+"aws_launch_template"\s+"%s"\s+\{`, regexp.QuoteMeta(resourceName))
+	regex, err := regexp.Compile(pattern)
+	if err != nil {
+		return false, err
+	}
+
+	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".tf") {
+			continue
+		}
+
+		content, err := os.ReadFile(filepath.Join(terraformDir, file.Name()))
+		if err != nil {
+			return false, err
+		}
+
+		if regex.Match(content) {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}

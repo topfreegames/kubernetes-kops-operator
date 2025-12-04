@@ -234,7 +234,7 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
 					return err
 				}
-				ec2NodeClassString, err := utils.CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
+				ec2NodeClassString, err := utils.CreateEC2NodeClass(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
 				if err != nil {
 					return err
 				}
@@ -348,10 +348,25 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 			}
 		}
 
+		// Filter ASG names to only include those that have corresponding launch template resources
+		// In kops 1.34+, launch templates are not generated when user data is stored in S3
 		if len(asgNames) > 0 {
-			err = utils.CreateTerraformFilesFromTemplate("templates/launch_template_override.tf.tpl", "launch_template_override.tf", terraformOutputDir, asgNames)
-			if err != nil {
-				return err
+			filteredAsgNames := []string{}
+			for _, asgName := range asgNames {
+				exists, err := utils.LaunchTemplateResourceExists(terraformOutputDir, asgName)
+				if err != nil {
+					return err
+				}
+				if exists {
+					filteredAsgNames = append(filteredAsgNames, asgName)
+				}
+			}
+
+			if len(filteredAsgNames) > 0 {
+				err = utils.CreateTerraformFilesFromTemplate("templates/launch_template_override.tf.tpl", "launch_template_override.tf", terraformOutputDir, filteredAsgNames)
+				if err != nil {
+					return err
+				}
 			}
 		}
 

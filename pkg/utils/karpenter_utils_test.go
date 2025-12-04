@@ -21,7 +21,7 @@ import (
 
 var defaultBlockDeviceV1 = BuildKarpenterVolumeConfigV1FromKops(nil)
 
-func TestCreateEC2NodeClassFromKopsLaunchTemplateInfo(t *testing.T) {
+func TestCreateEC2NodeClass(t *testing.T) {
 	testCases := []struct {
 		description             string
 		kopsMachinePoolFunction func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool
@@ -67,14 +67,14 @@ func TestCreateEC2NodeClassFromKopsLaunchTemplateInfo(t *testing.T) {
 			err = os.MkdirAll(filepath.Join(terraformOutputDir, "data"), os.ModePerm)
 			g.Expect(err).NotTo(HaveOccurred())
 
-			err = os.WriteFile(terraformOutputDir+"/data/aws_launch_template_"+kmp.Name+"."+kopsCluster.Name+"_user_data", []byte(tc.userData), 0644)
+			err = os.WriteFile(terraformOutputDir+"/data/aws_s3_object_nodeupscript-"+kmp.Name+"_content", []byte(tc.userData), 0644)
 			g.Expect(err).NotTo(HaveOccurred())
 
 			if tc.kopsMachinePoolFunction != nil {
 				kmp = tc.kopsMachinePoolFunction(kmp)
 			}
 
-			ec2NodeClassString, err := CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster, kmp, kmp.Name, terraformOutputDir)
+			ec2NodeClassString, err := CreateEC2NodeClass(kopsCluster, kmp, kmp.Name, terraformOutputDir)
 			if tc.expectedError != nil {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(Equal(tc.expectedError.Error()))
@@ -223,7 +223,7 @@ func TestCreateEC2NodeClassV1FromKopsLaunchTemplateInfo(t *testing.T) {
 			err = os.MkdirAll(filepath.Join(terraformOutputDir, "data"), os.ModePerm)
 			g.Expect(err).NotTo(HaveOccurred())
 
-			err = os.WriteFile(terraformOutputDir+"/data/aws_launch_template_"+kmp.Name+"."+kopsCluster.Name+"_user_data", []byte(tc.userData), 0644)
+			err = os.WriteFile(terraformOutputDir+"/data/aws_s3_object_nodeupscript-"+kmp.Name+"_content", []byte(tc.userData), 0644)
 			g.Expect(err).NotTo(HaveOccurred())
 
 			if tc.kopsMachinePoolFunction != nil {

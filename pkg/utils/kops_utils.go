@@ -363,10 +363,12 @@ func GetAmiNameFromImageSource(image string) (string, string, error) {
 }
 
 func GetUserDataFromTerraformFile(clusterName, igName, terraformOutputDir string) (string, error) {
-	userDataFile, err := os.Open(fmt.Sprintf(terraformOutputDir+"/data/aws_launch_template_%s.%s_user_data", igName, clusterName))
+	s3ObjectPath := fmt.Sprintf(terraformOutputDir+"/data/aws_s3_object_nodeupscript-%s_content", igName)
+	userDataFile, err := os.Open(s3ObjectPath)
 	if err != nil {
 		return "", err
 	}
+
 	defer func() {
 		_ = userDataFile.Close()
 	}()

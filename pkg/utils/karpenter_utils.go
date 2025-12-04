@@ -189,7 +189,7 @@ func GetKubeletConfiguration(kubeletSpec *kopsapi.KubeletConfigSpec) *karpenterv
 	}
 }
 
-func CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string) (string, error) {
+func CreateEC2NodeClass(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string) (string, error) {
 	amiName, amiAccount, err := GetAmiNameFromImageSource(kmp.Spec.KopsInstanceGroupSpec.Image)
 	if err != nil {
 		return "", err

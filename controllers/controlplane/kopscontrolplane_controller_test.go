@@ -29,6 +29,7 @@ import (
 
 	asgTypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
+	kopsutils "github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -2133,7 +2134,20 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			dataDummyContent, err := os.ReadFile(templateTestDir + "/data/dummy_data")
 			g.Expect(err).NotTo(HaveOccurred())
 
-			err = os.WriteFile(terraformOutputDir+"/data/aws_launch_template_"+kmp.Name+"."+kopsCluster.Name+"_user_data", []byte(dataDummyContent), 0644)
+			// Use new kops 1.34+ S3 object pattern
+			err = os.WriteFile(terraformOutputDir+"/data/aws_s3_object_nodeupscript-"+kmp.Name+"_content", []byte(dataDummyContent), 0644)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			// Create a fake terraform file with launch template resource for the test
+			// This simulates what kops generates and allows our launch template detection to work
+			asgName, err := kopsutils.GetCloudResourceNameFromKopsMachinePool(*kmp)
+			g.Expect(err).NotTo(HaveOccurred())
+			fakeTerraformContent := fmt.Sprintf(`
+resource "aws_launch_template" "%s" {
+  name = "%s"
+}
+`, asgName, kmp.Name)
+			err = os.WriteFile(terraformOutputDir+"/kubernetes.tf", []byte(fakeTerraformContent), 0644)
 			g.Expect(err).NotTo(HaveOccurred())
 
 			reconciler := &KopsControlPlaneReconciler{}
