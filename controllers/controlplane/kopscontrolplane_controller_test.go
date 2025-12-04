@@ -29,7 +29,6 @@ import (
 
 	asgTypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
-	kopsutils "github.com/topfreegames/kubernetes-kops-operator/pkg/kops"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -2131,23 +2130,20 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			terraformOutputDir := fmt.Sprintf("/tmp/%s", kopsCluster.Name)
 			templateTestDir := "../../pkg/utils/templates/tests"
 
+			// Clean up any previous test artifacts
+			err = os.RemoveAll(terraformOutputDir)
+			g.Expect(err).NotTo(HaveOccurred())
+			defer os.RemoveAll(terraformOutputDir)
+
+			// Create the data directory
+			err = os.MkdirAll(terraformOutputDir+"/data", 0755)
+			g.Expect(err).NotTo(HaveOccurred())
+
 			dataDummyContent, err := os.ReadFile(templateTestDir + "/data/dummy_data")
 			g.Expect(err).NotTo(HaveOccurred())
 
 			// Use new kops 1.34+ S3 object pattern
 			err = os.WriteFile(terraformOutputDir+"/data/aws_s3_object_nodeupscript-"+kmp.Name+"_content", []byte(dataDummyContent), 0644)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			// Create a fake terraform file with launch template resource for the test
-			// This simulates what kops generates and allows our launch template detection to work
-			asgName, err := kopsutils.GetCloudResourceNameFromKopsMachinePool(*kmp)
-			g.Expect(err).NotTo(HaveOccurred())
-			fakeTerraformContent := fmt.Sprintf(`
-resource "aws_launch_template" "%s" {
-  name = "%s"
-}
-`, asgName, kmp.Name)
-			err = os.WriteFile(terraformOutputDir+"/kubernetes.tf", []byte(fakeTerraformContent), 0644)
 			g.Expect(err).NotTo(HaveOccurred())
 
 			reconciler := &KopsControlPlaneReconciler{}
@@ -2190,11 +2186,10 @@ resource "aws_launch_template" "%s" {
 
 			g.Expect(string(generatedKarpenterBoostrapTF)).To(BeEquivalentTo(templatedKarpenterBoostrapTF.String()))
 
-			generatedLaunchTemplateTF, err := os.ReadFile(terraformOutputDir + "/launch_template_override.tf")
-			g.Expect(err).NotTo(HaveOccurred())
-			templatedLaunchTemplateTF, err := os.ReadFile(templateTestDir + "/launch_template_override.tf")
-			g.Expect(err).NotTo(HaveOccurred())
-			g.Expect(string(generatedLaunchTemplateTF)).To(BeEquivalentTo(string(templatedLaunchTemplateTF)))
+			// Karpenter-managed node pools don't use traditional launch templates,
+			// so no launch_template_override.tf should be generated
+			_, err = os.Stat(terraformOutputDir + "/launch_template_override.tf")
+			g.Expect(os.IsNotExist(err)).To(BeTrue(), "launch_template_override.tf should not exist for Karpenter-managed pools")
 
 			if tc.spotInstEnabled {
 				generatedSpotinstLaunchSpecTF, err := os.ReadFile(terraformOutputDir + "/spotinst_launch_spec_override.tf")

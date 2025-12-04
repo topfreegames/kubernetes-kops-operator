@@ -270,7 +270,7 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
 					return err
 				}
-				ec2NodeClass, err := utils.CreateEC2NodeClassV1FromKopsLaunchTemplateInfo(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
+				ec2NodeClass, err := utils.CreateEC2NodeClassV1(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
 				if err != nil {
 					return err
 				}
@@ -331,6 +331,11 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 		asgNames := []string{}
 		vngNames := []string{}
 		for _, kmp := range kmps {
+			// Skip Karpenter-managed node pools - they don't use traditional launch templates
+			if len(kmp.Spec.KarpenterNodePools) > 0 || len(kmp.Spec.KarpenterNodePoolsV1) > 0 {
+				continue
+			}
+
 			if _, ok := kmp.Spec.SpotInstOptions["spotinst.io/hybrid"]; ok {
 				if kmp.Spec.SpotInstOptions["spotinst.io/hybrid"] == "true" {
 					vngName, err := kopsutils.GetCloudResourceNameFromKopsMachinePool(kmp)
@@ -348,25 +353,10 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 			}
 		}
 
-		// Filter ASG names to only include those that have corresponding launch template resources
-		// In kops 1.34+, launch templates are not generated when user data is stored in S3
 		if len(asgNames) > 0 {
-			filteredAsgNames := []string{}
-			for _, asgName := range asgNames {
-				exists, err := utils.LaunchTemplateResourceExists(terraformOutputDir, asgName)
-				if err != nil {
-					return err
-				}
-				if exists {
-					filteredAsgNames = append(filteredAsgNames, asgName)
-				}
-			}
-
-			if len(filteredAsgNames) > 0 {
-				err = utils.CreateTerraformFilesFromTemplate("templates/launch_template_override.tf.tpl", "launch_template_override.tf", terraformOutputDir, filteredAsgNames)
-				if err != nil {
-					return err
-				}
+			err = utils.CreateTerraformFilesFromTemplate("templates/launch_template_override.tf.tpl", "launch_template_override.tf", terraformOutputDir, asgNames)
+			if err != nil {
+				return err
 			}
 		}
 

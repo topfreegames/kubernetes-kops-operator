@@ -250,7 +250,7 @@ func CreateEC2NodeClass(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha
 	return buf.String(), nil
 }
 
-func CreateEC2NodeClassV1FromKopsLaunchTemplateInfo(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string) (*karpenterv1.EC2NodeClass, error) {
+func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string) (*karpenterv1.EC2NodeClass, error) {
 	amiName, amiAccount, err := GetAmiNameFromImageSource(kmp.Spec.KopsInstanceGroupSpec.Image)
 	if err != nil {
 		return nil, err

@@ -90,7 +90,7 @@ func TestCreateEC2NodeClass(t *testing.T) {
 
 }
 
-func TestCreateEC2NodeClassV1FromKopsLaunchTemplateInfo(t *testing.T) {
+func TestCreateEC2NodeClassV1(t *testing.T) {
 	testCases := []struct {
 		description             string
 		kopsMachinePoolFunction func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool
@@ -230,7 +230,7 @@ func TestCreateEC2NodeClassV1FromKopsLaunchTemplateInfo(t *testing.T) {
 				kmp = tc.kopsMachinePoolFunction(kmp)
 			}
 
-			ec2NodeClass, err := CreateEC2NodeClassV1FromKopsLaunchTemplateInfo(kopsCluster, kmp, kmp.Name, terraformOutputDir)
+			ec2NodeClass, err := CreateEC2NodeClassV1(kopsCluster, kmp, kmp.Name, terraformOutputDir)
 			if tc.expectedError != nil {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(Equal(tc.expectedError.Error()))
