@@ -524,7 +524,7 @@ func TestGetUserDataFromTerraformFile(t *testing.T) {
 		},
 		{
 			description:   "should fail if the user data is not found",
-			expectedError: &fs.PathError{Op: "open", Path: "/tmp/test-cluster.test.k8s.cluster/data/aws_launch_template_test-machine-pool.test-cluster.test.k8s.cluster_user_data", Err: syscall.Errno(0x2)},
+			expectedError: &fs.PathError{Op: "open", Path: "/tmp/test-cluster.test.k8s.cluster/data/aws_s3_object_nodeupscript-test-machine-pool_content", Err: syscall.Errno(0x2)},
 		},
 		{
 			description:        "should fail if the user data is empty",
@@ -552,7 +552,8 @@ func TestGetUserDataFromTerraformFile(t *testing.T) {
 			kmp := helpers.NewKopsMachinePool("test-machine-pool", "default", "test-cluster")
 
 			if tc.writeTerraformFile {
-				err := os.WriteFile(terraformOutputDir+"/data/aws_launch_template_"+kmp.Name+"."+kopsCluster.Name+"_user_data", []byte(tc.userData), 0644)
+				filePath := terraformOutputDir + "/data/aws_s3_object_nodeupscript-" + kmp.Name + "_content"
+				err := os.WriteFile(filePath, []byte(tc.userData), 0644)
 				g.Expect(err).NotTo(HaveOccurred())
 			}
 			userDataString, err := GetUserDataFromTerraformFile(kopsCluster.Name, kmp.Name, terraformOutputDir)

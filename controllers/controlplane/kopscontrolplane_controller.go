@@ -234,7 +234,7 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
 					return err
 				}
-				ec2NodeClassString, err := utils.CreateEC2NodeClassFromKopsLaunchTemplateInfo(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
+				ec2NodeClassString, err := utils.CreateEC2NodeClass(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
 				if err != nil {
 					return err
 				}
@@ -270,7 +270,7 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
 					return err
 				}
-				ec2NodeClass, err := utils.CreateEC2NodeClassV1FromKopsLaunchTemplateInfo(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
+				ec2NodeClass, err := utils.CreateEC2NodeClassV1(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
 				if err != nil {
 					return err
 				}
@@ -331,6 +331,11 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 		asgNames := []string{}
 		vngNames := []string{}
 		for _, kmp := range kmps {
+			// Skip Karpenter-managed node pools - they don't use traditional launch templates
+			if len(kmp.Spec.KarpenterNodePools) > 0 || len(kmp.Spec.KarpenterNodePoolsV1) > 0 {
+				continue
+			}
+
 			if _, ok := kmp.Spec.SpotInstOptions["spotinst.io/hybrid"]; ok {
 				if kmp.Spec.SpotInstOptions["spotinst.io/hybrid"] == "true" {
 					vngName, err := kopsutils.GetCloudResourceNameFromKopsMachinePool(kmp)
