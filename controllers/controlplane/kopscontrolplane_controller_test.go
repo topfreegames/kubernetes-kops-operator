@@ -2133,7 +2133,9 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			// Clean up any previous test artifacts
 			err = os.RemoveAll(terraformOutputDir)
 			g.Expect(err).NotTo(HaveOccurred())
-			defer os.RemoveAll(terraformOutputDir)
+			defer func() {
+				_ = os.RemoveAll(terraformOutputDir)
+			}()
 
 			// Create the data directory
 			err = os.MkdirAll(terraformOutputDir+"/data", 0755)

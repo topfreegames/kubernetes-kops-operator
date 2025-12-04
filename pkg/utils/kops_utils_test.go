@@ -527,12 +527,7 @@ func TestGetUserDataFromTerraformFile(t *testing.T) {
 			expectedError: &fs.PathError{Op: "open", Path: "/tmp/test-cluster.test.k8s.cluster/data/aws_s3_object_nodeupscript-test-machine-pool_content", Err: syscall.Errno(0x2)},
 		},
 		{
-			description:        "should fail if the user data is empty (old pattern)",
-			writeTerraformFile: true,
-			expectedError:      errors.New("user data file is empty"),
-		},
-		{
-			description:        "should fail if the user data is empty (new pattern)",
+			description:        "should fail if the user data is empty",
 			writeTerraformFile: true,
 			expectedError:      errors.New("user data file is empty"),
 		},
