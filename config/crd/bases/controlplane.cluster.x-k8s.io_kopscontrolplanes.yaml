@@ -803,11 +803,22 @@ spec:
                             description: WarmPool defines the default warm pool settings
                               for instance groups.
                             properties:
+                              additionalImages:
+                                description: AdditionalImages is a list of additional
+                                  container images to pull into the warm pool instances.
+                                items:
+                                  type: string
+                                type: array
                               enableLifecycleHook:
                                 description: |-
                                   EnableLifecyleHook determines if an ASG lifecycle hook will be added ensuring that nodeup runs to completion.
                                   Note that the metadata API must be protected from arbitrary Pods when this is enabled.
                                 type: boolean
+                              lifecycleHookTimeout:
+                                description: LifecycleHookTimeout is the timeout for
+                                  the ASG lifecycle hook in seconds.
+                                format: int32
+                                type: integer
                               maxSize:
                                 description: |-
                                   MaxSize is the maximum size of the warm pool. The desired size of the instance group
@@ -879,9 +890,19 @@ spec:
                             description: PDCSIDriver is the config for the PD CSI
                               driver.
                             properties:
+                              defaultStorageClassName:
+                                description: Default StorageClassName is the name
+                                  of the default StorageClass created for GCP PD CSI
+                                  driver.
+                                type: string
                               enabled:
                                 description: Enabled enables the GCP PD CSI driver
                                 type: boolean
+                              version:
+                                description: |-
+                                  Version is the container image tag used.
+                                  Default: The latest stable release which is compatible with your Kubernetes version
+                                type: string
                             type: object
                           project:
                             description: Project is the cloud project we should use.
@@ -1303,6 +1324,10 @@ spec:
                             description: Version used to pick the runc package.
                             type: string
                         type: object
+                      sandboxImage:
+                        description: SandboxImage is the image used for the sandbox
+                          container.
+                        type: string
                       selinuxEnabled:
                         description: SelinuxEnabled enables SELinux support
                         type: boolean
@@ -1415,6 +1440,13 @@ spec:
                       cpuManagerPolicy:
                         description: CpuManagerPolicy allows for changing the default
                           policy of None to static
+                        type: string
+                      crashLoopBackOffMaxContainerRestartPeriod:
+                        description: CrashLoopBackOffMaxContainerRestartPeriod is
+                          the maximum duration the backoff delay can accrue to for
+                          container restarts, minimum 1 second, maximum 300 seconds.
+                          If not set, defaults to the internal crashloopbackoff maximum
+                          (300s).
                         type: string
                       enableCadvisorJsonEndpoints:
                         description: EnableCadvisorJsonEndpoints enables cAdvisor
@@ -1573,6 +1605,14 @@ spec:
                         description: LogLevel is the logging level of the kubelet
                         format: int32
                         type: integer
+                      maxParallelImagePulls:
+                        description: |-
+                          MaxParallelImagePulls sets the maximum number of image pulls in parallel.
+                          This field cannot be set if SerializeImagePulls is true.
+                          Setting it to nil means no limit.
+                          Default: nil
+                        format: int32
+                        type: integer
                       maxPods:
                         description: MaxPods is the number of pods that can run on
                           this Kubelet.
@@ -1620,8 +1660,9 @@ spec:
                           In cluster mode, this is obtained from the master.
                         type: string
                       podInfraContainerImage:
-                        description: PodInfraContainerImage is the image whose network/ipc
-                          containers in each pod will use.
+                        description: |-
+                          PodInfraContainerImage is the image whose network/ipc containers in each pod will use.
+                          DEPRECATED: Image garbage collector will get sandbox image information from CRI.
                         type: string
                       podManifestPath:
                         description: config is the path to the config file or directory
@@ -2421,6 +2462,11 @@ spec:
                           that is added by default to every pod that does not already
                           have such a toleration.
                         format: int64
+                        type: integer
+                      deleteCollectionWorkers:
+                        description: DeleteCollectionWorkers indicates the number
+                          of workers spawned for DeleteCollection call. These are
+                          used to speed up namespace cleanup.
                         type: integer
                       disableAdmissionPlugins:
                         description: DisableAdmissionPlugins is a list of disabled
@@ -4701,6 +4747,13 @@ spec:
                         description: CpuManagerPolicy allows for changing the default
                           policy of None to static
                         type: string
+                      crashLoopBackOffMaxContainerRestartPeriod:
+                        description: CrashLoopBackOffMaxContainerRestartPeriod is
+                          the maximum duration the backoff delay can accrue to for
+                          container restarts, minimum 1 second, maximum 300 seconds.
+                          If not set, defaults to the internal crashloopbackoff maximum
+                          (300s).
+                        type: string
                       enableCadvisorJsonEndpoints:
                         description: EnableCadvisorJsonEndpoints enables cAdvisor
                           json `/spec` and `/stats/*` endpoints. Defaults to False.
@@ -4858,6 +4911,14 @@ spec:
                         description: LogLevel is the logging level of the kubelet
                         format: int32
                         type: integer
+                      maxParallelImagePulls:
+                        description: |-
+                          MaxParallelImagePulls sets the maximum number of image pulls in parallel.
+                          This field cannot be set if SerializeImagePulls is true.
+                          Setting it to nil means no limit.
+                          Default: nil
+                        format: int32
+                        type: integer
                       maxPods:
                         description: MaxPods is the number of pods that can run on
                           this Kubelet.
@@ -4905,8 +4966,9 @@ spec:
                           In cluster mode, this is obtained from the master.
                         type: string
                       podInfraContainerImage:
-                        description: PodInfraContainerImage is the image whose network/ipc
-                          containers in each pod will use.
+                        description: |-
+                          PodInfraContainerImage is the image whose network/ipc containers in each pod will use.
+                          DEPRECATED: Image garbage collector will get sandbox image information from CRI.
                         type: string
                       podManifestPath:
                         description: config is the path to the config file or directory
@@ -6224,6 +6286,15 @@ spec:
                         items:
                           type: string
                         type: array
+                      discoveryService:
+                        description: DiscoveryService configures discovery using a
+                          hosted discovery service.
+                        properties:
+                          url:
+                            description: URL is the base URL of the discovery service,
+                              including universe ID if applicable.
+                            type: string
+                        type: object
                       discoveryStore:
                         description: DiscoveryStore is the VFS path to where OIDC
                           Issuer Discovery metadata is stored.
