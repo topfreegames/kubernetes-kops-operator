@@ -9,7 +9,7 @@ on:
 
 jobs:
   lint:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout repo
       uses: actions/checkout@v2
@@ -26,7 +26,7 @@ jobs:
         args: --timeout 10m0s
 
   tests:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
     - name: Checkout repo
       uses: actions/checkout@v2
@@ -45,7 +45,7 @@ jobs:
       run: make test-ci
 
   docker-build-amd64:
-    runs-on: [self-hosted, arch:amd64]
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs:
     - tests
@@ -92,7 +92,7 @@ jobs:
         sbom: false
 
   docker-build-arm64:
-    runs-on: [self-hosted, arch:arm64]
+    runs-on: ubuntu-24.04-arm
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs:
     - tests
@@ -139,7 +139,7 @@ jobs:
         sbom: false
 
   docker-manifest:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs:
     - docker-build-amd64
