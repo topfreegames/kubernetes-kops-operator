@@ -44,7 +44,7 @@ The operator consists of several key components:
   - cluster-api-controller
   - cluster-api-bootstrap-controller
   - cluster-api-control-plane-controller
-- AWS credentials configured
+- AWS credentials configured (via Secret or IRSA)
 - kOps CLI installed (for development)
 - Go 1.25.3 or later
 - kubebuilder v3
@@ -55,6 +55,67 @@ The operator consists of several key components:
 1. Define your KopsControlPlane resource
 2. Define KopsMachinePool resources for worker nodes
 3. Apply the resources to your Kubernetes cluster
+
+### AWS Authentication
+
+The operator supports two methods for authenticating to AWS:
+
+#### Option 1: Static Credentials via Secret (default)
+
+Create a Kubernetes Secret with AWS credentials and reference it in `identityRef`:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-credentials
+  namespace: kubernetes-kops-operator-system
+data:
+  AccessKeyID: <base64-encoded-access-key>
+  SecretAccessKey: <base64-encoded-secret-key>
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
+kind: KopsControlPlane
+spec:
+  identityRef:
+    kind: Secret
+    name: aws-credentials
+    namespace: kubernetes-kops-operator-system
+  # ...
+```
+
+#### Option 2: IRSA (IAM Roles for Service Accounts)
+
+Use IRSA to authenticate by referencing a ServiceAccount annotated with an IAM role ARN.
+The operator assumes the annotated role via STS `AssumeRole` using its own IRSA credentials.
+
+**Prerequisites:**
+1. The operator pod must be running with a ServiceAccount that has IRSA configured
+2. The operator's IAM role must have `sts:AssumeRole` permission for the target roles
+3. The target role must trust the operator's role in its trust policy
+
+**Setup:**
+
+Create a ServiceAccount with the IAM role annotation and reference it in `irsaRef`:
+
+```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kops-cluster-role
+  namespace: default
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/kops-cluster-role
+---
+apiVersion: controlplane.cluster.x-k8s.io/v1alpha1
+kind: KopsControlPlane
+spec:
+  irsaRef:
+    serviceAccountName: kops-cluster-role
+  # ...
+```
+
+When `irsaRef` is set, it takes precedence over `identityRef`. At least one of the two must be configured.
 
 ### Managing Node Pools
 The operator supports two methods for node management:

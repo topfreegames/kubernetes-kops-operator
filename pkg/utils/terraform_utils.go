@@ -214,6 +214,9 @@ func initTerraform(ctx context.Context, workingDir, terraformExecPath string, cr
 		"SPOTINST_ACCOUNT":      os.Getenv("SPOTINST_ACCOUNT"),
 		"TF_PLUGIN_CACHE_DIR":   pluginCacheDir,
 	}
+	if credentials.SessionToken != "" {
+		env["AWS_SESSION_TOKEN"] = credentials.SessionToken
+	}
 
 	err = tf.SetEnv(env)
 	if err != nil {
