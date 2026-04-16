@@ -13,6 +13,8 @@ import (
 	"github.com/pkg/errors"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/go-logr/logr"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	capiutil "sigs.k8s.io/cluster-api/util"
@@ -428,6 +430,10 @@ func SetEnvVarsFromAWSCredentials(awsConfig aws.Credentials) error {
 	if err != nil {
 		return err
 	}
+	err = os.Unsetenv("AWS_SESSION_TOKEN")
+	if err != nil {
+		return err
+	}
 
 	err = os.Setenv("AWS_ACCESS_KEY_ID", awsConfig.AccessKeyID)
 	if err != nil {
@@ -436,6 +442,12 @@ func SetEnvVarsFromAWSCredentials(awsConfig aws.Credentials) error {
 	err = os.Setenv("AWS_SECRET_ACCESS_KEY", awsConfig.SecretAccessKey)
 	if err != nil {
 		return err
+	}
+	if awsConfig.SessionToken != "" {
+		err = os.Setenv("AWS_SESSION_TOKEN", awsConfig.SessionToken)
+		if err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -459,4 +471,55 @@ func GetAWSCredentialsFromKopsControlPlaneSecret(ctx context.Context, c client.R
 	}
 
 	return creds, nil
+}
+
+const IRSARoleARNAnnotation = "eks.amazonaws.com/role-arn"
+
+func GetAWSCredentialsFromIRSA(ctx context.Context, c client.Reader, serviceAccountName, namespace string) (*aws.Credentials, error) {
+	sa := &corev1.ServiceAccount{}
+	key := client.ObjectKey{
+		Namespace: namespace,
+		Name:      serviceAccountName,
+	}
+	if err := c.Get(ctx, key, sa); err != nil {
+		return nil, errors.Wrapf(err, "failed to get ServiceAccount/%s", serviceAccountName)
+	}
+
+	roleARN, ok := sa.Annotations[IRSARoleARNAnnotation]
+	if !ok || roleARN == "" {
+		return nil, fmt.Errorf("ServiceAccount/%s in namespace %s is missing the %s annotation", serviceAccountName, namespace, IRSARoleARNAnnotation)
+	}
+
+	cfg, err := awsconfig.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to load default AWS config for IRSA")
+	}
+
+	stsClient := sts.NewFromConfig(cfg)
+	sessionName := fmt.Sprintf("kops-operator-%s", serviceAccountName)
+	output, err := stsClient.AssumeRole(ctx, &sts.AssumeRoleInput{
+		RoleArn:         aws.String(roleARN),
+		RoleSessionName: aws.String(sessionName),
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "failed to assume role %s for ServiceAccount/%s", roleARN, serviceAccountName)
+	}
+
+	creds := &aws.Credentials{
+		AccessKeyID:     *output.Credentials.AccessKeyId,
+		SecretAccessKey: *output.Credentials.SecretAccessKey,
+		SessionToken:    *output.Credentials.SessionToken,
+	}
+
+	return creds, nil
+}
+
+func ResolveAWSCredentials(ctx context.Context, c client.Reader, kcp *controlplanev1alpha1.KopsControlPlane) (*aws.Credentials, error) {
+	if kcp.Spec.IRSARef != nil {
+		return GetAWSCredentialsFromIRSA(ctx, c, kcp.Spec.IRSARef.ServiceAccountName, kcp.Namespace)
+	}
+	if kcp.Spec.IdentityRef.Name != "" {
+		return GetAWSCredentialsFromKopsControlPlaneSecret(ctx, c, kcp.Spec.IdentityRef.Name, kcp.Spec.IdentityRef.Namespace)
+	}
+	return nil, fmt.Errorf("no credentials configured: either identityRef or irsaRef must be set on KopsControlPlane/%s", kcp.Name)
 }
