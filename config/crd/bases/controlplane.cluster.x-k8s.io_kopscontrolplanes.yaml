@@ -80,6 +80,20 @@ spec:
                 - name
                 - namespace
                 type: object
+              irsaRef:
+                description: |-
+                  IRSARef configures IRSA-based authentication for this cluster.
+                  The referenced ServiceAccount must have the eks.amazonaws.com/role-arn annotation.
+                  The operator assumes the annotated IAM role via STS AssumeRole.
+                properties:
+                  serviceAccountName:
+                    description: |-
+                      ServiceAccountName is the name of a ServiceAccount annotated with an IAM role ARN
+                      (eks.amazonaws.com/role-arn). The operator will assume this role using IRSA.
+                    type: string
+                required:
+                - serviceAccountName
+                type: object
               kopsClusterAddons:
                 description: 'KopsClusterAddons is intended to pass additional objects
                   to the cluster: https://kops.sigs.k8s.io/addon_objects/#kubeschedulerconfiguration-group-kubeschedulerconfigk8sio'
@@ -6442,7 +6456,6 @@ spec:
                 type: object
             required:
             - SSHPublicKey
-            - identityRef
             - kopsClusterSpec
             type: object
           status:
