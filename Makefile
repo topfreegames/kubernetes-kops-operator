@@ -117,6 +117,13 @@ KUSTOMIZE_VERSION ?= v3.8.7
 CONTROLLER_TOOLS_VERSION ?= v0.16.4
 GOLANGCI_LINT_VERSION ?= v2.5.0
 
+## setup-envtest is installed from the controller-runtime release branch that
+## matches the sigs.k8s.io/controller-runtime version in go.mod. Using @latest
+## here pulls a build that requires a newer Go toolchain than the one this
+## project targets, which breaks `make test`.
+ENVTEST_VERSION ?= $(shell go list -m -f '{{.Version}}' sigs.k8s.io/controller-runtime 2>/dev/null | sed -E 's/v([0-9]+\.[0-9]+).*/release-\1/')
+ENVTEST_VERSION := $(if $(ENVTEST_VERSION),$(ENVTEST_VERSION),release-0.22)
+
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize
 kustomize: $(KUSTOMIZE) ## Download kustomize locally if necessary.
@@ -130,7 +137,7 @@ controller-gen: ## Download controller-gen locally if necessary.
 .PHONY: envtest
 envtest: $(ENVTEST) ## Download envtest-setup locally if necessary.
 $(ENVTEST): $(LOCALBIN)
-	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@latest
+	test -s $(LOCALBIN)/setup-envtest || GOBIN=$(LOCALBIN) go install sigs.k8s.io/controller-runtime/tools/setup-envtest@$(ENVTEST_VERSION)
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary
