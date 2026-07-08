@@ -29,6 +29,7 @@
     {
       "description": "Track GOLANGCI_LINT_VERSION pinned in the Makefile",
       "customType": "regex",
+      "automerge": true,
       "managerFilePatterns": ["/^Makefile$/"],
       "matchStrings": [
         "GOLANGCI_LINT_VERSION\\s*\\?=\\s*(?<currentValue>v[0-9.]+)"
@@ -76,7 +77,7 @@
       "groupName": "karpenter"
     },
     {
-      "description": "kops is a coupled, high-blast-radius upgrade (see PR #108, kops 1.35). Keep it in its own PR - it always needs a human.",
+      "description": "kops is a coupled, high-blast-radius upgrade, always in its own PR.",
       "matchPackageNames": ["k8s.io/kops"],
       "groupName": "kops",
       "labels": ["dependencies", "kops"]
@@ -120,9 +121,10 @@
       "groupName": "crossplane"
     },
     {
-      "description": "Ginkgo/Gomega test tooling",
+      "description": "Ginkgo/Gomega test tooling - as it only used for tests, it can be automatically merged",
       "matchPackageNames": ["github.com/onsi/**"],
-      "groupName": "test tooling (ginkgo/gomega)"
+      "groupName": "test tooling (ginkgo/gomega)",
+      "automerge": true
     },
     {
       "description": "Group all GitHub Actions bumps into a single PR",
