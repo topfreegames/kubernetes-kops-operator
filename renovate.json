@@ -8,7 +8,8 @@
   "labels": ["dependencies"],
   "prConcurrentLimit": 10,
   "prHourlyLimit": 4,
-  "minimumReleaseAge": "3 days",
+  "minimumReleaseAge": "7 days",
+  "internalChecksFilter": "strict",
   "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
   "vulnerabilityAlerts": {
     "labels": ["dependencies", "security"],
