@@ -29,7 +29,6 @@
     {
       "description": "Track GOLANGCI_LINT_VERSION pinned in the Makefile",
       "customType": "regex",
-      "automerge": true,
       "managerFilePatterns": ["/^Makefile$/"],
       "matchStrings": [
         "GOLANGCI_LINT_VERSION\\s*\\?=\\s*(?<currentValue>v[0-9.]+)"
