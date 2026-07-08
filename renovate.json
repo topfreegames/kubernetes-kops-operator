@@ -1,6 +1,133 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "labels": ["dependencies"],
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 4,
+  "minimumReleaseAge": "3 days",
+  "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
+  "vulnerabilityAlerts": {
+    "labels": ["dependencies", "security"],
+    "minimumReleaseAge": null
+  },
+  "osvVulnerabilityAlerts": true,
+  "customManagers": [
+    {
+      "description": "Track CONTROLLER_TOOLS_VERSION pinned in the Makefile (also present in go.mod, so it lands in the controller-runtime group)",
+      "customType": "regex",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": [
+        "CONTROLLER_TOOLS_VERSION\\s*\\?=\\s*(?<currentValue>v[0-9.]+)"
+      ],
+      "datasourceTemplate": "go",
+      "depNameTemplate": "sigs.k8s.io/controller-tools"
+    },
+    {
+      "description": "Track GOLANGCI_LINT_VERSION pinned in the Makefile",
+      "customType": "regex",
+      "managerFilePatterns": ["/^Makefile$/"],
+      "matchStrings": [
+        "GOLANGCI_LINT_VERSION\\s*\\?=\\s*(?<currentValue>v[0-9.]+)"
+      ],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "golangci/golangci-lint"
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "Group the Go toolchain version wherever it is declared (go.mod, Dockerfile, .tool-versions) into a single PR so they never drift apart",
+      "matchPackageNames": ["go", "golang"],
+      "groupName": "golang toolchain"
+    },
+    {
+      "description": "Do not open PRs for Go indirect (transitive) dependencies. They are churny and are pulled in transitively via `go mod tidy` when a direct dep is bumped. Security fixes still come through via vulnerabilityAlerts.",
+      "matchManagers": ["gomod"],
+      "matchDepTypes": ["indirect"],
+      "enabled": false
+    },
+    {
+      "description": "Kubernetes staging libraries release in lockstep on a shared v0.x.y version - bump them together",
+      "matchPackageNames": ["k8s.io/**", "sigs.k8s.io/**"],
+      "groupName": "kubernetes"
+    },
+    {
+      "description": "controller-runtime + controller-gen are paired and usually need code changes together; keep separate from the core k8s libs for easier review. Includes CONTROLLER_TOOLS_VERSION in the Makefile.",
+      "matchPackageNames": [
+        "sigs.k8s.io/controller-runtime",
+        "sigs.k8s.io/controller-tools"
+      ],
+      "groupName": "controller-runtime"
+    },
+    {
+      "description": "Cluster API has its own release cadence and often requires manual adjustments",
+      "matchPackageNames": ["sigs.k8s.io/cluster-api"],
+      "groupName": "cluster-api"
+    },
+    {
+      "description": "Karpenter core + the AWS provider must move together",
+      "matchPackageNames": [
+        "sigs.k8s.io/karpenter",
+        "github.com/aws/karpenter-provider-aws"
+      ],
+      "groupName": "karpenter"
+    },
+    {
+      "description": "kops is a coupled, high-blast-radius upgrade (see PR #108, kops 1.35). Keep it in its own PR - it always needs a human.",
+      "matchPackageNames": ["k8s.io/kops"],
+      "groupName": "kops",
+      "labels": ["dependencies", "kops"]
+    },
+    {
+      "description": "AWS SDK for Go v2 ships dozens of sub-modules that bump constantly and in lockstep - one PR for the whole set",
+      "matchPackageNames": [
+        "github.com/aws/aws-sdk-go-v2",
+        "github.com/aws/aws-sdk-go-v2/**",
+        "github.com/aws/smithy-go",
+        "github.com/aws/aws-sdk-go"
+      ],
+      "groupName": "aws-sdk-go"
+    },
+    {
+      "description": "Azure SDK modules (indirect, pulled by kops) move together when they surface",
+      "matchPackageNames": ["github.com/Azure/**"],
+      "groupName": "azure-sdk"
+    },
+    {
+      "description": "OpenTelemetry modules are versioned together",
+      "matchPackageNames": ["go.opentelemetry.io/**"],
+      "groupName": "opentelemetry"
+    },
+    {
+      "description": "golang.org/x/* utility modules",
+      "matchPackageNames": ["golang.org/x/**"],
+      "groupName": "golang.org/x"
+    },
+    {
+      "description": "Prometheus client libraries",
+      "matchPackageNames": ["github.com/prometheus/**"],
+      "groupName": "prometheus"
+    },
+    {
+      "description": "Crossplane runtime + AWS provider",
+      "matchPackageNames": [
+        "github.com/crossplane/**",
+        "github.com/crossplane-contrib/**"
+      ],
+      "groupName": "crossplane"
+    },
+    {
+      "description": "Ginkgo/Gomega test tooling",
+      "matchPackageNames": ["github.com/onsi/**"],
+      "groupName": "test tooling (ginkgo/gomega)"
+    },
+    {
+      "description": "Group all GitHub Actions bumps into a single PR",
+      "matchManagers": ["github-actions"],
+      "groupName": "github-actions"
+    }
   ]
 }
