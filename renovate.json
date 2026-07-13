@@ -40,15 +40,27 @@
   ],
   "packageRules": [
     {
-      "description": "Group the Go toolchain version wherever it is declared (go.mod, Dockerfile, .tool-versions) into a single PR so they never drift apart",
-      "matchPackageNames": ["go", "golang"],
-      "groupName": "golang toolchain"
+      "description": "Group the Go toolchain version wherever it is declared (go.mod, Dockerfile, .tool-versions) into a single PR so they never drift apart. matchDepNames is needed because the packageName differs per manager (go.mod: go, Dockerfile: golang, asdf: golang/go). rangeStrategy=bump opts in to go directive updates in go.mod, which Renovate skips by default.",
+      "matchDepNames": ["go", "golang"],
+      "groupName": "golang toolchain",
+      "rangeStrategy": "bump"
     },
     {
       "description": "Do not open PRs for Go indirect (transitive) dependencies. They are churny and are pulled in transitively via `go mod tidy` when a direct dep is bumped. Security fixes still come through via vulnerabilityAlerts.",
       "matchManagers": ["gomod"],
       "matchDepTypes": ["indirect"],
       "enabled": false
+    },
+    {
+      "description": "Terraform files under pkg/utils/fixtures are test input/expected-output pairs, not real dependencies. Bumping versions there breaks the HCL-manipulation unit tests.",
+      "matchManagers": ["terraform"],
+      "matchFileNames": ["pkg/utils/fixtures/**"],
+      "enabled": false
+    },
+    {
+      "description": "HashiCorp tooling is functionally coupled: terraform-exec uses hc-install to fetch the terraform binary. Bump them together.",
+      "matchPackageNames": ["github.com/hashicorp/**"],
+      "groupName": "hashicorp"
     },
     {
       "description": "Kubernetes staging libraries release in lockstep on a shared v0.x.y version - bump them together",
