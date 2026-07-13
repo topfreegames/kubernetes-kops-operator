@@ -12,7 +12,7 @@ require (
 	github.com/crossplane-contrib/provider-aws v0.56.0
 	github.com/go-logr/logr v1.4.3
 	github.com/hashicorp/go-version v1.9.0
-	github.com/hashicorp/hc-install v0.9.4
+	github.com/hashicorp/hc-install v0.9.5
 	github.com/hashicorp/terraform-exec v0.21.0
 	github.com/onsi/ginkgo/v2 v2.23.0
 	github.com/onsi/gomega v1.36.2
