@@ -1,6 +1,6 @@
 module github.com/topfreegames/kubernetes-kops-operator
 
-go 1.25.8
+go 1.26.5
 
 require (
 	github.com/Masterminds/sprig/v3 v3.3.0
