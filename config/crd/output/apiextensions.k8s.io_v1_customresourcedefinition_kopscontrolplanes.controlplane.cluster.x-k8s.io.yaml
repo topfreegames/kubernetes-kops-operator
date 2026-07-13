@@ -1772,6 +1772,11 @@ spec:
                   externalDNS:
                     description: ExternalDNSConfig are options of the dns-controller
                     properties:
+                      priorityClassName:
+                        description: |-
+                          PriorityClassName overrides the priorityClassName on the dns-controller pod.
+                          Defaults to "system-cluster-critical" when unset.
+                        type: string
                       provider:
                         description: |-
                           Provider determines which implementation of ExternalDNS to use.
@@ -4816,6 +4821,11 @@ spec:
                               BPFLBMapMax is the maximum number of entries in bpf lb service, backend and affinity maps.
                               Default: 65536
                             type: integer
+                          bpfLBSock:
+                            description: |-
+                              BPFLBSock enables socket-based LB for E/W traffic.
+                              Default: false
+                            type: boolean
                           bpfLBSockHostNSOnly:
                             description: |-
                               BPFLBSockHostNSOnly enables skipping socket LB for services when inside a pod namespace,
@@ -4952,6 +4962,13 @@ spec:
                               The cluster is operated by cilium-etcd-operator.
                               Default: false
                             type: boolean
+                          extraConfig:
+                            additionalProperties:
+                              type: string
+                            description: |-
+                              ExtraConfig is appended to the cilium-config ConfigMap. Keys here override any value
+                              rendered by kops. All values must be strings (e.g. "true", not true).
+                            type: object
                           gatewayAPI:
                             description: GatewayAPI specifies the configuration for Cilium Gateway API settings.
                             properties:

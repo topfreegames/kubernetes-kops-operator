@@ -1876,6 +1876,14 @@ spec:
                                 pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                                 x-kubernetes-int-or-string: true
                             type: object
+                          excludedInstanceTypes:
+                            description: |-
+                              ExcludedInstanceTypes is a list of instance types which will not be used by the instance group.
+                              You can use strings with one or more wild cards, represented by an asterisk (*), to exclude an
+                              instance type, size, or generation.
+                            items:
+                              type: string
+                            type: array
                           memory:
                             properties:
                               max:
