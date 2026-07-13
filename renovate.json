@@ -9,7 +9,7 @@
   "prConcurrentLimit": 10,
   "prHourlyLimit": 4,
   "minimumReleaseAge": "7 days",
-  "internalChecksFilter": "strict",
+  "internalChecksFilter": "none",
   "postUpdateOptions": ["gomodTidy", "gomodUpdateImportPaths"],
   "vulnerabilityAlerts": {
     "labels": ["dependencies", "security"],
