@@ -115,7 +115,7 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 ## Tool Versions
 KUSTOMIZE_VERSION ?= v3.8.7
 CONTROLLER_TOOLS_VERSION ?= v0.16.4
-GOLANGCI_LINT_VERSION ?= v2.5.0
+GOLANGCI_LINT_VERSION ?= v2.12.2
 
 ## setup-envtest is installed from the controller-runtime release branch that
 ## matches the sigs.k8s.io/controller-runtime version in go.mod. Using @latest
