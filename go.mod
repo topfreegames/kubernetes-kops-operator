@@ -24,7 +24,7 @@ require (
 	k8s.io/client-go v0.34.3
 	k8s.io/kops v1.35.0
 	k8s.io/kubectl v0.34.3
-	sigs.k8s.io/cluster-api v1.8.1
+	sigs.k8s.io/cluster-api v1.13.4
 	sigs.k8s.io/controller-runtime v0.22.4
 	sigs.k8s.io/karpenter v1.0.1
 )
