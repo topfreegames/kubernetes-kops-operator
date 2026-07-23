@@ -855,9 +855,9 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		if !r.DryRun {
 			err = reconciler.reconcileKopsMachinePool(ctx, kopsClientset, kopsControlPlane, &kmps[i])
 			if err != nil {
-				reconciler.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeWarning, "KopsMachinePoolReconcileFailed", err.Error())
+				reconciler.Recorder.Event(&kopsMachinePool, corev1.EventTypeWarning, "KopsMachinePoolReconcileFailed", err.Error())
 			} else {
-				reconciler.Recorder.Eventf(&kopsMachinePool, corev1.EventTypeNormal, "KopsMachinePoolReconcileSuccess", kopsMachinePool.Name)
+				reconciler.Recorder.Event(&kopsMachinePool, corev1.EventTypeNormal, "KopsMachinePoolReconcileSuccess", kopsMachinePool.Name)
 			}
 		}
 		if kopsMachinePool.DeletionTimestamp.IsZero() {
@@ -1083,7 +1083,7 @@ func (r *KopsControlPlaneReconciliation) reconcileKopsMachinePool(ctx context.Co
 		if err != nil {
 			return err
 		}
-		r.Recorder.Eventf(kopsMachinePool, corev1.EventTypeNormal, "KopsMachinePoolDeleted", kopsMachinePool.Name)
+		r.Recorder.Event(kopsMachinePool, corev1.EventTypeNormal, "KopsMachinePoolDeleted", kopsMachinePool.Name)
 		controllerutil.RemoveFinalizer(kopsMachinePool, infrastructurev1alpha1.KopsMachinePoolFinalizer)
 		return nil
 	}

@@ -160,7 +160,7 @@ func KopsClusterValidation(object runtime.Object, recorder record.EventRecorder,
 		return true
 	} else {
 		for _, errorMessage := range errorMessages {
-			recorder.Eventf(object, corev1.EventTypeWarning, "KubernetesClusterValidationFailed", errorMessage)
+			recorder.Event(object, corev1.EventTypeWarning, "KubernetesClusterValidationFailed", errorMessage)
 		}
 		return false
 	}
