@@ -9,7 +9,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.5
 	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.62.4
 	github.com/aws/karpenter-provider-aws v1.0.2
-	github.com/crossplane-contrib/provider-aws v0.56.0
+	github.com/crossplane-contrib/provider-aws v0.58.1
 	github.com/go-logr/logr v1.4.3
 	github.com/hashicorp/go-version v1.9.0
 	github.com/hashicorp/hc-install v0.9.4
