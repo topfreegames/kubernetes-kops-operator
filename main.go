@@ -186,7 +186,7 @@ func main() {
 	if dryRun {
 		recorder = record.NewFakeRecorder(1000)
 	} else {
-		recorder = mgr.GetEventRecorderFor("kopscontrolplane-controller")
+		recorder = mgr.GetEventRecorderFor("kopscontrolplane-controller") //nolint:staticcheck // SA1019: events API migration (GetEventRecorder) deferred to a follow-up
 	}
 
 	controller := &controlplane.KopsControlPlaneReconciler{

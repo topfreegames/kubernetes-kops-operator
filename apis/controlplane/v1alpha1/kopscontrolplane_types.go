@@ -159,10 +159,6 @@ type KopsControlPlaneList struct {
 	Items           []KopsControlPlane `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&KopsControlPlane{}, &KopsControlPlaneList{})
-}
-
 // GetConditions returns the set of conditions for this object.
 func (kcp *KopsControlPlane) GetConditions() clusterv1.Conditions {
 	return kcp.Status.Conditions

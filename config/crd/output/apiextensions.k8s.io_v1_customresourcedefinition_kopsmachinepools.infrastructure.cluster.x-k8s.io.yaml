@@ -915,11 +915,27 @@ spec:
                           - type: integer
                           - type: string
                           x-kubernetes-int-or-string: true
-                        description: ConfigAdditions adds additional config entries to the generated config file.
+                        description: |-
+                          ConfigAdditions adds additional config entries to the generated config file.
+                          Paths are written to the config as-is, so they must match the schema version of the
+                          configured containerd: v2 paths (e.g. plugins."io.containerd.grpc.v1.cri".*) for
+                          containerd < 2.0, v3 paths (e.g. plugins."io.containerd.cri.v1.runtime".*) for >= 2.0.
                         type: object
                       configOverride:
                         description: ConfigOverride is the complete containerd config file provided by the user.
                         type: string
+                      gvisor:
+                        description: GVisor configures the gVisor (runsc) sandboxed runtime.
+                        properties:
+                          enabled:
+                            description: Enabled determines if kOps will install the gVisor runtime.
+                            type: boolean
+                          platform:
+                            description: |-
+                              Platform is the gVisor execution platform: "systrap" (default, works
+                              everywhere including VMs) or "kvm" (bare-metal with KVM support).
+                            type: string
+                        type: object
                       installCriCtl:
                         description: InstallCriCtl installs crictl (default "false").
                         type: boolean
@@ -1211,7 +1227,9 @@ spec:
                         description: AuthenticationTokenWebhook uses the TokenReview API to determine authentication for bearer tokens.
                         type: boolean
                       authenticationTokenWebhookCacheTTL:
-                        description: AuthenticationTokenWebhook sets the duration to cache responses from the webhook token authenticator. Default is 2m. (default 2m0s)
+                        description: |-
+                          AuthenticationTokenWebhook sets the duration to cache responses from the webhook token authenticator. Default is 2m. (default 2m0s)
+                          Kept as a flag so explicit zero is preserved; the upstream config field is non-pointer with omitempty and would drop a zero value.
                         type: string
                       authorizationMode:
                         description: AuthorizationMode is the authorization mode the kubelet is running in
@@ -1277,11 +1295,19 @@ spec:
                         description: Enforce Allocatable across pods whenever the overall usage across all pods exceeds Allocatable.
                         type: string
                       eventBurst:
-                        description: EventBurst temporarily allows event records to burst to this number, while still not exceeding EventQPS. Only used if EventQPS > 0.
+                        description: |-
+                          EventBurst temporarily allows event records to burst to this number, while still not exceeding EventQPS. Only used if EventQPS > 0.
+                          Kept as a flag so explicit zero is preserved; the upstream config field is non-pointer with omitempty and would drop a zero value.
                         format: int32
                         type: integer
                       eventQPS:
                         description: EventQPS if > 0, limit event creations per second to this value.  If 0, unlimited.
+                        format: int32
+                        type: integer
+                      eventRecordQPS:
+                        description: |-
+                          EventRecordQPS is the maximum event creations per second. If 0, there is no limit enforced.
+                          Default: 50
                         format: int32
                         type: integer
                       evictionHard:
@@ -1359,7 +1385,9 @@ spec:
                           collected based on being unused for too long. Default: "0s" (disabled)
                         type: string
                       imageMinimumGCAge:
-                        description: 'imageMinimumGCAge is the minimum age for an unused image before it is garbage collected. Default: "2m"'
+                        description: |-
+                          imageMinimumGCAge is the minimum age for an unused image before it is garbage collected. Default: "2m"
+                          Kept as a flag so explicit zero is preserved; the upstream config field is non-pointer with omitempty and would drop a zero value.
                         type: string
                       imagePullProgressDeadline:
                         description: |-
@@ -1369,6 +1397,10 @@ spec:
                       kernelMemcgNotification:
                         description: Integrate with the kernel memcg notification to determine if memory eviction thresholds are crossed rather than polling.
                         type: boolean
+                      kubeAPIQPS:
+                        description: KubeAPIQPS Burst to use while talking with kubernetes apiserver. (default 50)
+                        format: int32
+                        type: integer
                       kubeReserved:
                         additionalProperties:
                           type: string
@@ -1425,6 +1457,12 @@ spec:
                           type: string
                         description: NodeLabels to add when registering the node in the cluster.
                         type: object
+                      nodeLeaseDurationSeconds:
+                        description: |-
+                          NodeLeaseDurationSeconds is the duration the Kubelet will set on its corresponding Lease, in seconds.
+                          Default: 40
+                        format: int32
+                        type: integer
                       nodeStatusUpdateFrequency:
                         description: |-
                           NodeStatusUpdateFrequency Specifies how often kubelet posts node status to master (default 10s)
@@ -1475,7 +1513,9 @@ spec:
                         description: registerSchedulable tells the kubelet to register the node as schedulable. No-op if register-node is false.
                         type: boolean
                       registryBurst:
-                        description: RegistryBurst Maximum size of a bursty pulls, temporarily allows pulls to burst to this number, while still not exceeding registry-qps. Only used if --registry-qps > 0 (default 10)
+                        description: |-
+                          RegistryBurst Maximum size of a bursty pulls, temporarily allows pulls to burst to this number, while still not exceeding registry-qps. Only used if --registry-qps > 0 (default 10)
+                          Kept as a flag so explicit zero is preserved; the upstream config field is non-pointer with omitempty and would drop a zero value.
                         format: int32
                         type: integer
                       registryPullQPS:
@@ -1498,7 +1538,9 @@ spec:
                         description: Cgroups that container runtime is expected to be isolated in.
                         type: string
                       runtimeRequestTimeout:
-                        description: RuntimeRequestTimeout is timeout for runtime requests on - pull, logs, exec and attach
+                        description: |-
+                          RuntimeRequestTimeout is timeout for runtime requests on - pull, logs, exec and attach
+                          Kept as a flag so explicit zero is preserved; the upstream config field is non-pointer with omitempty and would drop a zero value.
                         type: string
                       seccompDefault:
                         description: SeccompDefault enables the use of `RuntimeDefault` as the default seccomp profile for all workloads.
@@ -1520,7 +1562,9 @@ spec:
                           Default: 10s
                         type: string
                       streamingConnectionIdleTimeout:
-                        description: StreamingConnectionIdleTimeout is the maximum time a streaming connection can be idle before the connection is automatically closed
+                        description: |-
+                          StreamingConnectionIdleTimeout is the maximum time a streaming connection can be idle before the connection is automatically closed
+                          Kept as a flag so explicit zero is preserved; the upstream config field is non-pointer with omitempty and would drop a zero value.
                         type: string
                       systemCgroups:
                         description: |-
@@ -1542,6 +1586,9 @@ spec:
                           type: string
                         type: array
                       tlsCertFile:
+                        description: |-
+                          TLSCertFile is the path to the kubelet's serving cert. Set automatically
+                          by nodeup to a cert+CA bundle; users should not set this directly.
                         type: string
                       tlsCipherSuites:
                         description: TLSCipherSuites indicates the allowed TLS cipher suite
@@ -1552,6 +1599,9 @@ spec:
                         description: TLSMinVersion indicates the minimum TLS version allowed
                         type: string
                       tlsPrivateKeyFile:
+                        description: |-
+                          TLSPrivateKeyFile is the path to the private key for the kubelet's
+                          serving cert. Set automatically by nodeup; users should not set this directly.
                         type: string
                       topologyManagerPolicy:
                         description: TopologyManagerPolicy determines the allocation policy for the topology manager.
@@ -1560,7 +1610,9 @@ spec:
                         description: The full path of the directory in which to search for additional third party volume plugins (this path must be writeable, dependent on your choice of OS)
                         type: string
                       volumeStatsAggPeriod:
-                        description: VolumeStatsAggPeriod is the interval for kubelet to calculate and cache the volume disk usage for all pods and volumes
+                        description: |-
+                          VolumeStatsAggPeriod is the interval for kubelet to calculate and cache the volume disk usage for all pods and volumes
+                          Kept as a flag so explicit zero is preserved; the upstream config field is non-pointer with omitempty and would drop a zero value.
                         type: string
                     type: object
                   machineType:
@@ -1606,6 +1658,14 @@ spec:
                                 pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                                 x-kubernetes-int-or-string: true
                             type: object
+                          excludedInstanceTypes:
+                            description: |-
+                              ExcludedInstanceTypes is a list of instance types which will not be used by the instance group.
+                              You can use strings with one or more wild cards, represented by an asterisk (*), to exclude an
+                              instance type, size, or generation.
+                            items:
+                              type: string
+                            type: array
                           memory:
                             properties:
                               max:

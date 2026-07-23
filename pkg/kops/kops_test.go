@@ -8,7 +8,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
-	crossec2v1beta1 "github.com/crossplane-contrib/provider-aws/apis/ec2/v1beta1"
 	"k8s.io/client-go/kubernetes/scheme"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
@@ -221,9 +220,6 @@ func TestGetKopsMachinePoolsWithLabel(t *testing.T) {
 
 	defaultRegisterFn := func(sc *runtime.Scheme, clientBuilder *fake.ClientBuilder) *fake.ClientBuilder {
 		err := clusterv1beta1.AddToScheme(sc)
-		Expect(err).NotTo(HaveOccurred())
-
-		err = crossec2v1beta1.SchemeBuilder.AddToScheme(sc)
 		Expect(err).NotTo(HaveOccurred())
 
 		err = kinfrastructurev1alpha1.AddToScheme(sc)
