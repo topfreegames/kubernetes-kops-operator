@@ -121,10 +121,6 @@ type KopsMachinePoolList struct {
 	Items           []KopsMachinePool `json:"items"`
 }
 
-func init() {
-	SchemeBuilder.Register(&KopsMachinePool{}, &KopsMachinePoolList{})
-}
-
 // GetConditions returns the set of conditions for this object.
 func (cp *KopsMachinePool) GetConditions() clusterv1.Conditions {
 	return cp.Status.Conditions
