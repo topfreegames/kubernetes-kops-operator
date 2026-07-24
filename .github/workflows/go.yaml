@@ -6,6 +6,7 @@ on:
       - '*'
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   lint:
@@ -184,7 +185,74 @@ jobs:
             
             docker manifest annotate $TAG ${TAG}-amd64 --arch amd64
             docker manifest annotate $TAG ${TAG}-arm64 --arch arm64
-            
+
             docker manifest push $TAG
           fi
         done
+
+  publish-crds:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+    needs:
+    - tests
+    - lint
+
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install make -y
+
+    - name: Generate combined CRD manifest
+      run: |
+        make manifests
+        bin/kustomize build config/crd > crds.yaml
+
+    - name: Upload CRDs as build artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: crds
+        path: crds.yaml
+        if-no-files-found: error
+
+    - name: Attach CRDs to release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        files: crds.yaml
+
+  verify-manifests:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version-file: go.mod
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install make -y
+
+    - name: Verify generated manifests and CRDs are up to date
+      run: |
+        make manifests generate
+        if ! git diff --exit-code; then
+          echo "::error::Generated manifests/CRDs/deepcopy are out of date. Run 'make manifests generate' locally and commit the result."
+          exit 1
+        fi
