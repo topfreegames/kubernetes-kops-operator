@@ -2399,6 +2399,49 @@ func TestReconcileKopsMachinePool(t *testing.T) {
 				return err != nil && apierrors.IsNotFound(err)
 			},
 		},
+		{
+			description: "should null minSize/maxSize for a Karpenter-managed IG",
+			input: &infrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kops-machine-pool-karpenter",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: helpers.GetFQDN("test-cluster"),
+					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
+						Role:    "Node",
+						Manager: "Karpenter",
+						MinSize: helpers.Int32Ptr(0),
+						MaxSize: helpers.Int32Ptr(0),
+					},
+				},
+			},
+			assertFunction: func(fakeKopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) bool {
+				ig, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Get(context.TODO(), "test-kops-machine-pool-karpenter", metav1.GetOptions{})
+				return err == nil && ig.Spec.MinSize == nil && ig.Spec.MaxSize == nil
+			},
+		},
+		{
+			description: "should preserve minSize/maxSize for a non-Karpenter IG",
+			input: &infrastructurev1alpha1.KopsMachinePool{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-kops-machine-pool-cloudgroup",
+					Namespace: metav1.NamespaceDefault,
+				},
+				Spec: infrastructurev1alpha1.KopsMachinePoolSpec{
+					ClusterName: helpers.GetFQDN("test-cluster"),
+					KopsInstanceGroupSpec: kopsapi.InstanceGroupSpec{
+						Role:    "Node",
+						MinSize: helpers.Int32Ptr(3),
+						MaxSize: helpers.Int32Ptr(5),
+					},
+				},
+			},
+			assertFunction: func(fakeKopsClientset simple.Clientset, kopsCluster *kopsapi.Cluster) bool {
+				ig, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Get(context.TODO(), "test-kops-machine-pool-cloudgroup", metav1.GetOptions{})
+				return err == nil && ig.Spec.MinSize != nil && *ig.Spec.MinSize == 3 && ig.Spec.MaxSize != nil && *ig.Spec.MaxSize == 5
+			},
+		},
 	}
 
 	RegisterFailHandler(Fail)
