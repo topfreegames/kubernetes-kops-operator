@@ -1058,6 +1058,10 @@ func (r *KopsControlPlaneReconciliation) reconcileKopsMachinePool(ctx context.Co
 			"kops.k8s.io/instance-group-name": kopsMachinePool.Name,
 		}
 	}
+	if kopsMachinePool.Spec.KopsInstanceGroupSpec.Manager == "Karpenter" {
+		kopsMachinePool.Spec.KopsInstanceGroupSpec.MinSize = nil
+		kopsMachinePool.Spec.KopsInstanceGroupSpec.MaxSize = nil
+	}
 	kopsInstanceGroup := &kopsapi.InstanceGroup{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      kopsMachinePool.Name,
