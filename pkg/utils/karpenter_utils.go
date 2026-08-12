@@ -3,6 +3,9 @@ package utils
 import (
 	"bytes"
 	"fmt"
+	"slices"
+	"strconv"
+	"strings"
 	"text/template"
 
 	"github.com/Masterminds/sprig/v3"
@@ -177,16 +180,127 @@ func BuildKarpenterVolumeConfigV1FromKops(kopsVolume *kopsapi.InstanceRootVolume
 	return karpenterVolumeConfig
 }
 
-func GetKubeletConfiguration(kubeletSpec *kopsapi.KubeletConfigSpec) *karpenterv1.KubeletConfiguration {
-	if kubeletSpec == nil {
-		return &karpenterv1.KubeletConfiguration{}
+// validEvictionSignals mirrors the signals Karpenter accepts in
+// EC2NodeClass.spec.kubelet.evictionHard. Kept so parseEvictionHard can reject typos rather than
+// silently dropping them.
+var validEvictionSignals = []string{
+	"memory.available",
+	"nodefs.available",
+	"nodefs.inodesFree",
+	"imagefs.available",
+	"imagefs.inodesFree",
+	"pid.available",
+}
+
+// parseEvictionHard converts kops' comma-delimited hard eviction expression list
+// ("memory.available<1Gi,nodefs.available<10%") into the signal-to-quantity map that Karpenter's
+// KubeletConfiguration expects ({"memory.available": "1Gi", "nodefs.available": "10%"}).
+//
+// Only the "<" operator is handled, because that is the only operator kubelet accepts for hard
+// eviction thresholds. Unknown signals and unparseable quantities are rejected rather than skipped:
+// a silently dropped threshold makes Karpenter compute a larger allocatable than the node actually
+// honours, which is the failure this mapping exists to prevent.
+func parseEvictionHard(evictionHard string) (map[string]string, error) {
+	thresholds := map[string]string{}
+
+	for _, expression := range strings.Split(evictionHard, ",") {
+		expression = strings.TrimSpace(expression)
+		if expression == "" {
+			continue
+		}
+
+		signal, quantity, found := strings.Cut(expression, "<")
+		if !found {
+			return nil, fmt.Errorf("invalid hard eviction expression %q, expected format signal<quantity, e.g. memory.available<1Gi", expression)
+		}
+
+		signal = strings.TrimSpace(signal)
+		quantity = strings.TrimSpace(quantity)
+
+		if !slices.Contains(validEvictionSignals, signal) {
+			return nil, fmt.Errorf("invalid hard eviction signal %q, valid signals are %s", signal, strings.Join(validEvictionSignals, ", "))
+		}
+
+		if err := validateEvictionQuantity(quantity); err != nil {
+			return nil, fmt.Errorf("invalid hard eviction expression %q: %w", expression, err)
+		}
+
+		thresholds[signal] = quantity
 	}
 
-	return &karpenterv1.KubeletConfiguration{
-		MaxPods:        kubeletSpec.MaxPods,
-		SystemReserved: kubeletSpec.SystemReserved,
-		KubeReserved:   kubeletSpec.KubeReserved,
+	if len(thresholds) == 0 {
+		return nil, nil
 	}
+
+	return thresholds, nil
+}
+
+// validateEvictionQuantity accepts either a resource quantity ("1Gi", "300Mi") or a percentage
+// ("10%"), the two forms both kubelet and Karpenter support.
+func validateEvictionQuantity(quantity string) error {
+	if quantity == "" {
+		return fmt.Errorf("missing quantity")
+	}
+
+	if percentage, isPercentage := strings.CutSuffix(quantity, "%"); isPercentage {
+		value, err := strconv.ParseFloat(percentage, 64)
+		if err != nil {
+			return fmt.Errorf("quantity %q is not a valid percentage", quantity)
+		}
+		if value < 0 || value > 100 {
+			return fmt.Errorf("percentage %q must be between 0%% and 100%%", quantity)
+		}
+		return nil
+	}
+
+	if _, err := resource.ParseQuantity(quantity); err != nil {
+		return fmt.Errorf("quantity %q is neither a valid resource quantity nor a percentage", quantity)
+	}
+
+	return nil
+}
+
+// GetKubeletConfiguration builds the KubeletConfiguration attached to an EC2NodeClass. Karpenter
+// uses it to compute a node's allocatable capacity, which drives bin-packing, instance type
+// selection and consolidation simulation.
+//
+// Instance group values override cluster-wide ones per field, mirroring kops' own precedence, since
+// every instance group gets its own EC2NodeClass.
+//
+// This only shapes Karpenter's *scheduling* model. AMIFamily is Custom and UserData comes from the
+// kops-generated nodeup script, so Karpenter never configures kubelet on the node — kops does, from
+// these same specs. Any field omitted here therefore makes Karpenter over-estimate allocatable
+// relative to what the node enforces, and lets it over-pack nodes.
+func GetKubeletConfiguration(clusterKubeletSpec, instanceGroupKubeletSpec *kopsapi.KubeletConfigSpec) (*karpenterv1.KubeletConfiguration, error) {
+	kubeletConfiguration := &karpenterv1.KubeletConfiguration{}
+
+	for _, kubeletSpec := range []*kopsapi.KubeletConfigSpec{clusterKubeletSpec, instanceGroupKubeletSpec} {
+		if kubeletSpec == nil {
+			continue
+		}
+
+		if kubeletSpec.MaxPods != nil {
+			kubeletConfiguration.MaxPods = kubeletSpec.MaxPods
+		}
+
+		if kubeletSpec.KubeReserved != nil {
+			kubeletConfiguration.KubeReserved = kubeletSpec.KubeReserved
+		}
+
+		if kubeletSpec.SystemReserved != nil {
+			kubeletConfiguration.SystemReserved = kubeletSpec.SystemReserved
+		}
+
+		if kubeletSpec.EvictionHard != nil {
+			evictionHard, err := parseEvictionHard(*kubeletSpec.EvictionHard)
+			if err != nil {
+				return nil, err
+			}
+			kubeletConfiguration.EvictionHard = evictionHard
+		}
+	}
+
+	return kubeletConfiguration, nil
 }
 
 func CreateEC2NodeClass(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string) (string, error) {
@@ -261,7 +375,10 @@ func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alp
 		return nil, err
 	}
 
-	kubeletConfiguration := GetKubeletConfiguration(kopsCluster.Spec.Kubelet)
+	kubeletConfiguration, err := GetKubeletConfiguration(kopsCluster.Spec.Kubelet, kmp.Spec.KopsInstanceGroupSpec.Kubelet)
+	if err != nil {
+		return nil, err
+	}
 
 	var associatePublicIP bool
 	if kmp.Spec.KopsInstanceGroupSpec.AssociatePublicIP != nil {

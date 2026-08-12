@@ -597,3 +597,280 @@ func TestEC2NodeClassTagConsistency(t *testing.T) {
 		assert.Equal(t, "pool-value", mergedWithConflict["common-key"], "machine pool should override cluster")
 	})
 }
+
+func TestParseEvictionHard(t *testing.T) {
+	testCases := []struct {
+		description   string
+		evictionHard  string
+		expected      map[string]string
+		expectedError string
+	}{
+		{
+			description:  "should parse the chart default expression list",
+			evictionHard: "memory.available<1Gi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<10%,imagefs.inodesFree<5%",
+			expected: map[string]string{
+				"memory.available":   "1Gi",
+				"nodefs.available":   "10%",
+				"nodefs.inodesFree":  "5%",
+				"imagefs.available":  "10%",
+				"imagefs.inodesFree": "5%",
+			},
+		},
+		{
+			description:  "should parse a single expression",
+			evictionHard: "memory.available<300Mi",
+			expected:     map[string]string{"memory.available": "300Mi"},
+		},
+		{
+			description:  "should tolerate surrounding whitespace and empty entries",
+			evictionHard: " memory.available < 1Gi , , pid.available<10% ",
+			expected: map[string]string{
+				"memory.available": "1Gi",
+				"pid.available":    "10%",
+			},
+		},
+		{
+			description:  "should return nil for an empty expression list",
+			evictionHard: "",
+			expected:     nil,
+		},
+		{
+			description:   "should reject an expression without an operator",
+			evictionHard:  "memory.available=1Gi",
+			expectedError: `invalid hard eviction expression "memory.available=1Gi", expected format signal<quantity, e.g. memory.available<1Gi`,
+		},
+		{
+			description:   "should reject an unknown signal",
+			evictionHard:  "memory.avaliable<1Gi",
+			expectedError: `invalid hard eviction signal "memory.avaliable", valid signals are memory.available, nodefs.available, nodefs.inodesFree, imagefs.available, imagefs.inodesFree, pid.available`,
+		},
+		{
+			description:   "should reject the <= operator, which kubelet does not support for evictionHard",
+			evictionHard:  "memory.available<=1Gi",
+			expectedError: `invalid hard eviction expression "memory.available<=1Gi": quantity "=1Gi" is neither a valid resource quantity nor a percentage`,
+		},
+		{
+			description:   "should reject a missing quantity",
+			evictionHard:  "memory.available<",
+			expectedError: `invalid hard eviction expression "memory.available<": missing quantity`,
+		},
+		{
+			description:   "should reject a garbage quantity",
+			evictionHard:  "memory.available<lots",
+			expectedError: `invalid hard eviction expression "memory.available<lots": quantity "lots" is neither a valid resource quantity nor a percentage`,
+		},
+		{
+			description:   "should reject an out of range percentage",
+			evictionHard:  "nodefs.available<120%",
+			expectedError: `invalid hard eviction expression "nodefs.available<120%": percentage "120%" must be between 0% and 100%`,
+		},
+	}
+
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			thresholds, err := parseEvictionHard(tc.evictionHard)
+
+			if tc.expectedError != "" {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(Equal(tc.expectedError))
+				g.Expect(thresholds).To(BeNil())
+				return
+			}
+
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(thresholds).To(Equal(tc.expected))
+		})
+	}
+}
+
+func TestGetKubeletConfiguration(t *testing.T) {
+	testCases := []struct {
+		description              string
+		clusterKubeletSpec       *kopsapi.KubeletConfigSpec
+		instanceGroupKubeletSpec *kopsapi.KubeletConfigSpec
+		expected                 *karpenterv1.KubeletConfiguration
+		expectedError            string
+	}{
+		{
+			description: "should return an empty configuration when both specs are nil",
+			expected:    &karpenterv1.KubeletConfiguration{},
+		},
+		{
+			description: "should map maxPods, reservations and evictionHard from the cluster spec",
+			clusterKubeletSpec: &kopsapi.KubeletConfigSpec{
+				MaxPods:        helpers.Int32Ptr(120),
+				KubeReserved:   map[string]string{"cpu": "200m", "memory": "1Gi"},
+				SystemReserved: map[string]string{"cpu": "200m", "memory": "512Mi"},
+				EvictionHard:   helpers.StringPtr("memory.available<1Gi,nodefs.available<10%"),
+			},
+			expected: &karpenterv1.KubeletConfiguration{
+				MaxPods:        helpers.Int32Ptr(120),
+				KubeReserved:   map[string]string{"cpu": "200m", "memory": "1Gi"},
+				SystemReserved: map[string]string{"cpu": "200m", "memory": "512Mi"},
+				EvictionHard: map[string]string{
+					"memory.available": "1Gi",
+					"nodefs.available": "10%",
+				},
+			},
+		},
+		{
+			description: "should let the instance group override the cluster spec per field",
+			clusterKubeletSpec: &kopsapi.KubeletConfigSpec{
+				MaxPods:        helpers.Int32Ptr(120),
+				KubeReserved:   map[string]string{"memory": "1Gi"},
+				SystemReserved: map[string]string{"memory": "512Mi"},
+				EvictionHard:   helpers.StringPtr("memory.available<1Gi"),
+			},
+			instanceGroupKubeletSpec: &kopsapi.KubeletConfigSpec{
+				MaxPods:      helpers.Int32Ptr(60),
+				EvictionHard: helpers.StringPtr("memory.available<2Gi"),
+			},
+			expected: &karpenterv1.KubeletConfiguration{
+				MaxPods:        helpers.Int32Ptr(60),
+				KubeReserved:   map[string]string{"memory": "1Gi"},
+				SystemReserved: map[string]string{"memory": "512Mi"},
+				EvictionHard:   map[string]string{"memory.available": "2Gi"},
+			},
+		},
+		{
+			description: "should take instance group values when the cluster spec is nil",
+			instanceGroupKubeletSpec: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available<1Gi"),
+			},
+			expected: &karpenterv1.KubeletConfiguration{
+				EvictionHard: map[string]string{"memory.available": "1Gi"},
+			},
+		},
+		{
+			description: "should propagate a parse error from the cluster spec",
+			clusterKubeletSpec: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available<nope"),
+			},
+			expectedError: `invalid hard eviction expression "memory.available<nope": quantity "nope" is neither a valid resource quantity nor a percentage`,
+		},
+		{
+			description: "should propagate a parse error from the instance group spec",
+			clusterKubeletSpec: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available<1Gi"),
+			},
+			instanceGroupKubeletSpec: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("bogus.signal<1Gi"),
+			},
+			expectedError: `invalid hard eviction signal "bogus.signal", valid signals are memory.available, nodefs.available, nodefs.inodesFree, imagefs.available, imagefs.inodesFree, pid.available`,
+		},
+	}
+
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			kubeletConfiguration, err := GetKubeletConfiguration(tc.clusterKubeletSpec, tc.instanceGroupKubeletSpec)
+
+			if tc.expectedError != "" {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(Equal(tc.expectedError))
+				g.Expect(kubeletConfiguration).To(BeNil())
+				return
+			}
+
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(kubeletConfiguration).To(Equal(tc.expected))
+		})
+	}
+}
+
+// TestCreateEC2NodeClassV1KubeletPropagation guards the path that CPEC-20260810-03 found broken:
+// eviction thresholds were configured on the kops instance group but never reached
+// EC2NodeClass.spec.kubelet, so Karpenter computed allocatable with no eviction reserve and
+// over-packed every Karpenter-managed node.
+func TestCreateEC2NodeClassV1KubeletPropagation(t *testing.T) {
+	testCases := []struct {
+		description              string
+		clusterKubeletSpec       *kopsapi.KubeletConfigSpec
+		instanceGroupKubeletSpec *kopsapi.KubeletConfigSpec
+		expectedKubelet          *karpenterv1.KubeletConfiguration
+		expectedError            string
+	}{
+		{
+			description: "should carry cluster-wide reservations and eviction thresholds onto the ec2 node class",
+			clusterKubeletSpec: &kopsapi.KubeletConfigSpec{
+				MaxPods:        helpers.Int32Ptr(120),
+				KubeReserved:   map[string]string{"cpu": "200m", "memory": "1Gi", "ephemeral-storage": "1Gi"},
+				SystemReserved: map[string]string{"cpu": "200m", "memory": "512Mi", "ephemeral-storage": "1Gi"},
+				EvictionHard:   helpers.StringPtr("memory.available<1Gi,nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<10%,imagefs.inodesFree<5%"),
+			},
+			expectedKubelet: &karpenterv1.KubeletConfiguration{
+				MaxPods:        helpers.Int32Ptr(120),
+				KubeReserved:   map[string]string{"cpu": "200m", "memory": "1Gi", "ephemeral-storage": "1Gi"},
+				SystemReserved: map[string]string{"cpu": "200m", "memory": "512Mi", "ephemeral-storage": "1Gi"},
+				EvictionHard: map[string]string{
+					"memory.available":   "1Gi",
+					"nodefs.available":   "10%",
+					"nodefs.inodesFree":  "5%",
+					"imagefs.available":  "10%",
+					"imagefs.inodesFree": "5%",
+				},
+			},
+		},
+		{
+			description: "should carry instance group eviction thresholds, which is where the chart sets them",
+			clusterKubeletSpec: &kopsapi.KubeletConfigSpec{
+				MaxPods: helpers.Int32Ptr(120),
+			},
+			instanceGroupKubeletSpec: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available<1Gi"),
+			},
+			expectedKubelet: &karpenterv1.KubeletConfiguration{
+				MaxPods:      helpers.Int32Ptr(120),
+				EvictionHard: map[string]string{"memory.available": "1Gi"},
+			},
+		},
+		{
+			description: "should fail rather than silently drop an invalid eviction expression",
+			instanceGroupKubeletSpec: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available<1Gigabyte"),
+			},
+			expectedError: `invalid hard eviction expression "memory.available<1Gigabyte": quantity "1Gigabyte" is neither a valid resource quantity nor a percentage`,
+		},
+	}
+
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			kopsCluster := helpers.NewKopsCluster("test-cluster")
+			kopsCluster.Spec.Kubelet = tc.clusterKubeletSpec
+
+			kmp := helpers.NewKopsMachinePool("test-machine-pool", "default", "test-cluster")
+			kmp.Spec.KopsInstanceGroupSpec.Kubelet = tc.instanceGroupKubeletSpec
+
+			terraformOutputDir := filepath.Join(os.TempDir(), kopsCluster.Name)
+
+			err := os.RemoveAll(terraformOutputDir)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			err = os.MkdirAll(filepath.Join(terraformOutputDir, "data"), os.ModePerm)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			err = os.WriteFile(terraformOutputDir+"/data/aws_s3_object_nodeupscript-"+kmp.Name+"_content", []byte("dummy content"), 0644)
+			g.Expect(err).NotTo(HaveOccurred())
+
+			ec2NodeClass, err := CreateEC2NodeClassV1(kopsCluster, kmp, kmp.Name, terraformOutputDir)
+
+			if tc.expectedError != "" {
+				g.Expect(err).To(HaveOccurred())
+				g.Expect(err.Error()).To(Equal(tc.expectedError))
+				g.Expect(ec2NodeClass).To(BeNil())
+				return
+			}
+
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(ec2NodeClass.Spec.Kubelet).To(Equal(tc.expectedKubelet))
+		})
+	}
+}
