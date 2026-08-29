@@ -784,3 +784,93 @@ func newCluster(name, controlplane, namespace string) *clusterv1betav1.Cluster {
 		},
 	}
 }
+
+func TestGetAWSCredentialsFromIRSA_MissingServiceAccount(t *testing.T) {
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+	ctx := context.TODO()
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
+	_, err := GetAWSCredentialsFromIRSA(ctx, fakeClient, "nonexistent-sa", "default")
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("failed to get ServiceAccount"))
+}
+
+func TestGetAWSCredentialsFromIRSA_MissingAnnotation(t *testing.T) {
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+	ctx := context.TODO()
+
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-sa",
+			Namespace: "default",
+		},
+	}
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithObjects(sa).Build()
+	_, err := GetAWSCredentialsFromIRSA(ctx, fakeClient, "test-sa", "default")
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("missing the eks.amazonaws.com/role-arn annotation"))
+}
+
+func TestResolveAWSCredentials_UsesIdentityRef(t *testing.T) {
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+	ctx := context.TODO()
+
+	secret := newAWSCredentialSecret("myAccessKey", "mySecretKey")
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithObjects(secret).Build()
+
+	kcp := helpers.NewKopsControlPlane("test", metav1.NamespaceDefault)
+	creds, err := ResolveAWSCredentials(ctx, fakeClient, kcp)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(creds.AccessKeyID).To(Equal("myAccessKey"))
+	g.Expect(creds.SecretAccessKey).To(Equal("mySecretKey"))
+}
+
+func TestResolveAWSCredentials_PrefersIRSAOverIdentityRef(t *testing.T) {
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+	ctx := context.TODO()
+
+	// When IRSARef is set but STS assume role will fail (no real AWS),
+	// we verify that the IRSA path is attempted (not the identityRef path)
+	sa := &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "irsa-sa",
+			Namespace: metav1.NamespaceDefault,
+			Annotations: map[string]string{
+				IRSARoleARNAnnotation: "arn:aws:iam::123456789012:role/test-role",
+			},
+		},
+	}
+	secret := newAWSCredentialSecret("accessKey", "secretKey")
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).WithObjects(sa, secret).Build()
+
+	kcp := helpers.NewKopsControlPlane("test", metav1.NamespaceDefault)
+	kcp.Spec.IRSARef = &controlplanev1alpha1.IRSASpec{
+		ServiceAccountName: "irsa-sa",
+	}
+
+	// This will fail at STS AssumeRole because we're not in real AWS,
+	// but it proves the IRSA path was chosen over identityRef
+	_, err := ResolveAWSCredentials(ctx, fakeClient, kcp)
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("failed to assume role"))
+}
+
+func TestResolveAWSCredentials_NeitherSet(t *testing.T) {
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+	ctx := context.TODO()
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme.Scheme).Build()
+
+	kcp := helpers.NewKopsControlPlane("test", metav1.NamespaceDefault)
+	kcp.Spec.IdentityRef = controlplanev1alpha1.IdentityRefSpec{}
+	kcp.Spec.IRSARef = nil
+
+	_, err := ResolveAWSCredentials(ctx, fakeClient, kcp)
+	g.Expect(err).To(HaveOccurred())
+	g.Expect(err.Error()).To(ContainSubstring("no credentials configured"))
+}

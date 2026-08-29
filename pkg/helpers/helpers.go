@@ -64,6 +64,18 @@ func NewAWSCredentialSecret() *corev1.Secret {
 	}
 }
 
+func NewIRSAServiceAccount(name, namespace, roleARN string) *corev1.ServiceAccount {
+	return &corev1.ServiceAccount{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+			Annotations: map[string]string{
+				"eks.amazonaws.com/role-arn": roleARN,
+			},
+		},
+	}
+}
+
 func NewKopsCluster(name string) *kopsapi.Cluster {
 	return &kopsapi.Cluster{
 		ObjectMeta: metav1.ObjectMeta{

@@ -596,6 +596,7 @@ func (r *KopsControlPlaneReconciliation) reconcileClusterAddons(kopsClientset si
 //+kubebuilder:rbac:groups=cluster.x-k8s.io,resources=clusters/status,verbs=get
 //+kubebuilder:rbac:groups="",resources=events,verbs=get;list;watch;create;patch
 //+kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update
+//+kubebuilder:rbac:groups="",resources=serviceaccounts,verbs=get;list;watch
 
 func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Request) (_ ctrl.Result, reconciliationErr error) {
 	var lockInitTime time.Time
@@ -720,7 +721,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	kopsControlPlane.Status.Paused = false
 	kopsControlPlane.Status.Ready = false
 
-	awsCredentials, err := utils.GetAWSCredentialsFromKopsControlPlaneSecret(ctx, kubeReader, kopsControlPlane.Spec.IdentityRef.Name, kopsControlPlane.Spec.IdentityRef.Namespace)
+	awsCredentials, err := utils.ResolveAWSCredentials(ctx, kubeReader, kopsControlPlane)
 	if err != nil {
 		reconciler.log.Error(err, "failed to get AWS credentials")
 		return resultError, err

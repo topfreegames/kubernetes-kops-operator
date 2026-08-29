@@ -74,7 +74,13 @@ type KopsControlPlaneSpec struct {
 	// +optional
 	ControllerClass string `json:"controllerClass"`
 	// IdentityRef is a reference to a identity to be used when reconciling this cluster
-	IdentityRef IdentityRefSpec `json:"identityRef"`
+	// +optional
+	IdentityRef IdentityRefSpec `json:"identityRef,omitempty"`
+	// IRSARef configures IRSA-based authentication for this cluster.
+	// The referenced ServiceAccount must have the eks.amazonaws.com/role-arn annotation.
+	// The operator assumes the annotated IAM role via STS AssumeRole.
+	// +optional
+	IRSARef *IRSASpec `json:"irsaRef,omitempty"`
 	// SSHPublicKey is the SSH public key added in the nodes; required on AWS
 	SSHPublicKey string `json:"SSHPublicKey"`
 	// KopsClusterSpec declare the desired Cluster Kops resource: https://kops.sigs.k8s.io/cluster_spec/
@@ -95,6 +101,12 @@ type IdentityRefSpec struct {
 	Kind      string `json:"kind"`
 	Namespace string `json:"namespace"`
 	Name      string `json:"name"`
+}
+
+type IRSASpec struct {
+	// ServiceAccountName is the name of a ServiceAccount annotated with an IAM role ARN
+	// (eks.amazonaws.com/role-arn). The operator will assume this role using IRSA.
+	ServiceAccountName string `json:"serviceAccountName"`
 }
 
 type TerraformConfigSpec struct {
