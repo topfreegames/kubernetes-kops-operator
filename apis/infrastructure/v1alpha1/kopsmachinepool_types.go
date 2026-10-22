@@ -21,7 +21,6 @@ import (
 	kops "k8s.io/kops/pkg/apis/kops"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	karpenterv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
-	karpenterv1beta1 "sigs.k8s.io/karpenter/pkg/apis/v1beta1"
 )
 
 const (
@@ -61,10 +60,6 @@ type KopsMachinePoolSpec struct {
 	// ClusterName is the name of the Cluster this object belongs to.
 	// +kubebuilder:validation:MinLength=1
 	ClusterName string `json:"clusterName"`
-
-	// KarpenterNodePools is the list of node pools to be applied.
-	// +optional
-	KarpenterNodePools []karpenterv1beta1.NodePool `json:"karpenterNodePools,omitempty"`
 
 	// KarpenterNodePoolsV1 is the list of node pools v1 to be applied.
 	// +optional

@@ -214,42 +214,6 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 		}
 
 		for _, kmp := range kmps {
-			for _, nodePool := range kmp.Spec.KarpenterNodePools {
-				nodePool.SetLabels(map[string]string{
-					"kops.k8s.io/managed-by": "kops-controller",
-				})
-
-				// Create NodePool
-				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
-					return err
-				}
-				nodePoolBytes, err := yaml.Marshal(nodePool)
-				if err != nil {
-					return err
-				}
-				if _, err := karpenterResourcesContent.Write(nodePoolBytes); err != nil {
-					return err
-				}
-				// Create EC2NodeClass
-				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
-					return err
-				}
-				ec2NodeClassString, err := utils.CreateEC2NodeClass(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
-				if err != nil {
-					return err
-				}
-
-				if _, err := karpenterResourcesContent.Write([]byte(ec2NodeClassString)); err != nil {
-					return err
-				}
-
-				// This line is needed to separate the following resources from the UserData of the EC2NodeClass
-				// without this line the following resource can be considered as part of the UserData
-				if _, err := karpenterResourcesContent.Write([]byte("\n")); err != nil {
-					return err
-				}
-			}
-
 			for _, nodePool := range kmp.Spec.KarpenterNodePoolsV1 {
 				nodePool.SetLabels(map[string]string{
 					"kops.k8s.io/managed-by": "kops-controller",
@@ -332,7 +296,7 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 		vngNames := []string{}
 		for _, kmp := range kmps {
 			// Skip Karpenter-managed node pools - they don't use traditional launch templates
-			if len(kmp.Spec.KarpenterNodePools) > 0 || len(kmp.Spec.KarpenterNodePoolsV1) > 0 {
+			if len(kmp.Spec.KarpenterNodePoolsV1) > 0 {
 				continue
 			}
 
@@ -862,9 +826,6 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 		if kopsMachinePool.DeletionTimestamp.IsZero() {
 			existingKopsMachinePool = append(existingKopsMachinePool, kopsMachinePool)
-		}
-		if len(kopsMachinePool.Spec.KarpenterNodePools) > 0 {
-			shouldEnableKarpenter = true
 		}
 		if len(kopsMachinePool.Spec.KarpenterNodePoolsV1) > 0 {
 			shouldEnableKarpenter = true
