@@ -664,6 +664,36 @@ func TestGetKubeletConfiguration(t *testing.T) {
 			},
 			expectedError: true,
 		},
+		{
+			description: "should fail with an unsupported eviction operator",
+			igKubelet: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available<=1Gi"),
+			},
+			expectedError: true,
+		},
+		{
+			description: "should fail with an invalid eviction quantity",
+			igKubelet: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available<1Gb"),
+			},
+			expectedError: true,
+		},
+		{
+			description: "should fail with a percentage above 100",
+			igKubelet: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("nodefs.available<110%"),
+			},
+			expectedError: true,
+		},
+		{
+			description: "should accept decimal quantities and percentages",
+			igKubelet: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available<1G,nodefs.available<7.5%"),
+			},
+			expected: &karpenterv1.KubeletConfiguration{
+				EvictionHard: map[string]string{"memory.available": "1G", "nodefs.available": "7.5%"},
+			},
+		},
 	}
 
 	for _, tc := range testCases {

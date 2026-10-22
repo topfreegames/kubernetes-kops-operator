@@ -3,6 +3,7 @@ package utils
 import (
 	"bytes"
 	"fmt"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -197,7 +198,7 @@ func parseEvictionThresholds(thresholds *string) (map[string]string, error) {
 	for _, threshold := range strings.Split(*thresholds, ",") {
 		signal, value, found := strings.Cut(strings.TrimSpace(threshold), "<")
 		signal, value = strings.TrimSpace(signal), strings.TrimSpace(value)
-		if !found || signal == "" || value == "" {
+		if !found || signal == "" || !isValidEvictionThresholdValue(value) {
 			return nil, fmt.Errorf("invalid eviction threshold %q", threshold)
 		}
 		if karpenterEvictionSignals[signal] {
@@ -209,6 +210,15 @@ func parseEvictionThresholds(thresholds *string) (map[string]string, error) {
 		return nil, nil
 	}
 	return parsed, nil
+}
+
+func isValidEvictionThresholdValue(value string) bool {
+	if percentage, ok := strings.CutSuffix(value, "%"); ok {
+		parsed, err := strconv.ParseFloat(percentage, 64)
+		return err == nil && parsed >= 0 && parsed <= 100
+	}
+	quantity, err := resource.ParseQuantity(value)
+	return err == nil && quantity.Sign() >= 0
 }
 
 func GetKubeletConfiguration(clusterKubeletSpec, igKubeletSpec *kopsapi.KubeletConfigSpec) (*karpenterv1.KubeletConfiguration, error) {
