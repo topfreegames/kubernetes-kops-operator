@@ -3,6 +3,8 @@ package utils
 import (
 	"bytes"
 	"fmt"
+	"strconv"
+	"strings"
 	"text/template"
 
 	"github.com/Masterminds/sprig/v3"
@@ -16,6 +18,7 @@ import (
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
+	"k8s.io/kops/util/pkg/reflectutils"
 )
 
 func mergeCloudLabels(clusterName, machinePoolName string, clusterLabels, machinePoolLabels map[string]string) map[string]string {
@@ -177,16 +180,67 @@ func BuildKarpenterVolumeConfigV1FromKops(kopsVolume *kopsapi.InstanceRootVolume
 	return karpenterVolumeConfig
 }
 
-func GetKubeletConfiguration(kubeletSpec *kopsapi.KubeletConfigSpec) *karpenterv1.KubeletConfiguration {
-	if kubeletSpec == nil {
-		return &karpenterv1.KubeletConfiguration{}
+var karpenterEvictionSignals = map[string]bool{
+	"memory.available":   true,
+	"nodefs.available":   true,
+	"nodefs.inodesFree":  true,
+	"imagefs.available":  true,
+	"imagefs.inodesFree": true,
+	"pid.available":      true,
+}
+
+func parseEvictionThresholds(thresholds *string) (map[string]string, error) {
+	if thresholds == nil || strings.TrimSpace(*thresholds) == "" {
+		return nil, nil
+	}
+
+	parsed := make(map[string]string)
+	for _, threshold := range strings.Split(*thresholds, ",") {
+		signal, value, found := strings.Cut(strings.TrimSpace(threshold), "<")
+		signal, value = strings.TrimSpace(signal), strings.TrimSpace(value)
+		if !found || signal == "" || !isValidEvictionThresholdValue(value) {
+			return nil, fmt.Errorf("invalid eviction threshold %q", threshold)
+		}
+		if karpenterEvictionSignals[signal] {
+			parsed[signal] = value
+		}
+	}
+
+	if len(parsed) == 0 {
+		return nil, nil
+	}
+	return parsed, nil
+}
+
+func isValidEvictionThresholdValue(value string) bool {
+	if percentage, ok := strings.CutSuffix(value, "%"); ok {
+		parsed, err := strconv.ParseFloat(percentage, 64)
+		return err == nil && parsed >= 0 && parsed <= 100
+	}
+	quantity, err := resource.ParseQuantity(value)
+	return err == nil && quantity.Sign() >= 0
+}
+
+func GetKubeletConfiguration(clusterKubeletSpec, igKubeletSpec *kopsapi.KubeletConfigSpec) (*karpenterv1.KubeletConfiguration, error) {
+	kubeletSpec := &kopsapi.KubeletConfigSpec{}
+	if clusterKubeletSpec != nil {
+		kubeletSpec = clusterKubeletSpec.DeepCopy()
+	}
+	if igKubeletSpec != nil {
+		reflectutils.JSONMergeStruct(kubeletSpec, igKubeletSpec)
+	}
+
+	evictionHard, err := parseEvictionThresholds(kubeletSpec.EvictionHard)
+	if err != nil {
+		return nil, err
 	}
 
 	return &karpenterv1.KubeletConfiguration{
 		MaxPods:        kubeletSpec.MaxPods,
 		SystemReserved: kubeletSpec.SystemReserved,
 		KubeReserved:   kubeletSpec.KubeReserved,
-	}
+		EvictionHard:   evictionHard,
+	}, nil
 }
 
 func CreateEC2NodeClass(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string) (string, error) {
@@ -261,7 +315,10 @@ func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alp
 		return nil, err
 	}
 
-	kubeletConfiguration := GetKubeletConfiguration(kopsCluster.Spec.Kubelet)
+	kubeletConfiguration, err := GetKubeletConfiguration(kopsCluster.Spec.Kubelet, kmp.Spec.KopsInstanceGroupSpec.Kubelet)
+	if err != nil {
+		return nil, err
+	}
 
 	var associatePublicIP bool
 	if kmp.Spec.KopsInstanceGroupSpec.AssociatePublicIP != nil {

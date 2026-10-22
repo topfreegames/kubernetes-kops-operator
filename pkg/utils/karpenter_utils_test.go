@@ -597,3 +597,120 @@ func TestEC2NodeClassTagConsistency(t *testing.T) {
 		assert.Equal(t, "pool-value", mergedWithConflict["common-key"], "machine pool should override cluster")
 	})
 }
+
+func TestGetKubeletConfiguration(t *testing.T) {
+	clusterKubelet := &kopsapi.KubeletConfigSpec{
+		MaxPods:        helpers.Int32Ptr(60),
+		KubeReserved:   map[string]string{"memory": "150Mi"},
+		SystemReserved: map[string]string{"memory": "200Mi"},
+		EvictionHard:   helpers.StringPtr("memory.available<100Mi"),
+	}
+
+	testCases := []struct {
+		description    string
+		clusterKubelet *kopsapi.KubeletConfigSpec
+		igKubelet      *kopsapi.KubeletConfigSpec
+		expected       *karpenterv1.KubeletConfiguration
+		expectedError  bool
+	}{
+		{
+			description: "should return an empty configuration without kubelet specs",
+			expected:    &karpenterv1.KubeletConfiguration{},
+		},
+		{
+			description:    "should use the cluster kubelet spec",
+			clusterKubelet: clusterKubelet,
+			expected: &karpenterv1.KubeletConfiguration{
+				MaxPods:        helpers.Int32Ptr(60),
+				KubeReserved:   map[string]string{"memory": "150Mi"},
+				SystemReserved: map[string]string{"memory": "200Mi"},
+				EvictionHard:   map[string]string{"memory.available": "100Mi"},
+			},
+		},
+		{
+			description:    "should override the cluster kubelet spec with the instance group one",
+			clusterKubelet: clusterKubelet,
+			igKubelet: &kopsapi.KubeletConfigSpec{
+				MaxPods:      helpers.Int32Ptr(120),
+				EvictionHard: helpers.StringPtr("memory.available<1Gi, nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<10%,imagefs.inodesFree<5%"),
+				EvictionSoft: "memory.available<2Gi",
+			},
+			expected: &karpenterv1.KubeletConfiguration{
+				MaxPods:        helpers.Int32Ptr(120),
+				KubeReserved:   map[string]string{"memory": "150Mi"},
+				SystemReserved: map[string]string{"memory": "200Mi"},
+				EvictionHard: map[string]string{
+					"memory.available":   "1Gi",
+					"nodefs.available":   "10%",
+					"nodefs.inodesFree":  "5%",
+					"imagefs.available":  "10%",
+					"imagefs.inodesFree": "5%",
+				},
+			},
+		},
+		{
+			description: "should drop eviction signals karpenter does not accept",
+			igKubelet: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available<1Gi,containerfs.available<10%"),
+			},
+			expected: &karpenterv1.KubeletConfiguration{
+				EvictionHard: map[string]string{"memory.available": "1Gi"},
+			},
+		},
+		{
+			description: "should fail with an invalid eviction threshold",
+			igKubelet: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available=1Gi"),
+			},
+			expectedError: true,
+		},
+		{
+			description: "should fail with an unsupported eviction operator",
+			igKubelet: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available<=1Gi"),
+			},
+			expectedError: true,
+		},
+		{
+			description: "should fail with an invalid eviction quantity",
+			igKubelet: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available<1Gb"),
+			},
+			expectedError: true,
+		},
+		{
+			description: "should fail with a percentage above 100",
+			igKubelet: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("nodefs.available<110%"),
+			},
+			expectedError: true,
+		},
+		{
+			description: "should accept decimal quantities and percentages",
+			igKubelet: &kopsapi.KubeletConfigSpec{
+				EvictionHard: helpers.StringPtr("memory.available<1G,nodefs.available<7.5%"),
+			},
+			expected: &karpenterv1.KubeletConfiguration{
+				EvictionHard: map[string]string{"memory.available": "1G", "nodefs.available": "7.5%"},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			kubeletConfiguration, err := GetKubeletConfiguration(tc.clusterKubelet, tc.igKubelet)
+			if tc.expectedError {
+				assert.Error(t, err)
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, tc.expected, kubeletConfiguration)
+		})
+	}
+
+	t.Run("should not mutate the cluster kubelet spec", func(t *testing.T) {
+		_, err := GetKubeletConfiguration(clusterKubelet, &kopsapi.KubeletConfigSpec{MaxPods: helpers.Int32Ptr(120)})
+		assert.NoError(t, err)
+		assert.Equal(t, int32(60), *clusterKubelet.MaxPods)
+	})
+}
