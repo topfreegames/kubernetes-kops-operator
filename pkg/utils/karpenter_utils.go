@@ -1,13 +1,11 @@
 package utils
 
 import (
-	"bytes"
 	"fmt"
-	"text/template"
+	"strconv"
+	"strings"
 
-	"github.com/Masterminds/sprig/v3"
 	karpenterv1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1"
-	karpenterv1beta1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1beta1"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 
@@ -16,6 +14,7 @@ import (
 	infrastructurev1alpha1 "github.com/topfreegames/kubernetes-kops-operator/apis/infrastructure/v1alpha1"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
 	kopsapi "k8s.io/kops/pkg/apis/kops"
+	"k8s.io/kops/util/pkg/reflectutils"
 )
 
 func mergeCloudLabels(clusterName, machinePoolName string, clusterLabels, machinePoolLabels map[string]string) map[string]string {
@@ -41,72 +40,6 @@ func mergeCloudLabels(clusterName, machinePoolName string, clusterLabels, machin
 	}
 
 	return mergedLabels
-}
-
-func BuildKarpenterVolumeConfigFromKops(kopsVolume *kopsapi.InstanceRootVolumeSpec) *karpenterv1beta1.BlockDevice {
-
-	var karpenterVolumeConfig *karpenterv1beta1.BlockDevice
-
-	defaultVolumeSize := resource.MustParse("60Gi")
-	defaultVolumeType := "gp3"
-	defaultIOPS := int64(3000)
-	defaultEncrypted := true
-	defaultThroughput := int64(125)
-
-	if kopsVolume != nil {
-		var volumeSize resource.Quantity
-		if kopsVolume.Size != nil {
-			volumeSize = resource.MustParse(fmt.Sprintf("%dGi", *kopsVolume.Size))
-		} else {
-			volumeSize = defaultVolumeSize
-		}
-
-		var volumeType *string
-		if kopsVolume.Type != nil {
-			volumeType = kopsVolume.Type
-		} else {
-			volumeType = &defaultVolumeType
-		}
-
-		var volumeIOPS int64
-		if kopsVolume.IOPS != nil {
-			volumeIOPS = int64(*kopsVolume.IOPS)
-		} else {
-			volumeIOPS = defaultIOPS
-		}
-
-		var volumeEncryption bool
-		if kopsVolume.Encryption != nil {
-			volumeEncryption = *kopsVolume.Encryption
-		} else {
-			volumeEncryption = defaultEncrypted
-		}
-
-		var volumeThroughput int64
-		if kopsVolume.Throughput != nil {
-			volumeThroughput = int64(*kopsVolume.Throughput)
-		} else {
-			volumeThroughput = defaultThroughput
-		}
-
-		karpenterVolumeConfig = &karpenterv1beta1.BlockDevice{
-			VolumeSize: &volumeSize,
-			VolumeType: volumeType,
-			IOPS:       &volumeIOPS,
-			Encrypted:  &volumeEncryption,
-			Throughput: &volumeThroughput,
-		}
-	} else {
-		karpenterVolumeConfig = &karpenterv1beta1.BlockDevice{
-			VolumeSize: &defaultVolumeSize,
-			VolumeType: &defaultVolumeType,
-			IOPS:       &defaultIOPS,
-			Encrypted:  &defaultEncrypted,
-			Throughput: &defaultThroughput,
-		}
-	}
-
-	return karpenterVolumeConfig
 }
 
 func BuildKarpenterVolumeConfigV1FromKops(kopsVolume *kopsapi.InstanceRootVolumeSpec) *karpenterv1.BlockDevice {
@@ -177,77 +110,78 @@ func BuildKarpenterVolumeConfigV1FromKops(kopsVolume *kopsapi.InstanceRootVolume
 	return karpenterVolumeConfig
 }
 
-func GetKubeletConfiguration(kubeletSpec *kopsapi.KubeletConfigSpec) *karpenterv1.KubeletConfiguration {
-	if kubeletSpec == nil {
-		return &karpenterv1.KubeletConfiguration{}
-	}
-
-	return &karpenterv1.KubeletConfiguration{
-		MaxPods:        kubeletSpec.MaxPods,
-		SystemReserved: kubeletSpec.SystemReserved,
-		KubeReserved:   kubeletSpec.KubeReserved,
-	}
+var karpenterEvictionSignals = map[string]bool{
+	"memory.available":   true,
+	"nodefs.available":   true,
+	"nodefs.inodesFree":  true,
+	"imagefs.available":  true,
+	"imagefs.inodesFree": true,
+	"pid.available":      true,
 }
 
-func CreateEC2NodeClass(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string) (string, error) {
-	amiName, amiAccount, err := GetAmiNameFromImageSource(kmp.Spec.KopsInstanceGroupSpec.Image)
+func parseEvictionThresholds(thresholds *string) (map[string]string, error) {
+	if thresholds == nil || strings.TrimSpace(*thresholds) == "" {
+		return nil, nil
+	}
+
+	parsed := make(map[string]string)
+	for _, threshold := range strings.Split(*thresholds, ",") {
+		signal, value, found := strings.Cut(strings.TrimSpace(threshold), "<")
+		signal, value = strings.TrimSpace(signal), strings.TrimSpace(value)
+		if !found || signal == "" || !isValidEvictionThresholdValue(value) {
+			return nil, fmt.Errorf("invalid eviction threshold %q", threshold)
+		}
+		if karpenterEvictionSignals[signal] {
+			parsed[signal] = value
+		}
+	}
+
+	if len(parsed) == 0 {
+		return nil, nil
+	}
+	return parsed, nil
+}
+
+func isValidEvictionThresholdValue(value string) bool {
+	if percentage, ok := strings.CutSuffix(value, "%"); ok {
+		parsed, err := strconv.ParseFloat(percentage, 64)
+		return err == nil && parsed >= 0 && parsed <= 100
+	}
+	quantity, err := resource.ParseQuantity(value)
+	return err == nil && quantity.Sign() >= 0
+}
+
+func GetKubeletConfiguration(clusterKubeletSpec, igKubeletSpec *kopsapi.KubeletConfigSpec) (karpenterv1.KubeletConfiguration, error) {
+	kubeletSpec := &kopsapi.KubeletConfigSpec{}
+	if clusterKubeletSpec != nil {
+		kubeletSpec = clusterKubeletSpec.DeepCopy()
+	}
+	if igKubeletSpec != nil {
+		reflectutils.JSONMergeStruct(kubeletSpec, igKubeletSpec)
+	}
+
+	evictionHard, err := parseEvictionThresholds(kubeletSpec.EvictionHard)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	userData, err := GetUserDataFromTerraformFile(kopsCluster.Name, kmp.Name, terraformOutputDir)
-	if err != nil {
-		return "", err
+	kubeletConfiguration := karpenterv1.KubeletConfiguration{}
+	if kubeletSpec.MaxPods != nil {
+		kubeletConfiguration["maxPods"] = karpenterv1.JSONValue(*kubeletSpec.MaxPods)
 	}
-
-	var associatePublicIP bool
-	if kmp.Spec.KopsInstanceGroupSpec.AssociatePublicIP != nil {
-		associatePublicIP = *kmp.Spec.KopsInstanceGroupSpec.AssociatePublicIP
-	} else {
-		associatePublicIP = false
+	if len(kubeletSpec.SystemReserved) > 0 {
+		kubeletConfiguration["systemReserved"] = karpenterv1.JSONValue(kubeletSpec.SystemReserved)
 	}
-
-	mergedCloudLabels := mergeCloudLabels(kopsCluster.Name, kmp.Name, kopsCluster.Spec.CloudLabels, kmp.Spec.KopsInstanceGroupSpec.CloudLabels)
-
-	data := struct {
-		Name              string
-		AmiName           string
-		AmiAccount        string
-		ClusterName       string
-		IGName            string
-		Tags              map[string]string
-		RootVolume        *karpenterv1beta1.BlockDevice
-		UserData          string
-		AssociatePublicIP bool
-	}{
-		Name:              nodePoolName,
-		AmiName:           amiName,
-		AmiAccount:        amiAccount,
-		IGName:            kmp.Name,
-		ClusterName:       kopsCluster.Name,
-		Tags:              mergedCloudLabels,
-		RootVolume:        BuildKarpenterVolumeConfigFromKops(kmp.Spec.KopsInstanceGroupSpec.RootVolume),
-		UserData:          userData,
-		AssociatePublicIP: associatePublicIP,
+	if len(kubeletSpec.KubeReserved) > 0 {
+		kubeletConfiguration["kubeReserved"] = karpenterv1.JSONValue(kubeletSpec.KubeReserved)
 	}
-
-	content, err := templates.ReadFile("templates/ec2nodeclass.yaml.tpl")
-	if err != nil {
-		return "", err
+	if len(evictionHard) > 0 {
+		kubeletConfiguration["evictionHard"] = karpenterv1.JSONValue(evictionHard)
 	}
-
-	t, err := template.New("template").Funcs(sprig.TxtFuncMap()).Parse(string(content))
-	if err != nil {
-		return "", err
+	if len(kubeletConfiguration) == 0 {
+		return nil, nil
 	}
-
-	var buf bytes.Buffer
-	err = t.Execute(&buf, data)
-	if err != nil {
-		return "", err
-	}
-
-	return buf.String(), nil
+	return kubeletConfiguration, nil
 }
 
 func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string) (*karpenterv1.EC2NodeClass, error) {
@@ -261,7 +195,10 @@ func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alp
 		return nil, err
 	}
 
-	kubeletConfiguration := GetKubeletConfiguration(kopsCluster.Spec.Kubelet)
+	kubeletConfiguration, err := GetKubeletConfiguration(kopsCluster.Spec.Kubelet, kmp.Spec.KopsInstanceGroupSpec.Kubelet)
+	if err != nil {
+		return nil, err
+	}
 
 	var associatePublicIP bool
 	if kmp.Spec.KopsInstanceGroupSpec.AssociatePublicIP != nil {

@@ -43,6 +43,8 @@ spec:
               from a combination of nodepool and pod scheduling constraints.
             properties:
               disruption:
+                default:
+                  consolidateAfter: 0s
                 description: Disruption contains the parameters that relate to Karpenter's
                   disruption logic
                 properties:
@@ -83,9 +85,9 @@ spec:
                           type: string
                         reasons:
                           description: |-
-                            Reasons is a list of disruption methods that this budget applies to. If Reasons is not set, this budget applies to all methods.
+                            reasons is a list of disruption methods that this budget applies to. If Reasons is not set, this budget applies to all methods.
                             Otherwise, this will apply to each reason defined.
-                            allowed reasons are Underutilized, Empty, and Drifted.
+                            allowed reasons are Underutilized, Empty, Drifted, and Unhealthy.
                           items:
                             description: DisruptionReason defines valid reasons for
                               disruption budgets.
@@ -93,8 +95,11 @@ spec:
                             - Underutilized
                             - Empty
                             - Drifted
+                            - Unhealthy
                             type: string
+                          maxItems: 50
                           type: array
+                          x-kubernetes-list-type: set
                         schedule:
                           description: |-
                             Schedule specifies when a budget begins being active, following
@@ -108,27 +113,31 @@ spec:
                       type: object
                     maxItems: 50
                     type: array
+                    x-kubernetes-list-type: atomic
                     x-kubernetes-validations:
                     - message: '''schedule'' must be set with ''duration'''
                       rule: self.all(x, has(x.schedule) == has(x.duration))
                   consolidateAfter:
+                    default: 0s
                     description: |-
                       ConsolidateAfter is the duration the controller will wait
                       before attempting to terminate nodes that are underutilized.
                       Refer to ConsolidationPolicy for how underutilization is considered.
-                    pattern: ^(([0-9]+(s|m|h))+)|(Never)$
+                      When replicas is set, ConsolidateAfter is simply ignored.
+                    pattern: ^(([0-9]+(s|m|h))+|Never)$
                     type: string
                   consolidationPolicy:
                     default: WhenEmptyOrUnderutilized
                     description: |-
                       ConsolidationPolicy describes which nodes Karpenter can disrupt through its consolidation
-                      algorithm. This policy defaults to "WhenEmptyOrUnderutilized" if not specified
+                      algorithm.
+                      Valid values: "WhenEmpty", "WhenEmptyOrUnderutilized", "Balanced".
+                      When replicas is set, ConsolidationPolicy is simply ignored.
                     enum:
                     - WhenEmpty
                     - WhenEmptyOrUnderutilized
+                    - Balanced
                     type: string
-                required:
-                - consolidateAfter
                 type: object
               limits:
                 additionalProperties:
@@ -137,8 +146,24 @@ spec:
                   - type: string
                   pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                   x-kubernetes-int-or-string: true
-                description: Limits define a set of bounds for provisioning capacity.
+                description: |-
+                  Limits define a set of bounds for provisioning capacity.
+                  Limits other than limits.nodes is not supported when replicas is set.
                 type: object
+              replicas:
+                description: |-
+                  Replicas is the desired number of nodes for the NodePool. When specified, the NodePool will
+                  maintain this fixed number of replicas rather than scaling based on pod demand.
+                  When replicas is set:
+                    - The following fields are ignored:
+                        * disruption.consolidationPolicy
+                        * disruption.consolidateAfter
+                    - Only limits.nodes is supported; other resource limits (e.g., CPU, memory) must not be specified.
+                    - Weight is not supported.
+                  Note: This field is alpha.
+                format: int64
+                minimum: 0
+                type: integer
               template:
                 description: |-
                   Template contains the template of possibilities for the provisioning logic to launch a NodeClaim with.
@@ -150,20 +175,22 @@ spec:
                         additionalProperties:
                           type: string
                         description: |-
-                          Annotations is an unstructured key value map stored with a resource that may be
+                          annotations is an unstructured key value map stored with a resource that may be
                           set by external tools to store and retrieve arbitrary metadata. They are not
                           queryable and should be preserved when modifying objects.
                           More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/annotations
                         type: object
+                        x-kubernetes-map-type: granular
                       labels:
                         additionalProperties:
                           type: string
                         description: |-
-                          Map of string keys and values that can be used to organize and categorize
+                          labels is a map of string keys and values that can be used to organize and categorize
                           (scope and select) objects. May match selectors of replication controllers
                           and services.
                           More info: https://kubernetes.io/docs/concepts/overview/working-with-objects/labels
                         type: object
+                        x-kubernetes-map-type: atomic
                     type: object
                   spec:
                     description: |-
@@ -178,7 +205,7 @@ spec:
                           before terminating a node, measured from when the node is created. This
                           is useful to implement features like eventually consistent node upgrade,
                           memory leak protection, and disruption testing.
-                        pattern: ^(([0-9]+(s|m|h))+)|(Never)$
+                        pattern: ^(([0-9]+(s|m|h))+|Never)$
                         type: string
                       nodeClassRef:
                         description: NodeClassRef is a reference to an object that
@@ -188,23 +215,37 @@ spec:
                             description: API version of the referent
                             pattern: ^[^/]*$
                             type: string
+                            x-kubernetes-validations:
+                            - message: group may not be empty
+                              rule: self != ''
                           kind:
                             description: 'Kind of the referent; More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds"'
                             type: string
+                            x-kubernetes-validations:
+                            - message: kind may not be empty
+                              rule: self != ''
                           name:
                             description: 'Name of the referent; More info: http://kubernetes.io/docs/user-guide/identifiers#names'
                             type: string
+                            x-kubernetes-validations:
+                            - message: name may not be empty
+                              rule: self != ''
                         required:
                         - group
                         - kind
                         - name
                         type: object
+                        x-kubernetes-validations:
+                        - message: nodeClassRef.group is immutable
+                          rule: self.group == oldSelf.group
+                        - message: nodeClassRef.kind is immutable
+                          rule: self.kind == oldSelf.kind
                       requirements:
                         description: Requirements are layered with GetLabels and applied
                           to every node.
                         items:
                           description: |-
-                            A node selector requirement with min values is a selector that contains values, a key, an operator that relates the key and values
+                            A node selector requirement is a selector that contains values, a key, an operator that relates the key and values
                             and minValues that represent the requirement to have at least that many values.
                           properties:
                             key:
@@ -221,13 +262,22 @@ spec:
                             operator:
                               description: |-
                                 Represents a key's relationship to a set of values.
-                                Valid operators are In, NotIn, Exists, DoesNotExist. Gt, and Lt.
+                                Valid operators are In, NotIn, Exists, DoesNotExist. Gt, Lt, Gte, and Lte.
+                              enum:
+                              - In
+                              - NotIn
+                              - Exists
+                              - DoesNotExist
+                              - Gt
+                              - Lt
+                              - Gte
+                              - Lte
                               type: string
                             values:
                               description: |-
                                 An array of string values. If the operator is In or NotIn,
                                 the values array must be non-empty. If the operator is Exists or DoesNotExist,
-                                the values array must be empty. If the operator is Gt or Lt, the values
+                                the values array must be empty. If the operator is Gt, Lt, Gte, or Lte, the values
                                 array must have a single element, which will be interpreted as an integer.
                                 This array is replaced during a strategic merge patch.
                               items:
@@ -240,23 +290,24 @@ spec:
                           type: object
                         maxItems: 100
                         type: array
+                        x-kubernetes-list-type: atomic
                         x-kubernetes-validations:
                         - message: requirements with operator 'In' must have a value
                             defined
                           rule: 'self.all(x, x.operator == ''In'' ? x.values.size()
                             != 0 : true)'
-                        - message: requirements operator 'Gt' or 'Lt' must have a
-                            single positive integer value
+                        - message: requirements operator 'Gt', 'Lt', 'Gte', or 'Lte'
+                            must have a single positive integer value
                           rule: 'self.all(x, (x.operator == ''Gt'' || x.operator ==
-                            ''Lt'') ? (x.values.size() == 1 && int(x.values[0]) >=
-                            0) : true)'
+                            ''Lt'' || x.operator == ''Gte'' || x.operator == ''Lte'')
+                            ? (x.values.size() == 1 && int(x.values[0]) >= 0) : true)'
                         - message: requirements with 'minValues' must have at least
                             that many values specified in the 'values' field
                           rule: 'self.all(x, (x.operator == ''In'' && has(x.minValues))
                             ? x.values.size() >= x.minValues : true)'
                       startupTaints:
                         description: |-
-                          StartupTaints are taints that are applied to nodes upon startup which are expected to be removed automatically
+                          startupTaints are taints that are applied to nodes upon startup which are expected to be removed automatically
                           within a short period of time, typically by a DaemonSet that tolerates the taint. These are commonly used by
                           daemonsets to allow initialization and enforce startup ordering.  StartupTaints are ignored for provisioning
                           purposes in that pods are not required to tolerate a StartupTaint in order to have nodes provisioned for them.
@@ -289,8 +340,9 @@ spec:
                           - key
                           type: object
                         type: array
+                        x-kubernetes-list-type: atomic
                       taints:
-                        description: Taints will be applied to the NodeClaim's node.
+                        description: taints will be applied to the NodeClaim's node.
                         items:
                           description: |-
                             The node this Taint is attached to has the "effect" on
@@ -320,6 +372,7 @@ spec:
                           - key
                           type: object
                         type: array
+                        x-kubernetes-list-type: atomic
                       terminationGracePeriod:
                         description: |-
                           TerminationGracePeriod is the maximum duration the controller will wait before forcefully deleting the pods on a node, measured from when deletion is first initiated.
@@ -350,6 +403,7 @@ spec:
                   numerical weight indicates that this nodepool will be ordered
                   ahead of other nodepools with lower weights. A nodepool with no weight
                   will be treated as if it is a nodepool with a weight of 0.
+                  Weight is not supported when replicas is set.
                 format: int32
                 maximum: 100
                 minimum: 1
@@ -357,6 +411,15 @@ spec:
             required:
             - template
             type: object
+            x-kubernetes-validations:
+            - message: Cannot transition NodePool between static (replicas set) and
+                dynamic (replicas unset) provisioning modes
+              rule: has(self.replicas) == has(oldSelf.replicas)
+            - message: only 'limits.nodes' is supported on static NodePools
+              rule: '!has(self.replicas) || (!has(self.limits) || size(self.limits)
+                == 0 || (size(self.limits) == 1 && ''nodes'' in self.limits))'
+            - message: '''weight'' is not supported on static NodePools'
+              rule: '!has(self.replicas) || !has(self.weight)'
         required:
         - spec
         type: object
