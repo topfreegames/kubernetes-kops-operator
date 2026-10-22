@@ -239,7 +239,15 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 					return err
 				}
 
-				ec2NodeClassBytes, err := yaml.Marshal(ec2NodeClass)
+				ec2NodeClassObject, err := runtime.DefaultUnstructuredConverter.ToUnstructured(ec2NodeClass)
+				if err != nil {
+					return err
+				}
+				if ec2NodeClass.Spec.CapacityReservationSelectorTerms == nil {
+					unstructured.RemoveNestedField(ec2NodeClassObject, "spec", "capacityReservationSelectorTerms")
+				}
+
+				ec2NodeClassBytes, err := yaml.Marshal(ec2NodeClassObject)
 				if err != nil {
 					return err
 				}

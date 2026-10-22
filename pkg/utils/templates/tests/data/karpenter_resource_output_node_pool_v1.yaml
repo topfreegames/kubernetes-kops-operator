@@ -74,7 +74,6 @@ spec:
       volumeSize: 60Gi
       volumeType: gp3
     rootVolume: true
-  capacityReservationSelectorTerms: null
   kubelet:
     kubeReserved:
       cpu: 150m
