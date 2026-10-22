@@ -1,13 +1,13 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
 
 	karpenterv1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1"
-	karpenterv1beta1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1beta1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
@@ -20,75 +20,6 @@ import (
 )
 
 var defaultBlockDeviceV1 = BuildKarpenterVolumeConfigV1FromKops(nil)
-
-func TestCreateEC2NodeClass(t *testing.T) {
-	testCases := []struct {
-		description             string
-		kopsMachinePoolFunction func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool
-		userData                string
-		expectedError           error
-		expectedOutputFile      string
-	}{
-		{
-			description:        "should return the populated ec2 node class",
-			expectedOutputFile: "fixtures/karpenter/test_successful_ec2_node_class.tpl",
-			userData:           "dummy content",
-		},
-		{
-			description: "should fail with a invalid image",
-			kopsMachinePoolFunction: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
-				kopsMachinePool.Spec.KopsInstanceGroupSpec.Image = "invalid-image"
-				return kopsMachinePool
-			},
-			expectedError: fmt.Errorf("invalid image format, should receive image source"),
-			userData:      "dummy content",
-		},
-		{
-			description:   "should fail with empty user data",
-			expectedError: fmt.Errorf("user data file is empty"),
-		},
-	}
-	RegisterFailHandler(Fail)
-	g := NewWithT(t)
-
-	for _, tc := range testCases {
-
-		t.Run(tc.description, func(t *testing.T) {
-
-			kopsCluster := helpers.NewKopsCluster("test-cluster")
-
-			kmp := helpers.NewKopsMachinePool("test-machine-pool", "default", "test-cluster")
-
-			terraformOutputDir := filepath.Join(os.TempDir(), kopsCluster.Name)
-
-			err := os.RemoveAll(terraformOutputDir)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			err = os.MkdirAll(filepath.Join(terraformOutputDir, "data"), os.ModePerm)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			err = os.WriteFile(terraformOutputDir+"/data/aws_s3_object_nodeupscript-"+kmp.Name+"_content", []byte(tc.userData), 0644)
-			g.Expect(err).NotTo(HaveOccurred())
-
-			if tc.kopsMachinePoolFunction != nil {
-				kmp = tc.kopsMachinePoolFunction(kmp)
-			}
-
-			ec2NodeClassString, err := CreateEC2NodeClass(kopsCluster, kmp, kmp.Name, terraformOutputDir)
-			if tc.expectedError != nil {
-				g.Expect(err).To(HaveOccurred())
-				g.Expect(err.Error()).To(Equal(tc.expectedError.Error()))
-			} else {
-				g.Expect(err).ToNot(HaveOccurred())
-				expectedOutput, err := os.ReadFile(tc.expectedOutputFile)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(ec2NodeClassString).To(BeEquivalentTo(string(expectedOutput)))
-
-			}
-		})
-	}
-
-}
 
 func TestCreateEC2NodeClassV1(t *testing.T) {
 	testCases := []struct {
@@ -112,7 +43,7 @@ func TestCreateEC2NodeClassV1(t *testing.T) {
 					},
 				},
 				Spec: karpenterv1.EC2NodeClassSpec{
-					Kubelet: &karpenterv1.KubeletConfiguration{
+					Kubelet: kubeletFromFields(kubeletFields{
 						MaxPods: helpers.Int32Ptr(60),
 						KubeReserved: map[string]string{
 							"cpu":               "150m",
@@ -124,7 +55,7 @@ func TestCreateEC2NodeClassV1(t *testing.T) {
 							"memory":            "200Mi",
 							"ephemeral-storage": "1Gi",
 						},
-					},
+					}),
 					AMIFamily: &karpenterv1.AMIFamilyCustom,
 					AMISelectorTerms: []karpenterv1.AMISelectorTerm{
 						{
@@ -243,77 +174,6 @@ func TestCreateEC2NodeClassV1(t *testing.T) {
 		})
 	}
 
-}
-
-func TestBuildKarpenterVolumeConfigFromKops(t *testing.T) {
-	testCases := []struct {
-		description    string
-		input          *kopsapi.InstanceRootVolumeSpec
-		expectedOutput *karpenterv1beta1.BlockDevice
-	}{
-		{
-			description: "should populate the karpenter volume config with the default values when the kops volume is nil",
-			input:       nil,
-			expectedOutput: &karpenterv1beta1.BlockDevice{
-				VolumeSize: helpers.ResourceToPointer(resource.MustParse("60Gi")),
-				VolumeType: helpers.StringPtr("gp3"),
-				IOPS:       helpers.Int64Ptr(3000),
-				Encrypted:  helpers.BoolPtr(true),
-				Throughput: helpers.Int64Ptr(125),
-			},
-		},
-		{
-			description: "should populate the karpenter volume config with a 100Gb",
-			input: &kopsapi.InstanceRootVolumeSpec{
-				Size: helpers.Int32Ptr(100),
-			},
-			expectedOutput: &karpenterv1beta1.BlockDevice{
-				VolumeSize: helpers.ResourceToPointer(resource.MustParse("100Gi")),
-				VolumeType: helpers.StringPtr("gp3"),
-				IOPS:       helpers.Int64Ptr(3000),
-				Encrypted:  helpers.BoolPtr(true),
-				Throughput: helpers.Int64Ptr(125),
-			},
-		},
-		{
-			description: "should populate the karpenter volume config with type gp2 and iops custom",
-			input: &kopsapi.InstanceRootVolumeSpec{
-				Type: helpers.StringPtr("gp2"),
-				IOPS: helpers.Int32Ptr(1000),
-			},
-			expectedOutput: &karpenterv1beta1.BlockDevice{
-				VolumeSize: helpers.ResourceToPointer(resource.MustParse("60Gi")),
-				VolumeType: helpers.StringPtr("gp2"),
-				IOPS:       helpers.Int64Ptr(1000),
-				Encrypted:  helpers.BoolPtr(true),
-				Throughput: helpers.Int64Ptr(125),
-			},
-		},
-		{
-			description: "should populate the karpenter volume config without encryption and throughput custom",
-			input: &kopsapi.InstanceRootVolumeSpec{
-				Encryption: helpers.BoolPtr(false),
-				Throughput: helpers.Int32Ptr(500),
-			},
-			expectedOutput: &karpenterv1beta1.BlockDevice{
-				VolumeSize: helpers.ResourceToPointer(resource.MustParse("60Gi")),
-				VolumeType: helpers.StringPtr("gp3"),
-				IOPS:       helpers.Int64Ptr(3000),
-				Encrypted:  helpers.BoolPtr(false),
-				Throughput: helpers.Int64Ptr(500),
-			},
-		},
-	}
-	RegisterFailHandler(Fail)
-	g := NewWithT(t)
-
-	for _, tc := range testCases {
-
-		t.Run(tc.description, func(t *testing.T) {
-			output := BuildKarpenterVolumeConfigFromKops(tc.input)
-			g.Expect(output).To(Equal(tc.expectedOutput))
-		})
-	}
 }
 
 func TestBuildKarpenterVolumeConfigV1FromKops(t *testing.T) {
@@ -610,22 +470,22 @@ func TestGetKubeletConfiguration(t *testing.T) {
 		description    string
 		clusterKubelet *kopsapi.KubeletConfigSpec
 		igKubelet      *kopsapi.KubeletConfigSpec
-		expected       *karpenterv1.KubeletConfiguration
+		expected       karpenterv1.KubeletConfiguration
 		expectedError  bool
 	}{
 		{
 			description: "should return an empty configuration without kubelet specs",
-			expected:    &karpenterv1.KubeletConfiguration{},
+			expected:    nil,
 		},
 		{
 			description:    "should use the cluster kubelet spec",
 			clusterKubelet: clusterKubelet,
-			expected: &karpenterv1.KubeletConfiguration{
+			expected: kubeletFromFields(kubeletFields{
 				MaxPods:        helpers.Int32Ptr(60),
 				KubeReserved:   map[string]string{"memory": "150Mi"},
 				SystemReserved: map[string]string{"memory": "200Mi"},
 				EvictionHard:   map[string]string{"memory.available": "100Mi"},
-			},
+			}),
 		},
 		{
 			description:    "should override the cluster kubelet spec with the instance group one",
@@ -635,7 +495,7 @@ func TestGetKubeletConfiguration(t *testing.T) {
 				EvictionHard: helpers.StringPtr("memory.available<1Gi, nodefs.available<10%,nodefs.inodesFree<5%,imagefs.available<10%,imagefs.inodesFree<5%"),
 				EvictionSoft: "memory.available<2Gi",
 			},
-			expected: &karpenterv1.KubeletConfiguration{
+			expected: kubeletFromFields(kubeletFields{
 				MaxPods:        helpers.Int32Ptr(120),
 				KubeReserved:   map[string]string{"memory": "150Mi"},
 				SystemReserved: map[string]string{"memory": "200Mi"},
@@ -646,16 +506,16 @@ func TestGetKubeletConfiguration(t *testing.T) {
 					"imagefs.available":  "10%",
 					"imagefs.inodesFree": "5%",
 				},
-			},
+			}),
 		},
 		{
 			description: "should drop eviction signals karpenter does not accept",
 			igKubelet: &kopsapi.KubeletConfigSpec{
 				EvictionHard: helpers.StringPtr("memory.available<1Gi,containerfs.available<10%"),
 			},
-			expected: &karpenterv1.KubeletConfiguration{
+			expected: kubeletFromFields(kubeletFields{
 				EvictionHard: map[string]string{"memory.available": "1Gi"},
-			},
+			}),
 		},
 		{
 			description: "should fail with an invalid eviction threshold",
@@ -690,9 +550,9 @@ func TestGetKubeletConfiguration(t *testing.T) {
 			igKubelet: &kopsapi.KubeletConfigSpec{
 				EvictionHard: helpers.StringPtr("memory.available<1G,nodefs.available<7.5%"),
 			},
-			expected: &karpenterv1.KubeletConfiguration{
+			expected: kubeletFromFields(kubeletFields{
 				EvictionHard: map[string]string{"memory.available": "1G", "nodefs.available": "7.5%"},
-			},
+			}),
 		},
 	}
 
@@ -713,4 +573,22 @@ func TestGetKubeletConfiguration(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, int32(60), *clusterKubelet.MaxPods)
 	})
+}
+
+type kubeletFields struct {
+	MaxPods        *int32            `json:"maxPods,omitempty"`
+	KubeReserved   map[string]string `json:"kubeReserved,omitempty"`
+	SystemReserved map[string]string `json:"systemReserved,omitempty"`
+	EvictionHard   map[string]string `json:"evictionHard,omitempty"`
+}
+
+func kubeletFromFields(fields kubeletFields) karpenterv1.KubeletConfiguration {
+	raw, _ := json.Marshal(fields)
+	values := map[string]json.RawMessage{}
+	_ = json.Unmarshal(raw, &values)
+	kubeletConfiguration := karpenterv1.KubeletConfiguration{}
+	for key, value := range values {
+		kubeletConfiguration[key] = karpenterv1.JSONValue(value)
+	}
+	return kubeletConfiguration
 }

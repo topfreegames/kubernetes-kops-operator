@@ -14,8 +14,6 @@ import (
 	"github.com/go-logr/logr"
 	dto "github.com/prometheus/client_model/go"
 
-	karpenterv1beta1 "sigs.k8s.io/karpenter/pkg/apis/v1beta1"
-
 	"sync"
 	"testing"
 	"time"
@@ -1892,6 +1890,97 @@ func TestGetRegionBySubnet(t *testing.T) {
 }
 
 func TestPrepareCustomCloudResources(t *testing.T) {
+	withKubeletReserved := func(kopsCluster *kopsapi.Cluster) *kopsapi.Cluster {
+		kopsCluster.Spec.Kubelet = &kopsapi.KubeletConfigSpec{
+			MaxPods: helpers.Int32Ptr(60),
+			KubeReserved: map[string]string{
+				"cpu":               "150m",
+				"memory":            "150Mi",
+				"ephemeral-storage": "1Gi",
+			},
+			SystemReserved: map[string]string{
+				"cpu":               "150m",
+				"memory":            "200Mi",
+				"ephemeral-storage": "1Gi",
+			},
+		}
+		return kopsCluster
+	}
+	withNodePoolV1 := func(kmp *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
+		kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
+			"kops.k8s.io/instance-group-role": "Node",
+		}
+		kmp.Spec.KarpenterNodePoolsV1 = []infrastructurev1alpha1.KarpenterNodePoolsV1{
+			{
+				TypeMeta: metav1.TypeMeta{
+					Kind:       "NodePool",
+					APIVersion: "karpenter.sh/v1",
+				},
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "test-node-pool",
+				},
+				Spec: karpenterv1.NodePoolSpec{
+					Disruption: karpenterv1.Disruption{
+						Budgets: []karpenterv1.Budget{
+							{
+								Nodes: "10%",
+							},
+							{
+								Nodes:    "0",
+								Schedule: helpers.StringPtr("0 * * * *"),
+								Duration: &metav1.Duration{Duration: 40 * time.Minute},
+							},
+						},
+						ConsolidationPolicy: karpenterv1.ConsolidationPolicyWhenEmptyOrUnderutilized,
+					},
+					Template: karpenterv1.NodeClaimTemplate{
+						ObjectMeta: karpenterv1.ObjectMeta{
+							Labels: map[string]string{
+								"kops.k8s.io/cluster":             helpers.GetFQDN("test-cluster"),
+								"kops.k8s.io/cluster-name":        helpers.GetFQDN("test-cluster"),
+								"kops.k8s.io/instance-group-name": kmp.Name,
+								"kops.k8s.io/instance-group-role": "Node",
+								"kops.k8s.io/instancegroup":       kmp.Name,
+								"kops.k8s.io/managed-by":          "kops-controller",
+							},
+						},
+						Spec: karpenterv1.NodeClaimTemplateSpec{
+							NodeClassRef: &karpenterv1.NodeClassReference{
+								Kind:  "EC2NodeClass",
+								Group: "karpenter.k8s.aws",
+								Name:  "test-ig",
+							},
+							Requirements: []karpenterv1.NodeSelectorRequirementWithMinValues{
+								{
+									Key:      "kubernetes.io/arch",
+									Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+									Values:   []string{"amd64"},
+								},
+								{
+									Key:      "kubernetes.io/os",
+									Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+									Values:   []string{"linux"},
+								},
+								{
+									Key:      "node.kubernetes.io/instance-type",
+									Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
+									Values:   []string{"m5.large"},
+								},
+							},
+							StartupTaints: []corev1.Taint{
+								{
+									Key:    "node.cloudprovider.kubernetes.io/uninitialized",
+									Effect: corev1.TaintEffect(corev1.TaintEffectNoSchedule),
+								},
+							},
+						},
+					},
+				},
+			},
+		}
+		return kmp
+	}
+
 	var testCases = []struct {
 		description              string
 		kopsClusterFunction      func(*kopsapi.Cluster) *kopsapi.Cluster
@@ -1900,199 +1989,9 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 		spotInstEnabled          bool
 	}{
 		{
-			description: "Should generate files based on template with one NodePool",
-			kopsMachinePoolFunction: func(kmp *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
-				kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
-					"kops.k8s.io/instance-group-role": "Node",
-				}
-				kmp.Spec.KarpenterNodePools = []karpenterv1beta1.NodePool{
-					{
-						TypeMeta: metav1.TypeMeta{
-							Kind:       "NodePool",
-							APIVersion: "karpenter.sh/v1beta1",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test-node-pool",
-						},
-						Spec: karpenterv1beta1.NodePoolSpec{
-							Disruption: karpenterv1beta1.Disruption{
-								Budgets: []karpenterv1beta1.Budget{
-									{
-										Nodes: "10%",
-									},
-									{
-										Nodes:    "0",
-										Schedule: helpers.StringPtr("0 * * * *"),
-										Duration: &metav1.Duration{Duration: 40 * time.Minute},
-									},
-								},
-								ConsolidationPolicy: karpenterv1beta1.ConsolidationPolicyWhenUnderutilized,
-							},
-							Template: karpenterv1beta1.NodeClaimTemplate{
-								ObjectMeta: karpenterv1beta1.ObjectMeta{
-									Labels: map[string]string{
-										"kops.k8s.io/cluster":             helpers.GetFQDN("test-cluster"),
-										"kops.k8s.io/cluster-name":        helpers.GetFQDN("test-cluster"),
-										"kops.k8s.io/instance-group-name": kmp.Name,
-										"kops.k8s.io/instance-group-role": "Node",
-										"kops.k8s.io/instancegroup":       kmp.Name,
-										"kops.k8s.io/managed-by":          "kops-controller",
-									},
-								},
-								Spec: karpenterv1beta1.NodeClaimSpec{
-									Kubelet: &karpenterv1beta1.KubeletConfiguration{
-										KubeReserved: map[string]string{
-											"cpu":               "150m",
-											"memory":            "150Mi",
-											"ephemeral-storage": "1Gi",
-										},
-										SystemReserved: map[string]string{
-											"cpu":               "150m",
-											"memory":            "200Mi",
-											"ephemeral-storage": "1Gi",
-										},
-									},
-									NodeClassRef: &karpenterv1beta1.NodeClassReference{
-										Name: "test-ig",
-									},
-									Requirements: []karpenterv1beta1.NodeSelectorRequirementWithMinValues{
-										{
-											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-												Key:      "kubernetes.io/arch",
-												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
-												Values:   []string{"amd64"},
-											},
-										},
-										{
-
-											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-												Key:      "kubernetes.io/os",
-												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
-												Values:   []string{"linux"},
-											},
-										},
-										{
-											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-												Key:      "node.kubernetes.io/instance-type",
-												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
-												Values:   []string{"m5.large"},
-											},
-										},
-									},
-									StartupTaints: []corev1.Taint{
-										{
-											Key:    "node.cloudprovider.kubernetes.io/uninitialized",
-											Effect: corev1.TaintEffect(corev1.TaintEffectNoSchedule),
-										},
-									},
-								},
-							},
-						},
-					},
-				}
-				return kmp
-			},
-			karpenterResourcesOutput: "karpenter_resource_output_node_pool.yaml",
-		},
-		{
-			description: "Should generate files based on template with one NodePool v1",
-			kopsClusterFunction: func(kopsCluster *kopsapi.Cluster) *kopsapi.Cluster {
-				kopsCluster.Spec.Kubelet = &kopsapi.KubeletConfigSpec{
-					MaxPods: helpers.Int32Ptr(60),
-					KubeReserved: map[string]string{
-						"cpu":               "150m",
-						"memory":            "150Mi",
-						"ephemeral-storage": "1Gi",
-					},
-					SystemReserved: map[string]string{
-						"cpu":               "150m",
-						"memory":            "200Mi",
-						"ephemeral-storage": "1Gi",
-					},
-				}
-				return kopsCluster
-			},
-			kopsMachinePoolFunction: func(kmp *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
-				kmp.Spec.KopsInstanceGroupSpec.NodeLabels = map[string]string{
-					"kops.k8s.io/instance-group-role": "Node",
-				}
-				kmp.Spec.KarpenterNodePoolsV1 = []infrastructurev1alpha1.KarpenterNodePoolsV1{
-					{
-						TypeMeta: metav1.TypeMeta{
-							Kind:       "NodePool",
-							APIVersion: "karpenter.sh/v1",
-						},
-						ObjectMeta: metav1.ObjectMeta{
-							Name: "test-node-pool",
-						},
-						Spec: karpenterv1.NodePoolSpec{
-							Disruption: karpenterv1.Disruption{
-								Budgets: []karpenterv1.Budget{
-									{
-										Nodes: "10%",
-									},
-									{
-										Nodes:    "0",
-										Schedule: helpers.StringPtr("0 * * * *"),
-										Duration: &metav1.Duration{Duration: 40 * time.Minute},
-									},
-								},
-								ConsolidationPolicy: karpenterv1.ConsolidationPolicyWhenEmptyOrUnderutilized,
-							},
-							Template: karpenterv1.NodeClaimTemplate{
-								ObjectMeta: karpenterv1.ObjectMeta{
-									Labels: map[string]string{
-										"kops.k8s.io/cluster":             helpers.GetFQDN("test-cluster"),
-										"kops.k8s.io/cluster-name":        helpers.GetFQDN("test-cluster"),
-										"kops.k8s.io/instance-group-name": kmp.Name,
-										"kops.k8s.io/instance-group-role": "Node",
-										"kops.k8s.io/instancegroup":       kmp.Name,
-										"kops.k8s.io/managed-by":          "kops-controller",
-									},
-								},
-								Spec: karpenterv1.NodeClaimTemplateSpec{
-									NodeClassRef: &karpenterv1.NodeClassReference{
-										Kind:  "EC2NodeClass",
-										Group: "karpenter.k8s.aws",
-										Name:  "test-ig",
-									},
-									Requirements: []karpenterv1.NodeSelectorRequirementWithMinValues{
-										{
-											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-												Key:      "kubernetes.io/arch",
-												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
-												Values:   []string{"amd64"},
-											},
-										},
-										{
-
-											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-												Key:      "kubernetes.io/os",
-												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
-												Values:   []string{"linux"},
-											},
-										},
-										{
-											NodeSelectorRequirement: corev1.NodeSelectorRequirement{
-												Key:      "node.kubernetes.io/instance-type",
-												Operator: corev1.NodeSelectorOperator(corev1.NodeSelectorOpIn),
-												Values:   []string{"m5.large"},
-											},
-										},
-									},
-									StartupTaints: []corev1.Taint{
-										{
-											Key:    "node.cloudprovider.kubernetes.io/uninitialized",
-											Effect: corev1.TaintEffect(corev1.TaintEffectNoSchedule),
-										},
-									},
-								},
-							},
-						},
-					},
-				}
-				return kmp
-			},
+			description:              "Should generate files based on template with one NodePool v1",
+			kopsClusterFunction:      withKubeletReserved,
+			kopsMachinePoolFunction:  withNodePoolV1,
 			karpenterResourcesOutput: "karpenter_resource_output_node_pool_v1.yaml",
 		},
 	}
