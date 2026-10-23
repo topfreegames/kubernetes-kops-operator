@@ -1,5 +1,5 @@
 # Build the manager binary
-FROM golang:1.26.9 as builder
+FROM golang:1.27.3 as builder
 
 ARG TARGETOS
 ARG TARGETARCH
@@ -22,7 +22,9 @@ COPY metrics/ metrics/
 # Build
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH} go build -a -o manager main.go
 
-FROM alpine
+FROM alpine:3.24
+# --upgrade: a plain `apk add` keeps an older bundle that still trusts the compromised eMudhra CAs.
+RUN apk add --no-cache --upgrade ca-certificates
 WORKDIR /
 COPY --from=builder /workspace/manager .
 USER 65532:65532
