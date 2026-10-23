@@ -718,13 +718,14 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return resultError, fmt.Errorf("error parsing NonMasqueradeCIDR %q: %v", kopsCluster.Spec.Networking.NonMasqueradeCIDR, err)
 		}
 	}
-	kmps, err = kopsutils.GetKopsMachinePoolsWithLabel(ctx, kubeReader, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
-	if err != nil {
-		return resultError, err
-	}
 
 	if r.shouldDeleteCluster(kopsControlPlane) {
 		log.Info(fmt.Sprintf("deleting cluster %s", owner.GetName()))
+
+		kmps, err = kopsutils.GetKopsMachinePoolsWithLabel(ctx, kubeReader, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
+		if err != nil {
+			return resultError, err
+		}
 
 		err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, nil, false, kopsControlPlane.Spec.KopsClusterSpec.ConfigStore.Base, terraformOutputDir, false)
 		if err != nil {
@@ -809,6 +810,11 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	}
 	reconciler.Mux.Lock()
 	shouldUnlock = true
+
+	kmps, err = kopsutils.GetKopsMachinePoolsWithLabel(ctx, kubeReader, "cluster.x-k8s.io/cluster-name", kopsControlPlane.Name)
+	if err != nil {
+		return resultError, err
+	}
 
 	reconciler.log.Info(fmt.Sprintf("starting reconcile loop for %s", kopsControlPlane.GetName()))
 	reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ReconciliationStarted", "reconciliation started")

@@ -53,6 +53,7 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 )
@@ -813,10 +814,19 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				},
 				GetASGByNameFactory: getASGByName,
 			}
+			var kopsMachinePoolsListedUnlocked bool
 			if tc.apiReaderImage != "" {
 				freshKopsMachinePool := kopsMachinePool.DeepCopy()
 				freshKopsMachinePool.Spec.KopsInstanceGroupSpec.Image = tc.apiReaderImage
-				reconciler.APIReader = fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster, kopsControlPlaneSecret, freshKopsMachinePool).WithScheme(scheme.Scheme).Build()
+				reconciler.APIReader = fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster, kopsControlPlaneSecret, freshKopsMachinePool).WithScheme(scheme.Scheme).WithInterceptorFuncs(interceptor.Funcs{
+					List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+						if _, ok := list.(*infrastructurev1alpha1.KopsMachinePoolList); ok && reconciler.Mux.TryLock() {
+							reconciler.Mux.Unlock()
+							kopsMachinePoolsListedUnlocked = true
+						}
+						return c.List(ctx, list, opts...)
+					},
+				}).Build()
 			}
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: client.ObjectKey{
@@ -828,6 +838,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				ig, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Get(ctx, kopsMachinePool.Name, metav1.GetOptions{})
 				g.Expect(err).NotTo(HaveOccurred())
 				g.Expect(ig.Spec.Image).To(Equal(tc.apiReaderImage))
+				g.Expect(kopsMachinePoolsListedUnlocked).To(BeFalse())
 			}
 
 			g.Expect(result).To(Equal(tc.expectedResult))
