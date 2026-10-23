@@ -1,9 +1,11 @@
 package kops
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"net"
+	"slices"
 
 	kopsapi "k8s.io/kops/pkg/apis/kops"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -64,6 +66,10 @@ func GetKopsMachinePoolsWithLabel(ctx context.Context, c client.Reader, key, val
 	if err != nil {
 		return kmps, fmt.Errorf("error while trying to retrieve KopsMachinePool list: %w", err)
 	}
+
+	slices.SortFunc(kmpsList.Items, func(a, b kinfrastructurev1alpha1.KopsMachinePool) int {
+		return cmp.Or(cmp.Compare(a.Namespace, b.Namespace), cmp.Compare(a.Name, b.Name))
+	})
 
 	return kmpsList.Items, nil
 }

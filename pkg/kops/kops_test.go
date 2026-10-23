@@ -3,6 +3,7 @@ package kops
 import (
 	"context"
 	"net"
+	"slices"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -11,6 +12,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	clusterv1beta1 "sigs.k8s.io/cluster-api/api/v1beta1"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
+	"sigs.k8s.io/controller-runtime/pkg/client/interceptor"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -315,6 +317,46 @@ func TestGetKopsMachinePoolsWithLabel(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGetKopsMachinePoolsWithLabelIsSorted(t *testing.T) {
+	g := NewWithT(t)
+
+	sc := runtime.NewScheme()
+	g.Expect(kinfrastructurev1alpha1.AddToScheme(sc)).To(Succeed())
+
+	var objects []client.Object
+	for _, name := range []string{"nodes-b", "nodes-c", "nodes-a"} {
+		objects = append(objects, &kinfrastructurev1alpha1.KopsMachinePool{
+			ObjectMeta: metav1.ObjectMeta{
+				Namespace: metav1.NamespaceDefault,
+				Name:      name,
+				Labels: map[string]string{
+					"cluster.x-k8s.io/cluster-name": "test-cluster",
+				},
+			},
+		})
+	}
+
+	fakeClient := fake.NewClientBuilder().WithScheme(sc).WithObjects(objects...).WithInterceptorFuncs(interceptor.Funcs{
+		List: func(ctx context.Context, c client.WithWatch, list client.ObjectList, opts ...client.ListOption) error {
+			if err := c.List(ctx, list, opts...); err != nil {
+				return err
+			}
+			kmps := list.(*kinfrastructurev1alpha1.KopsMachinePoolList)
+			slices.Reverse(kmps.Items)
+			return nil
+		},
+	}).Build()
+
+	kmps, err := GetKopsMachinePoolsWithLabel(context.TODO(), fakeClient, "cluster.x-k8s.io/cluster-name", "test-cluster")
+	g.Expect(err).NotTo(HaveOccurred())
+
+	var names []string
+	for _, kmp := range kmps {
+		names = append(names, kmp.Name)
+	}
+	g.Expect(names).To(Equal([]string{"nodes-a", "nodes-b", "nodes-c"}))
 }
 
 func TestCalculateServiceClusterIPRange(t *testing.T) {
