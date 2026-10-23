@@ -632,10 +632,16 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 		getASGByNameFactory      func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error)
 		createKubeconfigSecret   bool
 		updateKubeconfigSecret   bool
+		apiReaderImage           string
 	}{
 		{
 			description:    "should successfully create Kops Cluster",
 			expectedResult: resultDefault,
+		},
+		{
+			description:    "should read KopsMachinePools from the API reader instead of the cache",
+			expectedResult: resultDefault,
+			apiReaderImage: "000000000000/ubuntu-v2",
 		},
 		{
 			description: "should successfully create a Kops Cluster that belongs a mesh",
@@ -807,12 +813,22 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				},
 				GetASGByNameFactory: getASGByName,
 			}
+			if tc.apiReaderImage != "" {
+				freshKopsMachinePool := kopsMachinePool.DeepCopy()
+				freshKopsMachinePool.Spec.KopsInstanceGroupSpec.Image = tc.apiReaderImage
+				reconciler.APIReader = fake.NewClientBuilder().WithObjects(kopsControlPlane, cluster, kopsControlPlaneSecret, freshKopsMachinePool).WithScheme(scheme.Scheme).Build()
+			}
 			result, err := reconciler.Reconcile(ctx, ctrl.Request{
 				NamespacedName: client.ObjectKey{
 					Namespace: metav1.NamespaceDefault,
 					Name:      helpers.GetFQDN("testCluster"),
 				},
 			})
+			if tc.apiReaderImage != "" {
+				ig, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Get(ctx, kopsMachinePool.Name, metav1.GetOptions{})
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(ig.Spec.Image).To(Equal(tc.apiReaderImage))
+			}
 
 			g.Expect(result).To(Equal(tc.expectedResult))
 			if tc.expectedError {

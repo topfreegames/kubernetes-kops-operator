@@ -89,6 +89,7 @@ var (
 // KopsControlPlaneReconciler reconciles a KopsControlPlane object
 type KopsControlPlaneReconciler struct {
 	client.Client
+	APIReader                        client.Reader
 	Scheme                           *runtime.Scheme
 	Mux                              *sync.Mutex
 	ControllerClass                  string
@@ -592,6 +593,9 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		}
 	} else {
 		kubeReader = r.Client
+		if r.APIReader != nil {
+			kubeReader = r.APIReader
+		}
 		if err := r.Get(ctx, req.NamespacedName, kopsControlPlane); err != nil {
 			return resultError, client.IgnoreNotFound(err)
 		}
