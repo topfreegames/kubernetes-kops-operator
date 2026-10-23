@@ -191,6 +191,7 @@ func main() {
 
 	controller := &controlplane.KopsControlPlaneReconciler{
 		Client:                           mgr.GetClient(),
+		APIReader:                        mgr.GetAPIReader(),
 		Scheme:                           mgr.GetScheme(),
 		ControllerClass:                  controllerClass,
 		Mux:                              new(sync.Mutex),
