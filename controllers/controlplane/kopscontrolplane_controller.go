@@ -123,6 +123,8 @@ type KCPKey struct{}
 type ClientKey struct{}
 
 func init() {
+	featureflag.ParseFlags("-ImageDigest")
+
 	// Set kops lib verbosity to ERROR
 	var log logr.Logger
 	zc := zap.NewProductionConfig()
