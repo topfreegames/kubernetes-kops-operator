@@ -3,11 +3,12 @@ module github.com/topfreegames/kubernetes-kops-operator
 go 1.26.9
 
 require (
-	github.com/aws/aws-sdk-go-v2 v1.47.1
-	github.com/aws/aws-sdk-go-v2/config v1.33.6
-	github.com/aws/aws-sdk-go-v2/credentials v1.20.6
-	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.62.4
+	github.com/aws/aws-sdk-go-v2 v1.47.4
+	github.com/aws/aws-sdk-go-v2/config v1.33.10
+	github.com/aws/aws-sdk-go-v2/credentials v1.20.10
+	github.com/aws/aws-sdk-go-v2/service/autoscaling v1.79.1
 	github.com/aws/karpenter-provider-aws v1.15.0
+	github.com/awslabs/operatorpkg v0.0.0-20261002163259-5e8ed3699dea
 	github.com/go-logr/logr v1.4.4
 	github.com/hashicorp/go-version v1.9.0
 	github.com/hashicorp/hc-install v0.9.4
@@ -48,27 +49,26 @@ require (
 	github.com/agext/levenshtein v1.2.1 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.8 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.1 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.4 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.4 // indirect
-	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.4 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.4 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/configsources v1.5.7 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.8.7 // indirect
+	github.com/aws/aws-sdk-go-v2/internal/v4a v1.5.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancing v1.33.18 // indirect
 	github.com/aws/aws-sdk-go-v2/service/elasticloadbalancingv2 v1.54.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/eventbridge v1.45.17 // indirect
 	github.com/aws/aws-sdk-go-v2/service/iam v1.64.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.19 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/accept-encoding v1.13.22 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/checksum v1.9.13 // indirect
-	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.4 // indirect
+	github.com/aws/aws-sdk-go-v2/service/internal/presigned-url v1.14.7 // indirect
 	github.com/aws/aws-sdk-go-v2/service/internal/s3shared v1.19.21 // indirect
 	github.com/aws/aws-sdk-go-v2/service/route53 v1.62.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.97.3 // indirect
-	github.com/aws/aws-sdk-go-v2/service/signin v1.10.1 // indirect
+	github.com/aws/aws-sdk-go-v2/service/signin v1.10.5 // indirect
 	github.com/aws/aws-sdk-go-v2/service/sqs v1.52.1 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ssm v1.78.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sso v1.38.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.1 // indirect
-	github.com/aws/aws-sdk-go-v2/service/sts v1.51.1 // indirect
-	github.com/awslabs/operatorpkg v0.0.0-20261002163259-5e8ed3699dea // indirect
+	github.com/aws/aws-sdk-go-v2/service/sso v1.38.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/ssooidc v1.43.5 // indirect
+	github.com/aws/aws-sdk-go-v2/service/sts v1.51.5 // indirect
 	github.com/cloudflare/circl v1.6.3 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.18.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.13.0 // indirect
@@ -154,7 +154,7 @@ require (
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
 	github.com/apparentlymart/go-cidr v1.1.0 // indirect
 	github.com/aws/aws-sdk-go-v2/service/ec2 v1.336.1 // indirect
-	github.com/aws/smithy-go v1.28.2 // indirect
+	github.com/aws/smithy-go v1.28.6 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -217,7 +217,7 @@ require (
 	gopkg.in/warnings.v0 v0.1.2 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/apiextensions-apiserver v0.37.0 // indirect
+	k8s.io/apiextensions-apiserver v0.37.0
 	k8s.io/apiserver v0.37.0 // indirect
 	k8s.io/cloud-provider v0.35.0 // indirect
 	k8s.io/cluster-bootstrap v0.30.3 // indirect
