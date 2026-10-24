@@ -93,6 +93,7 @@ type KopsControlPlaneReconciler struct {
 	Scheme                           *runtime.Scheme
 	Mux                              *sync.Mutex
 	ControllerClass                  string
+	Cluster                          string
 	Recorder                         record.EventRecorder
 	TfExecPath                       string
 	DryRun                           bool
@@ -610,6 +611,10 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 
 	if kopsControlPlane.Spec.ControllerClass != r.ControllerClass {
 		reconciler.Recorder.Event(kopsControlPlane, corev1.EventTypeNormal, "ClusterManagedByDifferentControllerClass", "cluster is managed by a different controller class, removing it from queue")
+		return resultNotRequeue, nil
+	}
+
+	if r.Cluster != "" && kopsControlPlane.Name != r.Cluster {
 		return resultNotRequeue, nil
 	}
 
