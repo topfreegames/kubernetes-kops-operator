@@ -634,6 +634,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 		createKubeconfigSecret   bool
 		updateKubeconfigSecret   bool
 		apiReaderImage           string
+		cluster                  string
 	}{
 		{
 			description:    "should successfully create Kops Cluster",
@@ -661,6 +662,16 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				kopsControlPlane.Spec.ControllerClass = "foo"
 				return kopsControlPlane
 			},
+		},
+		{
+			description:    "should not requeue a KopsControlPlane that isn't the selected cluster",
+			expectedResult: resultNotRequeue,
+			cluster:        helpers.GetFQDN("otherCluster"),
+		},
+		{
+			description:    "should successfully create the selected Kops Cluster",
+			expectedResult: resultDefault,
+			cluster:        helpers.GetFQDN("testCluster"),
 		},
 		{
 			description:    "should successfully create Kops Cluster with a custom Kops Secret",
@@ -813,6 +824,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 					return &validation.ValidationCluster{}, nil
 				},
 				GetASGByNameFactory: getASGByName,
+				Cluster:             tc.cluster,
 			}
 			var kopsMachinePoolsListedUnlocked bool
 			if tc.apiReaderImage != "" {

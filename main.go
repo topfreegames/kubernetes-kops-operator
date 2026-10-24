@@ -101,7 +101,7 @@ func main() {
 			"Enabling this will ensure there is only one active controller manager.")
 	flag.StringVar(&controllerClass, "controller-class", "", "The name of the controller class to associate with the controller.")
 	flag.BoolVar(&dryRun, "dry-run", false, "Enable dry-run mode to plan without making actual changes.")
-	flag.StringVar(&cluster, "cluster", "", "With -dry-run, plan only the KopsControlPlane with this name.")
+	flag.StringVar(&cluster, "cluster", "", "Reconcile only the KopsControlPlane with this name.")
 
 	opts := zap.Options{
 		Development: true,
@@ -196,6 +196,7 @@ func main() {
 		APIReader:                        mgr.GetAPIReader(),
 		Scheme:                           mgr.GetScheme(),
 		ControllerClass:                  controllerClass,
+		Cluster:                          cluster,
 		Mux:                              new(sync.Mutex),
 		Recorder:                         recorder,
 		TfExecPath:                       tfExecPath,
@@ -245,29 +246,21 @@ func main() {
 			os.Exit(1)
 		}
 
-		kcps := dryRunControlPlanes(controlPlanes.Items, controllerClass, cluster)
-		if cluster != "" && len(kcps) == 0 {
-			setupLog.Error(fmt.Errorf("no Kops Control Plane %q with controller class %q", cluster, controllerClass), "Error selecting Kops Control Plane")
-			os.Exit(1)
-		}
-
-		for _, kcp := range kcps {
-			setupLog.Info("starting plan for Kops Control Plane " + kcp.Name)
-			_, err := controller.Reconcile(context.WithValue(context.WithValue(ctx, controlplane.ClientKey{}, mgr.GetAPIReader()), controlplane.KCPKey{}, kcp), ctrl.Request{})
-			if err != nil {
-				setupLog.Error(err, "error rendering plan for "+kcp.Name)
-				os.Exit(1)
+		planned := false
+		for _, kcp := range controlPlanes.Items {
+			if kcp.Spec.ControllerClass == controllerClass && (cluster == "" || kcp.Name == cluster) {
+				planned = true
+				setupLog.Info("starting plan for Kops Control Plane " + kcp.Name)
+				_, err := controller.Reconcile(context.WithValue(context.WithValue(ctx, controlplane.ClientKey{}, mgr.GetAPIReader()), controlplane.KCPKey{}, kcp), ctrl.Request{})
+				if err != nil {
+					setupLog.Error(err, "error rendering plan for "+kcp.Name)
+					os.Exit(1)
+				}
 			}
 		}
-	}
-}
-
-func dryRunControlPlanes(kcps []controlplanev1alpha1.KopsControlPlane, controllerClass, cluster string) []controlplanev1alpha1.KopsControlPlane {
-	var selected []controlplanev1alpha1.KopsControlPlane
-	for _, kcp := range kcps {
-		if kcp.Spec.ControllerClass == controllerClass && (cluster == "" || kcp.Name == cluster) {
-			selected = append(selected, kcp)
+		if cluster != "" && !planned {
+			setupLog.Error(fmt.Errorf("no Kops Control Plane %q with controller class %q", cluster, controllerClass), "Error listing Kops Control Planes")
+			os.Exit(1)
 		}
 	}
-	return selected
 }
