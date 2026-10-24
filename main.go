@@ -259,7 +259,7 @@ func main() {
 			}
 		}
 		if cluster != "" && !planned {
-			setupLog.Error(fmt.Errorf("no Kops Control Plane %q with controller class %q", cluster, controllerClass), "Error listing Kops Control Planes")
+			setupLog.Error(fmt.Errorf("no Kops Control Plane %q with controller class %q", cluster, controllerClass), "Error selecting Kops Control Plane")
 			os.Exit(1)
 		}
 	}
