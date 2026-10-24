@@ -26,6 +26,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/go-containerregistry/pkg/v1/remote"
 	"github.com/hashicorp/go-version"
 	"github.com/hashicorp/hc-install/product"
 	"github.com/hashicorp/hc-install/releases"
@@ -191,6 +192,9 @@ func main() {
 		recorder = mgr.GetEventRecorderFor("kopscontrolplane-controller") //nolint:staticcheck // SA1019: events API migration (GetEventRecorder) deferred to a follow-up
 	}
 
+	registryTransport := &utils.RegistryTransport{Base: remote.DefaultTransport, Backoff: utils.DefaultRegistryBackoff}
+	remote.DefaultTransport = registryTransport
+
 	controller := &controlplane.KopsControlPlaneReconciler{
 		Client:                           mgr.GetClient(),
 		APIReader:                        mgr.GetAPIReader(),
@@ -213,6 +217,7 @@ func main() {
 		ValidateKopsClusterFactory:       utils.ValidateKopsCluster,
 		GetClusterStatusFactory:          controlplane.GetClusterStatus,
 		GetASGByNameFactory:              controlplane.GetASGByName,
+		RegistryRequests:                 registryTransport,
 	}
 
 	if err = controller.SetupWithManager(ctx, mgr, workers); err != nil {

@@ -635,6 +635,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 		updateKubeconfigSecret   bool
 		apiReaderImage           string
 		cluster                  string
+		registryErr              error
 	}{
 		{
 			description:    "should successfully create Kops Cluster",
@@ -662,6 +663,12 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				kopsControlPlane.Spec.ControllerClass = "foo"
 				return kopsControlPlane
 			},
+		},
+		{
+			description:    "should fail without applying Terraform when image digests could not be resolved",
+			expectedError:  true,
+			expectedResult: resultError,
+			registryErr:    errors.New("failed to resolve image digests"),
 		},
 		{
 			description:    "should not requeue a KopsControlPlane that isn't the selected cluster",
@@ -798,6 +805,8 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			err = helpers.CreateFakeKopsKeyPair(ctx, keyStore)
 			g.Expect(err).NotTo(HaveOccurred())
 
+			applied := false
+			registryRequests := &fakeRegistryRequests{err: tc.registryErr}
 			reconciler := &KopsControlPlaneReconciler{
 				Client: fakeClient,
 				GetKopsClientSetFactory: func(configBase string) (simple.Clientset, error) {
@@ -815,6 +824,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 					return nil
 				},
 				ApplyTerraformFactory: func(ctx context.Context, terraformDir, tfExecPath string, credentials aws.Credentials) error {
+					applied = true
 					return nil
 				},
 				GetClusterStatusFactory: func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
@@ -825,6 +835,7 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 				},
 				GetASGByNameFactory: getASGByName,
 				Cluster:             tc.cluster,
+				RegistryRequests:    registryRequests,
 			}
 			var kopsMachinePoolsListedUnlocked bool
 			if tc.apiReaderImage != "" {
@@ -846,6 +857,13 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 					Name:      helpers.GetFQDN("testCluster"),
 				},
 			})
+			if tc.registryErr != nil {
+				g.Expect(err).To(MatchError(tc.registryErr))
+				g.Expect(applied).To(BeFalse())
+			}
+			if result != resultNotRequeue {
+				g.Expect(registryRequests.resets).To(Equal(1))
+			}
 			if tc.apiReaderImage != "" {
 				ig, err := fakeKopsClientset.InstanceGroupsFor(kopsCluster).Get(ctx, kopsMachinePool.Name, metav1.GetOptions{})
 				g.Expect(err).NotTo(HaveOccurred())
@@ -890,6 +908,19 @@ func TestKopsControlPlaneReconciler(t *testing.T) {
 			}
 		})
 	}
+}
+
+type fakeRegistryRequests struct {
+	resets int
+	err    error
+}
+
+func (f *fakeRegistryRequests) Reset() {
+	f.resets++
+}
+
+func (f *fakeRegistryRequests) Err() error {
+	return f.err
 }
 
 func TestCustomMetrics(t *testing.T) {

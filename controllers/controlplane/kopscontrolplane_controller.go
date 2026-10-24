@@ -21,6 +21,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -109,6 +110,13 @@ type KopsControlPlaneReconciler struct {
 	ValidateKopsClusterFactory       func(kubeConfig *rest.Config, kopsCluster *kopsapi.Cluster, cloud fi.Cloud, igs *kopsapi.InstanceGroupList) (*validation.ValidationCluster, error)
 	GetClusterStatusFactory          func(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error)
 	GetASGByNameFactory              func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, credentials *aws.Credentials) (*asgTypes.AutoScalingGroup, error)
+	RegistryRequests                 RegistryRequests
+}
+
+// RegistryRequests reports the registry requests that failed while kops resolved image digests.
+type RegistryRequests interface {
+	Reset()
+	Err() error
 }
 
 type KopsControlPlaneReconciliation struct {
@@ -123,16 +131,24 @@ type KCPKey struct{}
 type ClientKey struct{}
 
 func init() {
-	// Set kops lib verbosity to ERROR
+	// Set kops lib verbosity to WARNING
 	var log logr.Logger
 	zc := zap.NewProductionConfig()
-	zc.Level = zap.NewAtomicLevelAt(zapcore.Level(2))
+	zc.Level = zap.NewAtomicLevelAt(zapcore.WarnLevel)
 	z, err := zc.Build()
 	if err != nil {
 		panic(fmt.Sprintf("failed to initialize logging (%v)?", err))
 	}
 	log = zapr.NewLogger(z)
-	klog.SetLogger(log)
+	klog.SetLoggerWithOptions(log, klog.WriteKlogBuffer(func(data []byte) {
+		line := strings.TrimSpace(string(data))
+		switch {
+		case strings.HasPrefix(line, "W"):
+			z.Warn(line)
+		case strings.HasPrefix(line, "E"), strings.HasPrefix(line, "F"):
+			z.Error(line)
+		}
+	}))
 }
 
 func GetClusterStatus(kopsCluster *kopsapi.Cluster, cloud fi.Cloud) (*kopsapi.ClusterStatus, error) {
@@ -887,6 +903,10 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		return resultError, err
 	}
 
+	if r.RegistryRequests != nil {
+		r.RegistryRequests.Reset()
+	}
+
 	fullCluster, err := reconciler.PopulateClusterSpecFactory(ctx, kopsCluster, kopsClientset, cloud)
 	if err != nil {
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToPopulateClusterSpec", "failed to populate Cluster spec: %s", err)
@@ -922,6 +942,13 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 		conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, "failed to prepare cloud resources: %s", err.Error())
 		reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToPrepareCloudResources", "failed to prepare cloud resources: %s", err)
 		return resultError, err
+	}
+	if r.RegistryRequests != nil {
+		if err := r.RegistryRequests.Err(); err != nil {
+			conditions.MarkFalse(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition, controlplanev1alpha1.KopsTerraformGenerationReconciliationFailedReason, clusterv1.ConditionSeverityError, "%s", err.Error())
+			reconciler.Recorder.Eventf(kopsControlPlane, corev1.EventTypeWarning, "FailedToResolveImageDigests", "%s", err)
+			return resultError, err
+		}
 	}
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition)
 
