@@ -81,6 +81,22 @@ func cleanCorruptedProvider(pluginCacheDir, providerName string) error {
 	return nil
 }
 
+func copyFileIfMissing(src, dst string) error {
+	if _, err := os.Stat(dst); err == nil {
+		return nil
+	}
+
+	data, err := os.ReadFile(src)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	return os.WriteFile(dst, data, 0644)
+}
+
 func validatePluginCache(pluginCacheDir string) error {
 	if pluginCacheDir == "" {
 		return nil
@@ -235,6 +251,12 @@ func initTerraform(ctx context.Context, workingDir, terraformExecPath string, cr
 		log.Info("plugin cache validation found issues, will attempt cleanup", "severity", "warning", "error", err.Error())
 	}
 
+	sharedLockFile := filepath.Join(filepath.Dir(terraformExecPath), ".terraform.lock.hcl")
+	workingLockFile := filepath.Join(workingDir, ".terraform.lock.hcl")
+	if err := copyFileIfMissing(sharedLockFile, workingLockFile); err != nil {
+		log.Info("failed to copy the shared terraform lock file", "severity", "warning", "error", err.Error())
+	}
+
 	var initErr error
 	maxRetries := 5
 	cleanedCache := false
@@ -277,6 +299,10 @@ func initTerraform(ctx context.Context, workingDir, terraformExecPath string, cr
 
 	if initErr != nil {
 		return nil, fmt.Errorf("terraform init failed after %d retries: %w", maxRetries, initErr)
+	}
+
+	if err := copyFileIfMissing(workingLockFile, sharedLockFile); err != nil {
+		log.Info("failed to save the shared terraform lock file", "severity", "warning", "error", err.Error())
 	}
 
 	return tf, nil

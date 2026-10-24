@@ -334,3 +334,51 @@ func TestCleanupTerraformDirectory(t *testing.T) {
 		})
 	}
 }
+
+func TestCopyFileIfMissing(t *testing.T) {
+	testCases := []struct {
+		description string
+		src         string
+		dst         string
+		expectedDst string
+	}{
+		{
+			description: "should copy the file when the destination is missing",
+			src:         "source",
+			expectedDst: "source",
+		},
+		{
+			description: "should keep an existing destination",
+			src:         "source",
+			dst:         "destination",
+			expectedDst: "destination",
+		},
+		{
+			description: "should do nothing when the source is missing",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			g := NewWithT(t)
+			dir := t.TempDir()
+			src, dst := dir+"/src", dir+"/dst"
+			if tc.src != "" {
+				g.Expect(os.WriteFile(src, []byte(tc.src), 0644)).To(Succeed())
+			}
+			if tc.dst != "" {
+				g.Expect(os.WriteFile(dst, []byte(tc.dst), 0644)).To(Succeed())
+			}
+
+			g.Expect(copyFileIfMissing(src, dst)).To(Succeed())
+
+			data, err := os.ReadFile(dst)
+			if tc.expectedDst == "" {
+				g.Expect(os.IsNotExist(err)).To(BeTrue())
+				return
+			}
+			g.Expect(err).NotTo(HaveOccurred())
+			g.Expect(string(data)).To(Equal(tc.expectedDst))
+		})
+	}
+}
