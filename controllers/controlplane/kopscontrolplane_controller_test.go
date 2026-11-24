@@ -21,6 +21,7 @@ import (
 	expv1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	karpenterv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
@@ -2087,7 +2088,11 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			g.Expect(err).NotTo(HaveOccurred())
 
 			reconciler := &KopsControlPlaneReconciler{}
-			err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kcp, []infrastructurev1alpha1.KopsMachinePool{*kmp}, true, kopsCluster.Spec.ConfigStore.Base, terraformOutputDir, true)
+			err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kcp, []infrastructurev1alpha1.KopsMachinePool{*kmp}, true, kopsCluster.Spec.ConfigStore.Base, terraformOutputDir, true, func(string) (*ec2types.Image, error) {
+				return &ec2types.Image{RootDeviceName: aws.String("/dev/sda1"), BlockDeviceMappings: []ec2types.BlockDeviceMapping{
+					{DeviceName: aws.String("/dev/sda1"), Ebs: &ec2types.EbsBlockDevice{VolumeSize: aws.Int32(20)}},
+				}}, nil
+			})
 			g.Expect(err).NotTo(HaveOccurred())
 
 			generatedBackendTF, err := os.ReadFile(terraformOutputDir + "/backend.tf")
@@ -2495,4 +2500,32 @@ func assertCondition(g *WithT, from conditions.Getter, condition *clusterv1.Cond
 			g.Expect(conditionToBeAsserted.Message).To(Equal(condition.Message))
 		}
 	}
+}
+
+func TestResolveImageOnce(t *testing.T) {
+	g := NewWithT(t)
+	image := &ec2types.Image{ImageId: aws.String("ami-test")}
+
+	calls := 0
+	resolveImage := func(name string) (*ec2types.Image, error) {
+		calls++
+		if name == "missing" {
+			return nil, fmt.Errorf("not found")
+		}
+		return image, nil
+	}
+	resolved := map[string]*ec2types.Image{}
+
+	for range 2 {
+		got, err := resolveImageOnce(resolveImage, resolved, "owner/image")
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(got).To(Equal(image))
+	}
+	g.Expect(calls).To(Equal(1))
+
+	_, err := resolveImageOnce(resolveImage, resolved, "missing")
+	g.Expect(err).To(MatchError(`resolving image "missing": not found`))
+
+	_, err = resolveImageOnce(nil, resolved, "other")
+	g.Expect(err).To(MatchError(`resolving image "other": no AWS cloud`))
 }
