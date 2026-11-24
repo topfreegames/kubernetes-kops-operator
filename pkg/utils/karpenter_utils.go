@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"cmp"
 	"fmt"
 	"strconv"
 	"strings"
@@ -110,6 +111,62 @@ func BuildKarpenterVolumeConfigV1FromKops(kopsVolume *kopsapi.InstanceRootVolume
 	return karpenterVolumeConfig
 }
 
+const karpenterRootDeviceName = "/dev/sda1"
+
+func BuildKarpenterBlockDeviceMappingsV1FromKops(igSpec *kopsapi.InstanceGroupSpec) ([]*karpenterv1.BlockDeviceMapping, error) {
+	blockDeviceMappings := []*karpenterv1.BlockDeviceMapping{
+		{
+			DeviceName: helpers.StringPtr(karpenterRootDeviceName),
+			EBS:        BuildKarpenterVolumeConfigV1FromKops(igSpec.RootVolume),
+			RootVolume: true,
+		},
+	}
+
+	devices := map[string]bool{karpenterRootDeviceName: true}
+	for i, volume := range igSpec.Volumes {
+		if volume.Device == "" {
+			return nil, fmt.Errorf("volumes[%d]: device name required", i)
+		}
+		if devices[volume.Device] {
+			return nil, fmt.Errorf("volumes[%d]: device %q is already used", i, volume.Device)
+		}
+		devices[volume.Device] = true
+		if volume.Size <= 0 {
+			return nil, fmt.Errorf("volumes[%d]: size must be greater than zero", i)
+		}
+
+		volumeType := cmp.Or(volume.Type, "gp3")
+		ebs := &karpenterv1.BlockDevice{
+			VolumeSize:          helpers.ResourceToPointer(resource.MustParse(fmt.Sprintf("%dGi", volume.Size))),
+			VolumeType:          helpers.StringPtr(volumeType),
+			Encrypted:           helpers.BoolPtr(valueOr(volume.Encrypted, true)),
+			KMSKeyID:            volume.Key,
+			DeleteOnTermination: helpers.BoolPtr(valueOr(volume.DeleteOnTermination, true)),
+		}
+		switch volumeType {
+		case "gp3":
+			ebs.IOPS = helpers.Int64Ptr(valueOr(volume.IOPS, 3000))
+			ebs.Throughput = helpers.Int64Ptr(valueOr(volume.Throughput, 125))
+		case "io1", "io2":
+			ebs.IOPS = helpers.Int64Ptr(valueOr(volume.IOPS, 100))
+		}
+
+		blockDeviceMappings = append(blockDeviceMappings, &karpenterv1.BlockDeviceMapping{
+			DeviceName: helpers.StringPtr(volume.Device),
+			EBS:        ebs,
+		})
+	}
+
+	return blockDeviceMappings, nil
+}
+
+func valueOr[T any](value *T, fallback T) T {
+	if value == nil {
+		return fallback
+	}
+	return *value
+}
+
 var karpenterEvictionSignals = map[string]bool{
 	"memory.available":   true,
 	"nodefs.available":   true,
@@ -200,6 +257,11 @@ func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alp
 		return nil, err
 	}
 
+	blockDeviceMappings, err := BuildKarpenterBlockDeviceMappingsV1FromKops(&kmp.Spec.KopsInstanceGroupSpec)
+	if err != nil {
+		return nil, err
+	}
+
 	var associatePublicIP bool
 	if kmp.Spec.KopsInstanceGroupSpec.AssociatePublicIP != nil {
 		associatePublicIP = *kmp.Spec.KopsInstanceGroupSpec.AssociatePublicIP
@@ -236,14 +298,8 @@ func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alp
 				HTTPTokens:              helpers.StringPtr("required"),
 			},
 			AssociatePublicIPAddress: &associatePublicIP,
-			BlockDeviceMappings: []*karpenterv1.BlockDeviceMapping{
-				{
-					DeviceName: helpers.StringPtr("/dev/sda1"),
-					EBS:        BuildKarpenterVolumeConfigV1FromKops(kmp.Spec.KopsInstanceGroupSpec.RootVolume),
-					RootVolume: true,
-				},
-			},
-			Role: fmt.Sprintf("nodes.%s", kopsCluster.Name),
+			BlockDeviceMappings:      blockDeviceMappings,
+			Role:                     fmt.Sprintf("nodes.%s", kopsCluster.Name),
 			SecurityGroupSelectorTerms: []karpenterv1.SecurityGroupSelectorTerm{
 				{
 					Name: fmt.Sprintf("nodes.%s", kopsCluster.Name),

@@ -117,6 +117,15 @@ func TestCreateEC2NodeClassV1(t *testing.T) {
 			userData:      "dummy content",
 		},
 		{
+			description: "should fail with an invalid instance group volume",
+			kopsMachinePoolFunction: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
+				kopsMachinePool.Spec.KopsInstanceGroupSpec.Volumes = []kopsapi.VolumeSpec{{Size: 5}}
+				return kopsMachinePool
+			},
+			expectedError: fmt.Errorf("volumes[0]: device name required"),
+			userData:      "dummy content",
+		},
+		{
 			description:   "should fail with empty user data",
 			expectedError: fmt.Errorf("user data file is empty"),
 		},
@@ -246,6 +255,148 @@ func TestBuildKarpenterVolumeConfigV1FromKops(t *testing.T) {
 
 		t.Run(tc.description, func(t *testing.T) {
 			output := BuildKarpenterVolumeConfigV1FromKops(tc.input)
+			g.Expect(output).To(Equal(tc.expectedOutput))
+		})
+	}
+}
+
+func TestBuildKarpenterBlockDeviceMappingsV1FromKops(t *testing.T) {
+	rootMapping := &karpenterv1.BlockDeviceMapping{
+		DeviceName: helpers.StringPtr("/dev/sda1"),
+		EBS: &karpenterv1.BlockDevice{
+			VolumeSize:          helpers.ResourceToPointer(resource.MustParse("6Gi")),
+			VolumeType:          helpers.StringPtr("gp3"),
+			IOPS:                helpers.Int64Ptr(3000),
+			Encrypted:           helpers.BoolPtr(true),
+			Throughput:          helpers.Int64Ptr(125),
+			DeleteOnTermination: helpers.BoolPtr(true),
+		},
+		RootVolume: true,
+	}
+	gp3Mapping := func(device, size string) *karpenterv1.BlockDeviceMapping {
+		return &karpenterv1.BlockDeviceMapping{
+			DeviceName: helpers.StringPtr(device),
+			EBS: &karpenterv1.BlockDevice{
+				VolumeSize:          helpers.ResourceToPointer(resource.MustParse(size)),
+				VolumeType:          helpers.StringPtr("gp3"),
+				IOPS:                helpers.Int64Ptr(3000),
+				Throughput:          helpers.Int64Ptr(125),
+				Encrypted:           helpers.BoolPtr(true),
+				DeleteOnTermination: helpers.BoolPtr(true),
+			},
+		}
+	}
+
+	testCases := []struct {
+		description    string
+		volumes        []kopsapi.VolumeSpec
+		expectedOutput []*karpenterv1.BlockDeviceMapping
+		expectedError  string
+	}{
+		{
+			description:    "should return only the root volume when the instance group has no volumes",
+			expectedOutput: []*karpenterv1.BlockDeviceMapping{rootMapping},
+		},
+		{
+			description: "should add one gp3 mapping per volume with the kops defaults",
+			volumes: []kopsapi.VolumeSpec{
+				{Device: "/dev/sdf", Size: 5},
+				{Device: "/dev/sdg", Size: 5},
+				{Device: "/dev/sdh", Size: 5},
+			},
+			expectedOutput: []*karpenterv1.BlockDeviceMapping{
+				rootMapping,
+				gp3Mapping("/dev/sdf", "5Gi"),
+				gp3Mapping("/dev/sdg", "5Gi"),
+				gp3Mapping("/dev/sdh", "5Gi"),
+			},
+		},
+		{
+			description: "should keep the values set on the volume",
+			volumes: []kopsapi.VolumeSpec{
+				{
+					Device:              "/dev/sdf",
+					Size:                20,
+					Type:                "io2",
+					IOPS:                helpers.Int64Ptr(4000),
+					Encrypted:           helpers.BoolPtr(false),
+					DeleteOnTermination: helpers.BoolPtr(false),
+					Key:                 helpers.StringPtr("arn:aws:kms:us-east-1:000000000000:key/test"),
+				},
+				{Device: "/dev/sdg", Size: 10, Type: "gp3", IOPS: helpers.Int64Ptr(6000), Throughput: helpers.Int64Ptr(250)},
+				{Device: "/dev/sdh", Size: 10, Type: "st1", IOPS: helpers.Int64Ptr(500), Throughput: helpers.Int64Ptr(250)},
+			},
+			expectedOutput: []*karpenterv1.BlockDeviceMapping{
+				rootMapping,
+				{
+					DeviceName: helpers.StringPtr("/dev/sdf"),
+					EBS: &karpenterv1.BlockDevice{
+						VolumeSize:          helpers.ResourceToPointer(resource.MustParse("20Gi")),
+						VolumeType:          helpers.StringPtr("io2"),
+						IOPS:                helpers.Int64Ptr(4000),
+						Encrypted:           helpers.BoolPtr(false),
+						KMSKeyID:            helpers.StringPtr("arn:aws:kms:us-east-1:000000000000:key/test"),
+						DeleteOnTermination: helpers.BoolPtr(false),
+					},
+				},
+				{
+					DeviceName: helpers.StringPtr("/dev/sdg"),
+					EBS: &karpenterv1.BlockDevice{
+						VolumeSize:          helpers.ResourceToPointer(resource.MustParse("10Gi")),
+						VolumeType:          helpers.StringPtr("gp3"),
+						IOPS:                helpers.Int64Ptr(6000),
+						Throughput:          helpers.Int64Ptr(250),
+						Encrypted:           helpers.BoolPtr(true),
+						DeleteOnTermination: helpers.BoolPtr(true),
+					},
+				},
+				{
+					DeviceName: helpers.StringPtr("/dev/sdh"),
+					EBS: &karpenterv1.BlockDevice{
+						VolumeSize:          helpers.ResourceToPointer(resource.MustParse("10Gi")),
+						VolumeType:          helpers.StringPtr("st1"),
+						Encrypted:           helpers.BoolPtr(true),
+						DeleteOnTermination: helpers.BoolPtr(true),
+					},
+				},
+			},
+		},
+		{
+			description:   "should fail when a volume has no device",
+			volumes:       []kopsapi.VolumeSpec{{Size: 5}},
+			expectedError: "volumes[0]: device name required",
+		},
+		{
+			description:   "should fail when a volume uses the root device",
+			volumes:       []kopsapi.VolumeSpec{{Device: "/dev/sda1", Size: 5}},
+			expectedError: `volumes[0]: device "/dev/sda1" is already used`,
+		},
+		{
+			description:   "should fail when two volumes use the same device",
+			volumes:       []kopsapi.VolumeSpec{{Device: "/dev/sdf", Size: 5}, {Device: "/dev/sdf", Size: 5}},
+			expectedError: `volumes[1]: device "/dev/sdf" is already used`,
+		},
+		{
+			description:   "should fail when a volume has no size",
+			volumes:       []kopsapi.VolumeSpec{{Device: "/dev/sdf"}},
+			expectedError: "volumes[0]: size must be greater than zero",
+		},
+	}
+	RegisterFailHandler(Fail)
+	g := NewWithT(t)
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			igSpec := &kopsapi.InstanceGroupSpec{
+				RootVolume: &kopsapi.InstanceRootVolumeSpec{Size: helpers.Int32Ptr(6)},
+				Volumes:    tc.volumes,
+			}
+			output, err := BuildKarpenterBlockDeviceMappingsV1FromKops(igSpec)
+			if tc.expectedError != "" {
+				g.Expect(err).To(MatchError(tc.expectedError))
+				return
+			}
+			g.Expect(err).NotTo(HaveOccurred())
 			g.Expect(output).To(Equal(tc.expectedOutput))
 		})
 	}
