@@ -60,6 +60,7 @@ import (
 	"k8s.io/kops/pkg/kubemanifest"
 	"k8s.io/kops/pkg/validation"
 	"k8s.io/kops/upup/pkg/fi"
+	"k8s.io/kops/upup/pkg/fi/cloudup/awsup"
 
 	"k8s.io/kops/upup/pkg/fi/cloudup"
 	clusterv1 "sigs.k8s.io/cluster-api/api/v1beta1"
@@ -159,7 +160,7 @@ func (r *KopsControlPlaneReconciler) shouldDeleteCluster(kcp *controlplanev1alph
 	return false
 }
 
-func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, shouldIgnoreSG bool) error {
+func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, shouldIgnoreSG bool, resolveImage utils.ImageResolver) error {
 	s3Bucket, err := utils.GetBucketName(configBase)
 	if err != nil {
 		return err
@@ -238,7 +239,7 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
 					return err
 				}
-				ec2NodeClass, err := utils.CreateEC2NodeClassV1(kopsCluster, &kmp, nodePool.Name, terraformOutputDir)
+				ec2NodeClass, err := utils.CreateEC2NodeClassV1(kopsCluster, &kmp, nodePool.Name, terraformOutputDir, resolveImage)
 				if err != nil {
 					return err
 				}
@@ -734,7 +735,7 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 			return resultError, err
 		}
 
-		err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, nil, false, kopsControlPlane.Spec.KopsClusterSpec.ConfigStore.Base, terraformOutputDir, false)
+		err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, nil, false, kopsControlPlane.Spec.KopsClusterSpec.ConfigStore.Base, terraformOutputDir, false, nil)
 		if err != nil {
 			return resultError, err
 		}
@@ -928,7 +929,11 @@ func (r *KopsControlPlaneReconciler) Reconcile(ctx context.Context, req ctrl.Req
 	conditions.MarkTrue(kopsControlPlane, controlplanev1alpha1.KopsTerraformGenerationReadyCondition)
 
 	// Prepare custom cloud resources
-	err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, existingKopsMachinePool, shouldEnableKarpenter, fullCluster.Spec.ConfigStore.Base, terraformOutputDir, shouldIgnoreSG)
+	var resolveImage utils.ImageResolver
+	if awsCloud, ok := cloud.(awsup.AWSCloud); ok {
+		resolveImage = awsCloud.ResolveImage
+	}
+	err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kopsControlPlane, existingKopsMachinePool, shouldEnableKarpenter, fullCluster.Spec.ConfigStore.Base, terraformOutputDir, shouldIgnoreSG, resolveImage)
 	if err != nil {
 		return resultError, err
 	}

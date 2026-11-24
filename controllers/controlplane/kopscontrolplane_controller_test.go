@@ -21,6 +21,7 @@ import (
 	expv1 "sigs.k8s.io/cluster-api/exp/api/v1beta1"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/topfreegames/kubernetes-kops-operator/pkg/helpers"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	karpenterv1 "sigs.k8s.io/karpenter/pkg/apis/v1"
@@ -2087,7 +2088,11 @@ func TestPrepareCustomCloudResources(t *testing.T) {
 			g.Expect(err).NotTo(HaveOccurred())
 
 			reconciler := &KopsControlPlaneReconciler{}
-			err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kcp, []infrastructurev1alpha1.KopsMachinePool{*kmp}, true, kopsCluster.Spec.ConfigStore.Base, terraformOutputDir, true)
+			err = reconciler.PrepareCustomCloudResources(ctx, kopsCluster, kcp, []infrastructurev1alpha1.KopsMachinePool{*kmp}, true, kopsCluster.Spec.ConfigStore.Base, terraformOutputDir, true, func(string) (*ec2types.Image, error) {
+				return &ec2types.Image{RootDeviceName: aws.String("/dev/sda1"), BlockDeviceMappings: []ec2types.BlockDeviceMapping{
+					{DeviceName: aws.String("/dev/sda1"), Ebs: &ec2types.EbsBlockDevice{VolumeSize: aws.Int32(20)}},
+				}}, nil
+			})
 			g.Expect(err).NotTo(HaveOccurred())
 
 			generatedBackendTF, err := os.ReadFile(terraformOutputDir + "/backend.tf")

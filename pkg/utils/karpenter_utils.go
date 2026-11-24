@@ -1,11 +1,12 @@
 package utils
 
 import (
-	"cmp"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	karpenterv1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1"
 
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -113,58 +114,65 @@ func BuildKarpenterVolumeConfigV1FromKops(kopsVolume *kopsapi.InstanceRootVolume
 
 const karpenterRootDeviceName = "/dev/sda1"
 
-func BuildKarpenterBlockDeviceMappingsV1FromKops(igSpec *kopsapi.InstanceGroupSpec) ([]*karpenterv1.BlockDeviceMapping, error) {
-	blockDeviceMappings := []*karpenterv1.BlockDeviceMapping{
-		{
-			DeviceName: helpers.StringPtr(karpenterRootDeviceName),
-			EBS:        BuildKarpenterVolumeConfigV1FromKops(igSpec.RootVolume),
-			RootVolume: true,
-		},
+type ImageResolver func(image string) (*ec2types.Image, error)
+
+func BuildKarpenterBlockDeviceMappingsV1FromKops(rootVolume *kopsapi.InstanceRootVolumeSpec, image *ec2types.Image) ([]*karpenterv1.BlockDeviceMapping, error) {
+	root := BuildKarpenterVolumeConfigV1FromKops(rootVolume)
+
+	var amiRoot *ec2types.BlockDeviceMapping
+	var amiStripes []ec2types.BlockDeviceMapping
+	for _, mapping := range image.BlockDeviceMappings {
+		if mapping.Ebs == nil {
+			continue
+		}
+		if aws.ToString(mapping.DeviceName) == aws.ToString(image.RootDeviceName) {
+			amiRoot = &mapping
+		} else {
+			amiStripes = append(amiStripes, mapping)
+		}
 	}
 
-	devices := map[string]bool{karpenterRootDeviceName: true}
-	for i, volume := range igSpec.Volumes {
-		if volume.Device == "" {
-			return nil, fmt.Errorf("volumes[%d]: device name required", i)
-		}
-		if devices[volume.Device] {
-			return nil, fmt.Errorf("volumes[%d]: device %q is already used", i, volume.Device)
-		}
-		devices[volume.Device] = true
-		if volume.Size <= 0 {
-			return nil, fmt.Errorf("volumes[%d]: size must be greater than zero", i)
-		}
+	if len(amiStripes) == 0 {
+		return []*karpenterv1.BlockDeviceMapping{
+			{DeviceName: helpers.StringPtr(karpenterRootDeviceName), EBS: root, RootVolume: true},
+		}, nil
+	}
 
-		volumeType := cmp.Or(volume.Type, "gp3")
-		ebs := &karpenterv1.BlockDevice{
-			VolumeSize:          helpers.ResourceToPointer(resource.MustParse(fmt.Sprintf("%dGi", volume.Size))),
-			VolumeType:          helpers.StringPtr(volumeType),
-			Encrypted:           helpers.BoolPtr(valueOr(volume.Encrypted, true)),
-			KMSKeyID:            volume.Key,
-			DeleteOnTermination: helpers.BoolPtr(valueOr(volume.DeleteOnTermination, true)),
+	if amiRoot == nil {
+		return nil, fmt.Errorf("image %s has extra EBS volumes but no root EBS volume", aws.ToString(image.ImageId))
+	}
+	amiStripeGiB := int64(aws.ToInt32(amiStripes[0].Ebs.VolumeSize))
+	for _, mapping := range amiStripes {
+		if int64(aws.ToInt32(mapping.Ebs.VolumeSize)) != amiStripeGiB {
+			return nil, fmt.Errorf("image %s has EBS volumes of different sizes", aws.ToString(image.ImageId))
 		}
-		switch volumeType {
-		case "gp3":
-			ebs.IOPS = helpers.Int64Ptr(valueOr(volume.IOPS, 3000))
-			ebs.Throughput = helpers.Int64Ptr(valueOr(volume.Throughput, 125))
-		case "io1", "io2":
-			ebs.IOPS = helpers.Int64Ptr(valueOr(volume.IOPS, 100))
-		}
+	}
+	rootExtraGiB := int64(aws.ToInt32(amiRoot.Ebs.VolumeSize)) - amiStripeGiB
+	if rootExtraGiB < 0 {
+		return nil, fmt.Errorf("image %s has a root volume smaller than its other EBS volumes", aws.ToString(image.ImageId))
+	}
 
+	totalGiB := root.VolumeSize.Value() >> 30
+	stripeCount := int64(len(amiStripes) + 1)
+	stripeGiB := (totalGiB - rootExtraGiB + stripeCount - 1) / stripeCount
+	stripeGiB = max(stripeGiB, amiStripeGiB)
+
+	blockDeviceMappings := []*karpenterv1.BlockDeviceMapping{
+		{DeviceName: amiRoot.DeviceName, EBS: withSize(root, stripeGiB+rootExtraGiB), RootVolume: true},
+	}
+	for _, mapping := range amiStripes {
 		blockDeviceMappings = append(blockDeviceMappings, &karpenterv1.BlockDeviceMapping{
-			DeviceName: helpers.StringPtr(volume.Device),
-			EBS:        ebs,
+			DeviceName: mapping.DeviceName,
+			EBS:        withSize(root, stripeGiB),
 		})
 	}
-
 	return blockDeviceMappings, nil
 }
 
-func valueOr[T any](value *T, fallback T) T {
-	if value == nil {
-		return fallback
-	}
-	return *value
+func withSize(volume *karpenterv1.BlockDevice, sizeGiB int64) *karpenterv1.BlockDevice {
+	sized := volume.DeepCopy()
+	sized.VolumeSize = helpers.ResourceToPointer(resource.MustParse(fmt.Sprintf("%dGi", sizeGiB)))
+	return sized
 }
 
 var karpenterEvictionSignals = map[string]bool{
@@ -241,7 +249,7 @@ func GetKubeletConfiguration(clusterKubeletSpec, igKubeletSpec *kopsapi.KubeletC
 	return kubeletConfiguration, nil
 }
 
-func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string) (*karpenterv1.EC2NodeClass, error) {
+func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string, resolveImage ImageResolver) (*karpenterv1.EC2NodeClass, error) {
 	amiName, amiAccount, err := GetAmiNameFromImageSource(kmp.Spec.KopsInstanceGroupSpec.Image)
 	if err != nil {
 		return nil, err
@@ -257,7 +265,15 @@ func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alp
 		return nil, err
 	}
 
-	blockDeviceMappings, err := BuildKarpenterBlockDeviceMappingsV1FromKops(&kmp.Spec.KopsInstanceGroupSpec)
+	if resolveImage == nil {
+		return nil, fmt.Errorf("no image resolver: karpenter node classes need an AWS cloud")
+	}
+	image, err := resolveImage(kmp.Spec.KopsInstanceGroupSpec.Image)
+	if err != nil {
+		return nil, fmt.Errorf("resolving image %q: %w", kmp.Spec.KopsInstanceGroupSpec.Image, err)
+	}
+
+	blockDeviceMappings, err := BuildKarpenterBlockDeviceMappingsV1FromKops(kmp.Spec.KopsInstanceGroupSpec.RootVolume, image)
 	if err != nil {
 		return nil, err
 	}

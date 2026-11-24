@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	karpenterv1 "github.com/aws/karpenter-provider-aws/pkg/apis/v1"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -21,11 +23,34 @@ import (
 
 var defaultBlockDeviceV1 = BuildKarpenterVolumeConfigV1FromKops(nil)
 
+func testImage(rootGiB int32, stripeGiB ...int32) *ec2types.Image {
+	image := &ec2types.Image{
+		ImageId:        aws.String("ami-test"),
+		RootDeviceName: aws.String("/dev/sda1"),
+		BlockDeviceMappings: []ec2types.BlockDeviceMapping{
+			{DeviceName: aws.String("/dev/sda1"), Ebs: &ec2types.EbsBlockDevice{VolumeSize: aws.Int32(rootGiB)}},
+			{DeviceName: aws.String("/dev/sdb"), VirtualName: aws.String("ephemeral0")},
+		},
+	}
+	for i, size := range stripeGiB {
+		image.BlockDeviceMappings = append(image.BlockDeviceMappings, ec2types.BlockDeviceMapping{
+			DeviceName: aws.String(fmt.Sprintf("/dev/sd%c", 'f'+i)),
+			Ebs:        &ec2types.EbsBlockDevice{VolumeSize: aws.Int32(size)},
+		})
+	}
+	return image
+}
+
+func resolveTo(image *ec2types.Image) ImageResolver {
+	return func(string) (*ec2types.Image, error) { return image, nil }
+}
+
 func TestCreateEC2NodeClassV1(t *testing.T) {
 	testCases := []struct {
 		description             string
 		kopsMachinePoolFunction func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool
 		userData                string
+		resolveImage            ImageResolver
 		expectedError           error
 		expectedEC2NodeClass    *karpenterv1.EC2NodeClass
 	}{
@@ -117,12 +142,9 @@ func TestCreateEC2NodeClassV1(t *testing.T) {
 			userData:      "dummy content",
 		},
 		{
-			description: "should fail with an invalid instance group volume",
-			kopsMachinePoolFunction: func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool {
-				kopsMachinePool.Spec.KopsInstanceGroupSpec.Volumes = []kopsapi.VolumeSpec{{Size: 5}}
-				return kopsMachinePool
-			},
-			expectedError: fmt.Errorf("volumes[0]: device name required"),
+			description:   "should fail when the image cannot be resolved",
+			resolveImage:  func(string) (*ec2types.Image, error) { return nil, fmt.Errorf("not found") },
+			expectedError: fmt.Errorf(`resolving image "000000000000/ubuntu-v1": not found`),
 			userData:      "dummy content",
 		},
 		{
@@ -170,7 +192,11 @@ func TestCreateEC2NodeClassV1(t *testing.T) {
 				kmp = tc.kopsMachinePoolFunction(kmp)
 			}
 
-			ec2NodeClass, err := CreateEC2NodeClassV1(kopsCluster, kmp, kmp.Name, terraformOutputDir)
+			resolveImage := tc.resolveImage
+			if resolveImage == nil {
+				resolveImage = resolveTo(testImage(60))
+			}
+			ec2NodeClass, err := CreateEC2NodeClassV1(kopsCluster, kmp, kmp.Name, terraformOutputDir, resolveImage)
 			if tc.expectedError != nil {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(Equal(tc.expectedError.Error()))
@@ -261,125 +287,68 @@ func TestBuildKarpenterVolumeConfigV1FromKops(t *testing.T) {
 }
 
 func TestBuildKarpenterBlockDeviceMappingsV1FromKops(t *testing.T) {
-	rootMapping := &karpenterv1.BlockDeviceMapping{
-		DeviceName: helpers.StringPtr("/dev/sda1"),
-		EBS: &karpenterv1.BlockDevice{
-			VolumeSize:          helpers.ResourceToPointer(resource.MustParse("6Gi")),
-			VolumeType:          helpers.StringPtr("gp3"),
-			IOPS:                helpers.Int64Ptr(3000),
-			Encrypted:           helpers.BoolPtr(true),
-			Throughput:          helpers.Int64Ptr(125),
-			DeleteOnTermination: helpers.BoolPtr(true),
-		},
-		RootVolume: true,
-	}
-	gp3Mapping := func(device, size string) *karpenterv1.BlockDeviceMapping {
-		return &karpenterv1.BlockDeviceMapping{
-			DeviceName: helpers.StringPtr(device),
-			EBS: &karpenterv1.BlockDevice{
-				VolumeSize:          helpers.ResourceToPointer(resource.MustParse(size)),
-				VolumeType:          helpers.StringPtr("gp3"),
-				IOPS:                helpers.Int64Ptr(3000),
-				Throughput:          helpers.Int64Ptr(125),
-				Encrypted:           helpers.BoolPtr(true),
-				DeleteOnTermination: helpers.BoolPtr(true),
-			},
-		}
+	mapping := func(device string, sizeGiB int64, root bool) *karpenterv1.BlockDeviceMapping {
+		ebs := defaultBlockDeviceV1.DeepCopy()
+		ebs.VolumeSize = helpers.ResourceToPointer(resource.MustParse(fmt.Sprintf("%dGi", sizeGiB)))
+		return &karpenterv1.BlockDeviceMapping{DeviceName: aws.String(device), EBS: ebs, RootVolume: root}
 	}
 
 	testCases := []struct {
 		description    string
-		volumes        []kopsapi.VolumeSpec
+		rootVolumeSize *int32
+		image          *ec2types.Image
 		expectedOutput []*karpenterv1.BlockDeviceMapping
 		expectedError  string
 	}{
 		{
-			description:    "should return only the root volume when the instance group has no volumes",
-			expectedOutput: []*karpenterv1.BlockDeviceMapping{rootMapping},
+			description:    "should return only the root volume for an image with one EBS volume",
+			rootVolumeSize: helpers.Int32Ptr(60),
+			image:          testImage(20),
+			expectedOutput: []*karpenterv1.BlockDeviceMapping{mapping("/dev/sda1", 60, true)},
 		},
 		{
-			description: "should add one gp3 mapping per volume with the kops defaults",
-			volumes: []kopsapi.VolumeSpec{
-				{Device: "/dev/sdf", Size: 5},
-				{Device: "/dev/sdg", Size: 5},
-				{Device: "/dev/sdh", Size: 5},
-			},
+			description:    "should split the root volume size over the image stripes and round up",
+			rootVolumeSize: helpers.Int32Ptr(50),
+			image:          testImage(6, 5, 5, 5),
 			expectedOutput: []*karpenterv1.BlockDeviceMapping{
-				rootMapping,
-				gp3Mapping("/dev/sdf", "5Gi"),
-				gp3Mapping("/dev/sdg", "5Gi"),
-				gp3Mapping("/dev/sdh", "5Gi"),
+				mapping("/dev/sda1", 14, true),
+				mapping("/dev/sdf", 13, false),
+				mapping("/dev/sdg", 13, false),
+				mapping("/dev/sdh", 13, false),
 			},
 		},
 		{
-			description: "should keep the values set on the volume",
-			volumes: []kopsapi.VolumeSpec{
-				{
-					Device:              "/dev/sdf",
-					Size:                20,
-					Type:                "io2",
-					IOPS:                helpers.Int64Ptr(4000),
-					Encrypted:           helpers.BoolPtr(false),
-					DeleteOnTermination: helpers.BoolPtr(false),
-					Key:                 helpers.StringPtr("arn:aws:kms:us-east-1:000000000000:key/test"),
-				},
-				{Device: "/dev/sdg", Size: 10, Type: "gp3", IOPS: helpers.Int64Ptr(6000), Throughput: helpers.Int64Ptr(250)},
-				{Device: "/dev/sdh", Size: 10, Type: "st1", IOPS: helpers.Int64Ptr(500), Throughput: helpers.Int64Ptr(250)},
-			},
+			description: "should use the default root volume size of 60 GiB",
+			image:       testImage(6, 5, 5, 5),
 			expectedOutput: []*karpenterv1.BlockDeviceMapping{
-				rootMapping,
-				{
-					DeviceName: helpers.StringPtr("/dev/sdf"),
-					EBS: &karpenterv1.BlockDevice{
-						VolumeSize:          helpers.ResourceToPointer(resource.MustParse("20Gi")),
-						VolumeType:          helpers.StringPtr("io2"),
-						IOPS:                helpers.Int64Ptr(4000),
-						Encrypted:           helpers.BoolPtr(false),
-						KMSKeyID:            helpers.StringPtr("arn:aws:kms:us-east-1:000000000000:key/test"),
-						DeleteOnTermination: helpers.BoolPtr(false),
-					},
-				},
-				{
-					DeviceName: helpers.StringPtr("/dev/sdg"),
-					EBS: &karpenterv1.BlockDevice{
-						VolumeSize:          helpers.ResourceToPointer(resource.MustParse("10Gi")),
-						VolumeType:          helpers.StringPtr("gp3"),
-						IOPS:                helpers.Int64Ptr(6000),
-						Throughput:          helpers.Int64Ptr(250),
-						Encrypted:           helpers.BoolPtr(true),
-						DeleteOnTermination: helpers.BoolPtr(true),
-					},
-				},
-				{
-					DeviceName: helpers.StringPtr("/dev/sdh"),
-					EBS: &karpenterv1.BlockDevice{
-						VolumeSize:          helpers.ResourceToPointer(resource.MustParse("10Gi")),
-						VolumeType:          helpers.StringPtr("st1"),
-						Encrypted:           helpers.BoolPtr(true),
-						DeleteOnTermination: helpers.BoolPtr(true),
-					},
-				},
+				mapping("/dev/sda1", 16, true),
+				mapping("/dev/sdf", 15, false),
+				mapping("/dev/sdg", 15, false),
+				mapping("/dev/sdh", 15, false),
 			},
 		},
 		{
-			description:   "should fail when a volume has no device",
-			volumes:       []kopsapi.VolumeSpec{{Size: 5}},
-			expectedError: "volumes[0]: device name required",
+			description:    "should not go below the image volume sizes",
+			rootVolumeSize: helpers.Int32Ptr(10),
+			image:          testImage(6, 5, 5, 5),
+			expectedOutput: []*karpenterv1.BlockDeviceMapping{
+				mapping("/dev/sda1", 6, true),
+				mapping("/dev/sdf", 5, false),
+				mapping("/dev/sdg", 5, false),
+				mapping("/dev/sdh", 5, false),
+			},
 		},
 		{
-			description:   "should fail when a volume uses the root device",
-			volumes:       []kopsapi.VolumeSpec{{Device: "/dev/sda1", Size: 5}},
-			expectedError: `volumes[0]: device "/dev/sda1" is already used`,
+			description:    "should fail when the image stripes have different sizes",
+			rootVolumeSize: helpers.Int32Ptr(60),
+			image:          testImage(6, 5, 5, 8),
+			expectedError:  "image ami-test has EBS volumes of different sizes",
 		},
 		{
-			description:   "should fail when two volumes use the same device",
-			volumes:       []kopsapi.VolumeSpec{{Device: "/dev/sdf", Size: 5}, {Device: "/dev/sdf", Size: 5}},
-			expectedError: `volumes[1]: device "/dev/sdf" is already used`,
-		},
-		{
-			description:   "should fail when a volume has no size",
-			volumes:       []kopsapi.VolumeSpec{{Device: "/dev/sdf"}},
-			expectedError: "volumes[0]: size must be greater than zero",
+			description:    "should fail when the image root volume is smaller than its stripes",
+			rootVolumeSize: helpers.Int32Ptr(60),
+			image:          testImage(4, 5, 5, 5),
+			expectedError:  "image ami-test has a root volume smaller than its other EBS volumes",
 		},
 	}
 	RegisterFailHandler(Fail)
@@ -387,11 +356,11 @@ func TestBuildKarpenterBlockDeviceMappingsV1FromKops(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			igSpec := &kopsapi.InstanceGroupSpec{
-				RootVolume: &kopsapi.InstanceRootVolumeSpec{Size: helpers.Int32Ptr(6)},
-				Volumes:    tc.volumes,
+			var rootVolume *kopsapi.InstanceRootVolumeSpec
+			if tc.rootVolumeSize != nil {
+				rootVolume = &kopsapi.InstanceRootVolumeSpec{Size: tc.rootVolumeSize}
 			}
-			output, err := BuildKarpenterBlockDeviceMappingsV1FromKops(igSpec)
+			output, err := BuildKarpenterBlockDeviceMappingsV1FromKops(rootVolume, tc.image)
 			if tc.expectedError != "" {
 				g.Expect(err).To(MatchError(tc.expectedError))
 				return
