@@ -2501,3 +2501,31 @@ func assertCondition(g *WithT, from conditions.Getter, condition *clusterv1.Cond
 		}
 	}
 }
+
+func TestResolveImageOnce(t *testing.T) {
+	g := NewWithT(t)
+	image := &ec2types.Image{ImageId: aws.String("ami-test")}
+
+	calls := 0
+	resolveImage := func(name string) (*ec2types.Image, error) {
+		calls++
+		if name == "missing" {
+			return nil, fmt.Errorf("not found")
+		}
+		return image, nil
+	}
+	resolved := map[string]*ec2types.Image{}
+
+	for range 2 {
+		got, err := resolveImageOnce(resolveImage, resolved, "owner/image")
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(got).To(Equal(image))
+	}
+	g.Expect(calls).To(Equal(1))
+
+	_, err := resolveImageOnce(resolveImage, resolved, "missing")
+	g.Expect(err).To(MatchError(`resolving image "missing": not found`))
+
+	_, err = resolveImageOnce(nil, resolved, "other")
+	g.Expect(err).To(MatchError(`resolving image "other": no AWS cloud`))
+}

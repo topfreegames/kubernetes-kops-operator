@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -41,16 +42,11 @@ func testImage(rootGiB int32, stripeGiB ...int32) *ec2types.Image {
 	return image
 }
 
-func resolveTo(image *ec2types.Image) ImageResolver {
-	return func(string) (*ec2types.Image, error) { return image, nil }
-}
-
 func TestCreateEC2NodeClassV1(t *testing.T) {
 	testCases := []struct {
 		description             string
 		kopsMachinePoolFunction func(kopsMachinePool *infrastructurev1alpha1.KopsMachinePool) *infrastructurev1alpha1.KopsMachinePool
 		userData                string
-		resolveImage            ImageResolver
 		expectedError           error
 		expectedEC2NodeClass    *karpenterv1.EC2NodeClass
 	}{
@@ -142,12 +138,6 @@ func TestCreateEC2NodeClassV1(t *testing.T) {
 			userData:      "dummy content",
 		},
 		{
-			description:   "should fail when the image cannot be resolved",
-			resolveImage:  func(string) (*ec2types.Image, error) { return nil, fmt.Errorf("not found") },
-			expectedError: fmt.Errorf(`resolving image "000000000000/ubuntu-v1": not found`),
-			userData:      "dummy content",
-		},
-		{
 			description:   "should fail with empty user data",
 			expectedError: fmt.Errorf("user data file is empty"),
 		},
@@ -192,11 +182,13 @@ func TestCreateEC2NodeClassV1(t *testing.T) {
 				kmp = tc.kopsMachinePoolFunction(kmp)
 			}
 
-			resolveImage := tc.resolveImage
-			if resolveImage == nil {
-				resolveImage = resolveTo(testImage(60))
+			ec2NodeClass, err := CreateEC2NodeClassV1(kopsCluster, kmp, kmp.Name, terraformOutputDir, testImage(20))
+			if err == nil {
+				striped, err := CreateEC2NodeClassV1(kopsCluster, kmp, kmp.Name, terraformOutputDir, testImage(6, 5, 5, 5))
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(striped.Spec.BlockDeviceMappings).To(HaveLen(4))
+				g.Expect(striped.Spec.BlockDeviceMappings[0].RootVolume).To(BeTrue())
 			}
-			ec2NodeClass, err := CreateEC2NodeClassV1(kopsCluster, kmp, kmp.Name, terraformOutputDir, resolveImage)
 			if tc.expectedError != nil {
 				g.Expect(err).To(HaveOccurred())
 				g.Expect(err.Error()).To(Equal(tc.expectedError.Error()))
@@ -296,6 +288,7 @@ func TestBuildKarpenterBlockDeviceMappingsV1FromKops(t *testing.T) {
 	testCases := []struct {
 		description    string
 		rootVolumeSize *int32
+		rootVolume     *kopsapi.InstanceRootVolumeSpec
 		image          *ec2types.Image
 		expectedOutput []*karpenterv1.BlockDeviceMapping
 		expectedError  string
@@ -339,6 +332,83 @@ func TestBuildKarpenterBlockDeviceMappingsV1FromKops(t *testing.T) {
 			},
 		},
 		{
+			description:    "should return only the root volume when there is no image",
+			rootVolumeSize: helpers.Int32Ptr(60),
+			expectedOutput: []*karpenterv1.BlockDeviceMapping{mapping("/dev/sda1", 60, true)},
+		},
+		{
+			description:    "should sort the stripes by device name",
+			rootVolumeSize: helpers.Int32Ptr(50),
+			image: func() *ec2types.Image {
+				image := testImage(6, 5, 5, 5)
+				slices.Reverse(image.BlockDeviceMappings)
+				return image
+			}(),
+			expectedOutput: []*karpenterv1.BlockDeviceMapping{
+				mapping("/dev/sda1", 14, true),
+				mapping("/dev/sdf", 13, false),
+				mapping("/dev/sdg", 13, false),
+				mapping("/dev/sdh", 13, false),
+			},
+		},
+		{
+			description: "should split the root IOPS and throughput over the stripes, not below the gp3 baseline",
+			rootVolume: &kopsapi.InstanceRootVolumeSpec{
+				Size:       helpers.Int32Ptr(50),
+				IOPS:       helpers.Int32Ptr(16000),
+				Throughput: helpers.Int32Ptr(400),
+			},
+			image: testImage(6, 5, 5, 5),
+			expectedOutput: func() []*karpenterv1.BlockDeviceMapping {
+				mappings := []*karpenterv1.BlockDeviceMapping{
+					mapping("/dev/sda1", 14, true),
+					mapping("/dev/sdf", 13, false),
+					mapping("/dev/sdg", 13, false),
+					mapping("/dev/sdh", 13, false),
+				}
+				for _, m := range mappings {
+					m.EBS.IOPS = helpers.Int64Ptr(4000)
+					m.EBS.Throughput = helpers.Int64Ptr(125)
+				}
+				return mappings
+			}(),
+		},
+		{
+			description: "should keep IOPS within the gp3 limit of 500 per GiB",
+			rootVolume: &kopsapi.InstanceRootVolumeSpec{
+				Size: helpers.Int32Ptr(32),
+				IOPS: helpers.Int32Ptr(16000),
+			},
+			image: testImage(9, 5, 5, 5),
+			expectedOutput: func() []*karpenterv1.BlockDeviceMapping {
+				mappings := []*karpenterv1.BlockDeviceMapping{
+					mapping("/dev/sda1", 11, true),
+					mapping("/dev/sdf", 7, false),
+					mapping("/dev/sdg", 7, false),
+					mapping("/dev/sdh", 7, false),
+				}
+				for _, m := range mappings {
+					m.EBS.IOPS = helpers.Int64Ptr(3500)
+				}
+				return mappings
+			}(),
+		},
+		{
+			description:   "should fail when the image has a striped root and the root volume is not gp3",
+			rootVolume:    &kopsapi.InstanceRootVolumeSpec{Type: helpers.StringPtr("io2")},
+			image:         testImage(6, 5, 5, 5),
+			expectedError: "image ami-test has a striped root, which needs a gp3 root volume type",
+		},
+		{
+			description: "should fail when the image has extra EBS volumes but no root EBS volume",
+			image: func() *ec2types.Image {
+				image := testImage(6, 5, 5, 5)
+				image.RootDeviceName = aws.String("/dev/xvda")
+				return image
+			}(),
+			expectedError: "image ami-test has extra EBS volumes but no root EBS volume",
+		},
+		{
 			description:    "should fail when the image stripes have different sizes",
 			rootVolumeSize: helpers.Int32Ptr(60),
 			image:          testImage(6, 5, 5, 8),
@@ -352,11 +422,11 @@ func TestBuildKarpenterBlockDeviceMappingsV1FromKops(t *testing.T) {
 		},
 	}
 	RegisterFailHandler(Fail)
-	g := NewWithT(t)
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
-			var rootVolume *kopsapi.InstanceRootVolumeSpec
+			g := NewWithT(t)
+			rootVolume := tc.rootVolume
 			if tc.rootVolumeSize != nil {
 				rootVolume = &kopsapi.InstanceRootVolumeSpec{Size: tc.rootVolumeSize}
 			}

@@ -29,6 +29,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/autoscaling"
 	asgTypes "github.com/aws/aws-sdk-go-v2/service/autoscaling/types"
+	ec2types "github.com/aws/aws-sdk-go-v2/service/ec2/types"
 	"github.com/go-logr/logr"
 	"github.com/go-logr/zapr"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -160,6 +161,21 @@ func (r *KopsControlPlaneReconciler) shouldDeleteCluster(kcp *controlplanev1alph
 	return false
 }
 
+func resolveImageOnce(resolveImage utils.ImageResolver, resolved map[string]*ec2types.Image, name string) (*ec2types.Image, error) {
+	if image, ok := resolved[name]; ok {
+		return image, nil
+	}
+	if resolveImage == nil {
+		return nil, fmt.Errorf("resolving image %q: no AWS cloud", name)
+	}
+	image, err := resolveImage(name)
+	if err != nil {
+		return nil, fmt.Errorf("resolving image %q: %w", name, err)
+	}
+	resolved[name] = image
+	return image, nil
+}
+
 func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Context, kopsCluster *kopsapi.Cluster, kopsControlPlane *controlplanev1alpha1.KopsControlPlane, kmps []infrastructurev1alpha1.KopsMachinePool, shouldEnableKarpenter bool, configBase, terraformOutputDir string, shouldIgnoreSG bool, resolveImage utils.ImageResolver) error {
 	s3Bucket, err := utils.GetBucketName(configBase)
 	if err != nil {
@@ -218,6 +234,7 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 			return err
 		}
 
+		resolvedImages := map[string]*ec2types.Image{}
 		for _, kmp := range kmps {
 			for _, nodePool := range kmp.Spec.KarpenterNodePoolsV1 {
 				nodePool.SetLabels(map[string]string{
@@ -239,7 +256,11 @@ func (r *KopsControlPlaneReconciler) PrepareCustomCloudResources(ctx context.Con
 				if _, err := karpenterResourcesContent.Write([]byte("---\n")); err != nil {
 					return err
 				}
-				ec2NodeClass, err := utils.CreateEC2NodeClassV1(kopsCluster, &kmp, nodePool.Name, terraformOutputDir, resolveImage)
+				image, err := resolveImageOnce(resolveImage, resolvedImages, kmp.Spec.KopsInstanceGroupSpec.Image)
+				if err != nil {
+					return err
+				}
+				ec2NodeClass, err := utils.CreateEC2NodeClassV1(kopsCluster, &kmp, nodePool.Name, terraformOutputDir, image)
 				if err != nil {
 					return err
 				}

@@ -2,6 +2,7 @@ package utils
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -118,9 +119,15 @@ type ImageResolver func(image string) (*ec2types.Image, error)
 
 func BuildKarpenterBlockDeviceMappingsV1FromKops(rootVolume *kopsapi.InstanceRootVolumeSpec, image *ec2types.Image) ([]*karpenterv1.BlockDeviceMapping, error) {
 	root := BuildKarpenterVolumeConfigV1FromKops(rootVolume)
+	rootOnly := []*karpenterv1.BlockDeviceMapping{
+		{DeviceName: helpers.StringPtr(karpenterRootDeviceName), EBS: root, RootVolume: true},
+	}
+	if image == nil {
+		return rootOnly, nil
+	}
 
 	var amiRoot *ec2types.BlockDeviceMapping
-	var amiStripes []ec2types.BlockDeviceMapping
+	var amiDataVolumes []ec2types.BlockDeviceMapping
 	for _, mapping := range image.BlockDeviceMappings {
 		if mapping.Ebs == nil {
 			continue
@@ -128,45 +135,58 @@ func BuildKarpenterBlockDeviceMappingsV1FromKops(rootVolume *kopsapi.InstanceRoo
 		if aws.ToString(mapping.DeviceName) == aws.ToString(image.RootDeviceName) {
 			amiRoot = &mapping
 		} else {
-			amiStripes = append(amiStripes, mapping)
+			amiDataVolumes = append(amiDataVolumes, mapping)
 		}
 	}
-
-	if len(amiStripes) == 0 {
-		return []*karpenterv1.BlockDeviceMapping{
-			{DeviceName: helpers.StringPtr(karpenterRootDeviceName), EBS: root, RootVolume: true},
-		}, nil
+	if len(amiDataVolumes) == 0 {
+		return rootOnly, nil
 	}
 
+	imageID := aws.ToString(image.ImageId)
 	if amiRoot == nil {
-		return nil, fmt.Errorf("image %s has extra EBS volumes but no root EBS volume", aws.ToString(image.ImageId))
+		return nil, fmt.Errorf("image %s has extra EBS volumes but no root EBS volume", imageID)
 	}
-	amiStripeGiB := int64(aws.ToInt32(amiStripes[0].Ebs.VolumeSize))
-	for _, mapping := range amiStripes {
+	if aws.ToString(root.VolumeType) != "gp3" {
+		return nil, fmt.Errorf("image %s has a striped root, which needs a gp3 root volume type", imageID)
+	}
+	amiStripeGiB := int64(aws.ToInt32(amiDataVolumes[0].Ebs.VolumeSize))
+	for _, mapping := range amiDataVolumes {
 		if int64(aws.ToInt32(mapping.Ebs.VolumeSize)) != amiStripeGiB {
-			return nil, fmt.Errorf("image %s has EBS volumes of different sizes", aws.ToString(image.ImageId))
+			return nil, fmt.Errorf("image %s has EBS volumes of different sizes", imageID)
 		}
 	}
 	rootExtraGiB := int64(aws.ToInt32(amiRoot.Ebs.VolumeSize)) - amiStripeGiB
 	if rootExtraGiB < 0 {
-		return nil, fmt.Errorf("image %s has a root volume smaller than its other EBS volumes", aws.ToString(image.ImageId))
+		return nil, fmt.Errorf("image %s has a root volume smaller than its other EBS volumes", imageID)
 	}
+	slices.SortFunc(amiDataVolumes, func(a, b ec2types.BlockDeviceMapping) int {
+		return strings.Compare(aws.ToString(a.DeviceName), aws.ToString(b.DeviceName))
+	})
 
 	totalGiB := root.VolumeSize.Value() >> 30
-	stripeCount := int64(len(amiStripes) + 1)
-	stripeGiB := (totalGiB - rootExtraGiB + stripeCount - 1) / stripeCount
-	stripeGiB = max(stripeGiB, amiStripeGiB)
+	volumeCount := int64(len(amiDataVolumes) + 1)
+	stripeGiB := max(ceilDiv(max(totalGiB-rootExtraGiB, 0), volumeCount), amiStripeGiB)
+
+	iops := max(min(ceilDiv(aws.ToInt64(root.IOPS), volumeCount), 500*stripeGiB), 3000)
+	throughput := max(min(ceilDiv(aws.ToInt64(root.Throughput), volumeCount), iops/4), 125)
+	perVolume := root.DeepCopy()
+	perVolume.IOPS = helpers.Int64Ptr(iops)
+	perVolume.Throughput = helpers.Int64Ptr(throughput)
 
 	blockDeviceMappings := []*karpenterv1.BlockDeviceMapping{
-		{DeviceName: amiRoot.DeviceName, EBS: withSize(root, stripeGiB+rootExtraGiB), RootVolume: true},
+		{DeviceName: amiRoot.DeviceName, EBS: withSize(perVolume, stripeGiB+rootExtraGiB), RootVolume: true},
 	}
-	for _, mapping := range amiStripes {
+	for _, mapping := range amiDataVolumes {
 		blockDeviceMappings = append(blockDeviceMappings, &karpenterv1.BlockDeviceMapping{
 			DeviceName: mapping.DeviceName,
-			EBS:        withSize(root, stripeGiB),
+			EBS:        withSize(perVolume, stripeGiB),
 		})
 	}
 	return blockDeviceMappings, nil
+}
+
+func ceilDiv(a, b int64) int64 {
+	return (a + b - 1) / b
 }
 
 func withSize(volume *karpenterv1.BlockDevice, sizeGiB int64) *karpenterv1.BlockDevice {
@@ -249,7 +269,7 @@ func GetKubeletConfiguration(clusterKubeletSpec, igKubeletSpec *kopsapi.KubeletC
 	return kubeletConfiguration, nil
 }
 
-func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string, resolveImage ImageResolver) (*karpenterv1.EC2NodeClass, error) {
+func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alpha1.KopsMachinePool, nodePoolName, terraformOutputDir string, image *ec2types.Image) (*karpenterv1.EC2NodeClass, error) {
 	amiName, amiAccount, err := GetAmiNameFromImageSource(kmp.Spec.KopsInstanceGroupSpec.Image)
 	if err != nil {
 		return nil, err
@@ -263,14 +283,6 @@ func CreateEC2NodeClassV1(kopsCluster *kopsapi.Cluster, kmp *infrastructurev1alp
 	kubeletConfiguration, err := GetKubeletConfiguration(kopsCluster.Spec.Kubelet, kmp.Spec.KopsInstanceGroupSpec.Kubelet)
 	if err != nil {
 		return nil, err
-	}
-
-	if resolveImage == nil {
-		return nil, fmt.Errorf("no image resolver: karpenter node classes need an AWS cloud")
-	}
-	image, err := resolveImage(kmp.Spec.KopsInstanceGroupSpec.Image)
-	if err != nil {
-		return nil, fmt.Errorf("resolving image %q: %w", kmp.Spec.KopsInstanceGroupSpec.Image, err)
 	}
 
 	blockDeviceMappings, err := BuildKarpenterBlockDeviceMappingsV1FromKops(kmp.Spec.KopsInstanceGroupSpec.RootVolume, image)
