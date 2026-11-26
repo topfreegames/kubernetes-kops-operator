@@ -127,8 +127,8 @@ github.com/aws/aws-sdk-go-v2/service/sts v1.51.1 h1:0HOqZXRvMytH6bFHVIc0oJX07sZj
 github.com/aws/aws-sdk-go-v2/service/sts v1.51.1/go.mod h1:26zA0GhDrLo+yiLI2yXWxqB1PdsShfLikoI7GOEgugM=
 github.com/aws/aws-sdk-go-v2/service/timestreamwrite v1.43.1 h1:KRjhh88DPdi591EyLRYVDB6fegXQnhGKSMokMZQnJCY=
 github.com/aws/aws-sdk-go-v2/service/timestreamwrite v1.43.1/go.mod h1:Nt+9fQz3mumtjAY3c98msDZySDqNLhFi0ImFc2dwQ1c=
-github.com/aws/karpenter-provider-aws v1.15.0 h1:3qnrxRxKHPg9Hd71D7xH4xKxPfmcrB30EFBrMz74mOs=
-github.com/aws/karpenter-provider-aws v1.15.0/go.mod h1:WI9MrEUDz2FQbYifRTNFJzlPsBZ+ru1MDY80p5VQI9g=
+github.com/aws/karpenter-provider-aws v1.15.3 h1:GSZcjWEwcQrENDACB/MEWH2BXWOSKxoLT8MGrHeHPc0=
+github.com/aws/karpenter-provider-aws v1.15.3/go.mod h1:G7KclCVXKPHzIqrCtEZYTVhcN+OjhC9LAJiRSXsSvMI=
 github.com/aws/smithy-go v1.28.2 h1:myhcykQcatTul2B/zITjDk203G7t0awUAs1hVry5Bvg=
 github.com/aws/smithy-go v1.28.2/go.mod h1:YE2RhdIuDbA5E5bTdciG9KrW3+TiEONeUWCqxX9i1Fc=
 github.com/awslabs/amazon-eks-ami/nodeadm v0.0.0-20240229193347-cfab22a10647 h1:8yRBVsjGmI7qQsPWtIrbWP+XfwHO9Wq7gdLVzjqiZFs=
@@ -604,8 +604,8 @@ sigs.k8s.io/controller-runtime v0.24.1 h1:miPEwrmirImAvgME1L9qebGHrOnGJoVmVdtOU9
 sigs.k8s.io/controller-runtime v0.24.1/go.mod h1:vFkfY5fGt5xAC/sKb8IBFKgWPNKG9OUG29dR8Y2wImw=
 sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 h1:IpInykpT6ceI+QxKBbEflcR5EXP7sU1kvOlxwZh5txg=
 sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730/go.mod h1:mdzfpAEoE6DHQEN0uh9ZbOCuHbLK5wOm7dK4ctXE9Tg=
-sigs.k8s.io/karpenter v1.15.0 h1:5SEptlAvsOZbNg4qg8OSdF1qi6BEZHZLA020nXY7jGw=
-sigs.k8s.io/karpenter v1.15.0/go.mod h1:hAk3YpkHR1KLOgnAJtoAuzY/d8ycEQFZ7hN/TFYPSpA=
+sigs.k8s.io/karpenter v1.15.1 h1:qBp9dqkJcS4OtvH/BG508OsqHpNuqffTVp7YMF48q54=
+sigs.k8s.io/karpenter v1.15.1/go.mod h1:XspcwAq94xMdotH5ZmqbTLsR3IOaje376N0BPbofgJk=
 sigs.k8s.io/kustomize/api v0.21.1 h1:lzqbzvz2CSvsjIUZUBNFKtIMsEw7hVLJp0JeSIVmuJs=
 sigs.k8s.io/kustomize/api v0.21.1/go.mod h1:f3wkKByTrgpgltLgySCntrYoq5d3q7aaxveSagwTlwI=
 sigs.k8s.io/kustomize/kyaml v0.21.1 h1:IVlbmhC076nf6foyL6Taw4BkrLuEsXUXNpsE+ScX7fI=
