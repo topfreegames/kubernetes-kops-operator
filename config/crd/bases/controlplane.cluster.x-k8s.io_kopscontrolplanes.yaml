@@ -631,6 +631,11 @@ spec:
                                   Default: 100m
                                 pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                                 x-kubernetes-int-or-string: true
+                              defaultLoadBalancerScheme:
+                                description: |-
+                                  DefaultLoadBalancerScheme specifies the default scheme for the load balancer.
+                                  Default: "internet-facing"
+                                type: string
                               enableShield:
                                 description: |-
                                   EnableShield specifies whether the controller can enable Shield Advanced.
@@ -1693,6 +1698,11 @@ spec:
                           Default: 40
                         format: int32
                         type: integer
+                      nodeStatusReportFrequency:
+                        description: |-
+                          NodeStatusReportFrequency is how often the kubelet posts node status to the apiserver when the status has not changed.
+                          If unset, the kubelet uses nodeStatusUpdateFrequency when that field is set, and 5m otherwise.
+                        type: string
                       nodeStatusUpdateFrequency:
                         description: |-
                           NodeStatusUpdateFrequency Specifies how often kubelet posts node status to master (default 10s)
@@ -5048,6 +5058,11 @@ spec:
                           Default: 40
                         format: int32
                         type: integer
+                      nodeStatusReportFrequency:
+                        description: |-
+                          NodeStatusReportFrequency is how often the kubelet posts node status to the apiserver when the status has not changed.
+                          If unset, the kubelet uses nodeStatusUpdateFrequency when that field is set, and 5m otherwise.
+                        type: string
                       nodeStatusUpdateFrequency:
                         description: |-
                           NodeStatusUpdateFrequency Specifies how often kubelet posts node status to master (default 10s)
