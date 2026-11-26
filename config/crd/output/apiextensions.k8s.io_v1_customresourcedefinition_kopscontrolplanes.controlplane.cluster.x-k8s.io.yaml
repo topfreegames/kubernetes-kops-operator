@@ -127,9 +127,6 @@ spec:
                               bucketPrefix:
                                 description: BucketPrefix is the S3 bucket prefix. Logs are stored in the root if not configured.
                                 type: string
-                              interval:
-                                description: Interval is the publishing interval in minutes. This parameter is only used with classic load balancer.
-                                type: integer
                             type: object
                           additionalSecurityGroups:
                             description: AdditionalSecurityGroups attaches additional security groups (e.g. sg-123456).
@@ -137,15 +134,11 @@ spec:
                               type: string
                             type: array
                           class:
-                            description: 'LoadBalancerClass specifies the class of load balancer to create: Classic, Network.'
+                            description: 'LoadBalancerClass specifies the class of load balancer to create: Network.'
                             type: string
                           crossZoneLoadBalancing:
                             description: CrossZoneLoadBalancing allows you to enable the cross zone load balancing
                             type: boolean
-                          idleTimeoutSeconds:
-                            description: IdleTimeoutSeconds sets the timeout of the api loadbalancer.
-                            format: int64
-                            type: integer
                           securityGroupOverride:
                             description: SecurityGroupOverride overrides the default Kops created SG for the load balancer.
                             type: string
@@ -313,6 +306,11 @@ spec:
                   certManager:
                     description: CertManager determines the metrics server configuration.
                     properties:
+                      cainjectorFeatureGates:
+                        additionalProperties:
+                          type: boolean
+                        description: CAInjectorFeatureGates is a list of experimental features that can be enabled or disabled for the cainjector.
+                        type: object
                       defaultIssuer:
                         description: |-
                           defaultIssuer sets a default clusterIssuer
@@ -350,6 +348,11 @@ spec:
                         items:
                           type: string
                         type: array
+                      webhookFeatureGates:
+                        additionalProperties:
+                          type: boolean
+                        description: WebhookFeatureGates is a list of experimental features that can be enabled or disabled for the webhook.
+                        type: object
                     type: object
                   channel:
                     description: The Channel we are following
@@ -390,7 +393,7 @@ spec:
                         description: ClusterName is the instance prefix for the cluster.
                         type: string
                       concurrentNodeSyncs:
-                        description: 'ConcurrentNodeSyncs is the number of workers concurrently synchronizing nodes. (default: 1)'
+                        description: 'ConcurrentNodeSyncs is the number of workers concurrently synchronizing nodes. (default: 5)'
                         format: int32
                         type: integer
                       configureCloudRoutes:
@@ -558,6 +561,11 @@ spec:
                                   Default: 100m
                                 pattern: ^(\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))(([KMGTPE]i)|[numkMGTPE]|([eE](\+|-)?(([0-9]+(\.[0-9]*)?)|(\.[0-9]+))))?$
                                 x-kubernetes-int-or-string: true
+                              defaultLoadBalancerScheme:
+                                description: |-
+                                  DefaultLoadBalancerScheme specifies the default scheme for the load balancer.
+                                  Default: "internet-facing"
+                                type: string
                               enableShield:
                                 description: |-
                                   EnableShield specifies whether the controller can enable Shield Advanced.
@@ -736,6 +744,14 @@ spec:
                           spotinstProduct:
                             description: Spotinst cloud-config specs
                             type: string
+                          useIPBasedNodeNames:
+                            description: |-
+                              UseIPBasedNodeNames names Kubernetes nodes after the EC2 private DNS name, e.g.
+                              ip-10-0-0-1.eu-west-1.compute.internal, instead of the EC2 instance ID. When enabled, managed
+                              subnets launch instances with IP-based EC2 hostnames; shared subnets must be configured with
+                              IP-based hostnames by their owner. Not supported on IPv6-only clusters. Changing this value
+                              only affects newly launched nodes; existing nodes must be replaced to be renamed.
+                            type: boolean
                           warmPool:
                             description: WarmPool defines the default warm pool settings for instance groups.
                             properties:
@@ -844,7 +860,7 @@ spec:
                         description: Hetzner configures the Hetzner cloud provider.
                         type: object
                       linode:
-                        description: Linode configures the Linode (Akamai) cloud provider.
+                        description: Linode configures the Akamai (Linode) cloud provider.
                         type: object
                       openstack:
                         description: Openstack configures the Openstack cloud provider.
@@ -1511,6 +1527,11 @@ spec:
                           Default: 40
                         format: int32
                         type: integer
+                      nodeStatusReportFrequency:
+                        description: |-
+                          NodeStatusReportFrequency is how often the kubelet posts node status to the apiserver when the status has not changed.
+                          If unset, the kubelet uses nodeStatusUpdateFrequency when that field is set, and 5m otherwise.
+                        type: string
                       nodeStatusUpdateFrequency:
                         description: |-
                           NodeStatusUpdateFrequency Specifies how often kubelet posts node status to master (default 10s)
@@ -1664,13 +1685,18 @@ spec:
                         type: string
                     type: object
                   dnsControllerGossipConfig:
-                    description: DNSControllerGossipConfig for the cluster assuming the use of gossip DNS
+                    description: |-
+                      DNSControllerGossipConfig has no effect and must not be set; gossip DNS support was removed in kOps 1.37.
+                      Deprecated: remove this field from the cluster spec.
                     properties:
                       listen:
                         type: string
                       protocol:
                         type: string
                       secondary:
+                        description: |-
+                          DNSControllerGossipConfigSecondary has no effect and must not be set; gossip DNS support was removed in kOps 1.37.
+                          Deprecated: remove this field from the cluster spec.
                         properties:
                           listen:
                             type: string
@@ -1902,13 +1928,18 @@ spec:
                       type: object
                     type: array
                   gossipConfig:
-                    description: GossipConfig for the cluster assuming the use of gossip DNS
+                    description: |-
+                      GossipConfig has no effect and must not be set; gossip DNS support was removed in kOps 1.37.
+                      Deprecated: remove this field from the cluster spec.
                     properties:
                       listen:
                         type: string
                       protocol:
                         type: string
                       secondary:
+                        description: |-
+                          GossipConfigSecondary has no effect and must not be set; gossip DNS support was removed in kOps 1.37.
+                          Deprecated: remove this field from the cluster spec.
                         properties:
                           listen:
                             type: string
@@ -2594,6 +2625,11 @@ spec:
                           Increasing this value allows etcd more time to become ready on new control-plane nodes before kube-apiserver gives up and crashes.
                           Default is 1m0s.
                         type: string
+                      strictTransportSecurityDirectives:
+                        description: 'StrictTransportSecurityDirectives is a list of directives for HSTS, comma separated. If this list is empty, then HSTS directives will not be added. Example: ''max-age=31536000,includeSubDomains,preload'''
+                        items:
+                          type: string
+                        type: array
                       tlsCertFile:
                         type: string
                       tlsCipherSuites:
@@ -4458,6 +4494,11 @@ spec:
                           Default: 40
                         format: int32
                         type: integer
+                      nodeStatusReportFrequency:
+                        description: |-
+                          NodeStatusReportFrequency is how often the kubelet posts node status to the apiserver when the status has not changed.
+                          If unset, the kubelet uses nodeStatusUpdateFrequency when that field is set, and 5m otherwise.
+                        type: string
                       nodeStatusUpdateFrequency:
                         description: |-
                           NodeStatusUpdateFrequency Specifies how often kubelet posts node status to master (default 10s)
@@ -4646,6 +4687,11 @@ spec:
                       amazonVPC:
                         description: AmazonVPCNetworkingSpec declares that we want Amazon VPC CNI networking
                         properties:
+                          enableNetworkPolicy:
+                            description: |-
+                              EnableNetworkPolicy enables enforcement of Kubernetes NetworkPolicy resources by the
+                              network policy agent. The network policy controller must be deployed separately.
+                            type: boolean
                           env:
                             description: Env is a list of environment variables to set in the container.
                             items:
@@ -5357,6 +5403,33 @@ spec:
                         type: object
                       kubeRouter:
                         description: KuberouterNetworkingSpec declares that we want Kube-router networking
+                        properties:
+                          externalIPRanges:
+                            description: |-
+                              ExternalIPRanges are the CIDRs from which Service externalIPs are accepted.
+                              Setting this or LoadBalancerIPRanges turns on kube-router's strict external
+                              IP validation, which drops any address outside the configured ranges.
+                              Leaving both empty keeps strict validation off.
+                            items:
+                              type: string
+                            type: array
+                          loadBalancerIPRanges:
+                            description: |-
+                              LoadBalancerIPRanges are the CIDRs from which Service loadBalancerIPs are
+                              accepted. Setting this or ExternalIPRanges turns on kube-router's strict
+                              external IP validation, which drops any address outside the configured
+                              ranges. Leaving both empty keeps strict validation off.
+                            items:
+                              type: string
+                            type: array
+                          useNFTablesForNetpol:
+                            description: |-
+                              UseNFTablesForNetpol makes the network policy controller enforce
+                              NetworkPolicies with nftables instead of iptables and ipsets.
+                              This is experimental upstream and only affects the network policy
+                              controller; the service proxy and router controllers are unchanged.
+                              Default: false
+                            type: boolean
                         type: object
                       kubenet:
                         description: KubenetNetworkingSpec is the specification for kubenet networking, largely integrated but intended to replace classic
